@@ -1,0 +1,9 @@
+###! USER LOGIN
+POST http://localhost:3000/api/v1/auth/logout
+Content-Type: application/json
+Authorization: Bearer 
+
+{
+    "phone": "xyz",
+    "password": "xyz"
+}

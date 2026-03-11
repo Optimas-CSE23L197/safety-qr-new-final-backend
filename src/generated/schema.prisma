@@ -1,0 +1,1645 @@
+// =============================================================================
+// RESQID — coreZ Technologies Pvt. Ltd.
+// PRODUCTION-GRADE SCHEMA v4.0
+// ─────────────────────────────────────────────────────────────────────────────
+// v4.0 FIXES (13 total):
+//   [F01] CardOrder delivery fields → nullable (CALL orders filled later)
+//   [F02] Payment.subscription_id → nullable + order_id added
+//   [F03] ParentEditLog.school_id → nullable (parent edits before school)
+//   [F04] Token.order_id + order_item_id → full traceability
+//   [F05] CardOrderItem → Token @relation added (FK enforced)
+//   [F06] Invoice model added (was referenced but missing)
+//   [F07] TokenBatch.order_id → link batch to order
+//   [F08] Notification → ParentUser @relation properly defined
+//   [F09] SchoolSettings school_hours added (powers AFTER_HOURS anomaly)
+//   [F10] ScanRateLimit.blocked_reason + block_count added
+//   [F11] QrFormat enum replaces String
+//   [F12] CardTemplate.updated_by added
+//   [F13] CardOrder → TokenBatch relation added
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum AppTheme {
+  LIGHT
+  DARK
+  SYSTEM
+}
+
+enum ProfileType {
+  STUDENT // Phase 1 ✅
+  ELDERLY // Phase 2 — Alzheimer patients
+  PET // Phase 3
+  INDIVIDUAL // Phase 4 — self-registered
+}
+
+enum SetupStage {
+  PENDING // just registered — empty block
+  BASIC // name + photo added
+  COMPLETE // emergency profile filled
+  VERIFIED // school has verified
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
+enum BloodGroup {
+  A_POS
+  A_NEG
+  B_POS
+  B_NEG
+  AB_POS
+  AB_NEG
+  O_POS
+  O_NEG
+  UNKNOWN
+}
+
+enum TokenStatus {
+  UNASSIGNED
+  ISSUED
+  ACTIVE
+  INACTIVE
+  REVOKED
+  EXPIRED
+}
+
+enum SchoolRole {
+  ADMIN
+  STAFF
+  VIEWER
+}
+
+enum ScanResult {
+  SUCCESS
+  INVALID
+  REVOKED
+  EXPIRED
+  INACTIVE
+  RATE_LIMITED
+  ERROR
+}
+
+enum AnomalyType {
+  HIGH_FREQUENCY // too many scans in short time
+  MULTIPLE_LOCATIONS // same token from far-apart locations
+  SUSPICIOUS_IP // known bad IP / VPN / Tor
+  AFTER_HOURS // outside school_hours_start/end
+  BULK_SCRAPING // same IP scanning multiple tokens
+  HONEYPOT_TRIGGERED // decoy token scanned
+  REPEATED_FAILURE // too many INVALID/EXPIRED results
+}
+
+enum AnomalySeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  EXPIRED
+}
+
+enum PlanType {
+  FREE_PILOT // 0 cost — first pilot schools, 50 students free
+  GOVT_STANDARD // ₹100/student onboarding + ₹100/student/year renewal
+  PRIVATE_STANDARD // ₹199/student onboarding + ₹100/student/year renewal
+  ENTERPRISE // custom pricing — negotiated per school/district
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum NotificationType {
+  SCAN_ALERT
+  SCAN_ANOMALY
+  CARD_EXPIRING
+  CARD_REVOKED
+  CARD_REPLACED
+  BILLING_ALERT
+  DEVICE_LOGIN // always sent — cannot be disabled
+  SYSTEM
+}
+
+enum NotificationChannel {
+  SMS
+  EMAIL
+  PUSH
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  FAILED
+  SUPPRESSED
+}
+
+enum ActorType {
+  SUPER_ADMIN
+  SCHOOL_USER
+  PARENT_USER
+  SYSTEM
+}
+
+enum ProfileVisibility {
+  PUBLIC
+  MINIMAL
+  HIDDEN
+}
+
+enum LocationSource {
+  SCAN_TRIGGER
+  PARENT_APP
+  MANUAL
+}
+
+enum IpCaptureBasis {
+  LEGITIMATE_INTEREST // emergency safety — no consent needed ✅
+  CONSENT
+  LEGAL_OBLIGATION
+}
+
+enum ParentEditType {
+  EMERGENCY_CONTACTS
+  EMERGENCY_PROFILE
+  STUDENT_NAME
+  STUDENT_PHOTO
+  PARENT_PHONE // triggers OTP re-verify
+  PARENT_EMAIL
+  CARD_VISIBILITY
+  CARD_BLOCK
+  CARD_REPLACEMENT
+  NOTIFICATION_PREFS
+}
+
+enum OtpPurpose {
+  LOGIN
+  PHONE_VERIFY
+  CARD_BLOCK
+  CARD_REPLACEMENT
+  EMAIL_VERIFY
+  DEVICE_CHANGE
+  CHANGE_PIN
+}
+
+enum RateLimitIdentifierType {
+  IP
+  DEVICE
+  TOKEN
+}
+
+enum DevicePlatform {
+  IOS
+  ANDROID
+  WEB
+}
+
+enum DeviceLogoutReason {
+  NEW_DEVICE_LOGIN
+  MANUAL_LOGOUT
+  SESSION_EXPIRED
+  ADMIN_REVOKED
+  SUSPICIOUS_ACTIVITY
+}
+
+enum SessionRevokeReason {
+  NEW_DEVICE_LOGIN
+  MANUAL_LOGOUT
+  SESSION_EXPIRED
+  ADMIN_REVOKED
+  PASSWORD_CHANGED
+  PHONE_CHANGED
+}
+
+enum PrintStatus {
+  PENDING
+  PRINTED
+  REPRINTED
+  FAILED
+}
+
+enum QrFormat {
+  PNG // default — shown in mobile app
+  SVG // scalable for large print
+  PDF // for print sheet export
+}
+
+enum QrType {
+  SINGLE_BLANK // 1 token, no student — assigned later
+  BULK_BLANK // many tokens, no students — assigned later
+  SINGLE_PRE_DETAILS // 1 token, student on card from day 1
+  BULK_PRE_DETAILS // many tokens, student list submitted upfront
+}
+
+enum OrderMode {
+  SINGLE
+  BULK
+}
+
+enum OrderChannel {
+  DASHBOARD // school self-served
+  CALL // super admin enters manually
+}
+
+enum OrderStatus {
+  PENDING // placed, awaiting review
+  CONFIRMED // super admin confirmed
+  PAYMENT_PENDING // invoice sent, awaiting payment
+  PAID // payment received
+  PROCESSING // tokens + QRs generating
+  PRINTING // cards being printed
+  SHIPPED // dispatched to school
+  DELIVERED // school received
+  CANCELLED
+  REFUNDED
+}
+
+enum OrderItemStatus {
+  PENDING
+  TOKEN_GENERATED
+  PRINTED
+  SHIPPED
+  DELIVERED
+}
+
+enum ShipmentStatus {
+  PREPARING
+  DISPATCHED
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  FAILED
+  RETURNED
+}
+
+// =============================================================================
+// NEW ENUMS — v4.1 B2B2B Multi-tier Pricing
+// =============================================================================
+
+// SchoolType — drives pricing tier automatically
+enum SchoolType {
+  GOVERNMENT // ₹100/student onboarding, ₹100/student/year renewal
+  PRIVATE // ₹199/student onboarding, ₹100/student/year renewal
+  INTERNATIONAL // custom pricing (ENTERPRISE plan)
+  NGO // custom / subsidised pricing
+}
+
+// PricingTier — explicit tier, decoupled from school_type
+// Allows super admin to manually override (e.g. NGO school gets GOVT pricing)
+enum PricingTier {
+  GOVT_STANDARD // ₹100 onboarding, ₹100 renewal
+  PRIVATE_STANDARD // ₹199 onboarding, ₹100 renewal
+  ENTERPRISE // custom — set manually per school
+  FREE_PILOT // ₹0 — pilot program schools
+}
+
+// InvoiceType — what the invoice is for
+enum InvoiceType {
+  ORDER // initial card order invoice
+  ADVANCE // 50% upfront invoice
+  BALANCE // remaining 50% invoice
+  RENEWAL // annual renewal invoice
+  CUSTOM // super admin created manually
+}
+
+// PaymentMode — how school pays ResQid
+enum PaymentMode {
+  BANK_TRANSFER // NEFT/RTGS/IMPS — most common for schools
+  UPI // school UPI payment
+  CHEQUE // some govt schools still use this
+  RAZORPAY // online payment link
+  CASH // small pilot schools
+}
+
+// BatchPaymentStatus
+enum BatchPaymentStatus {
+  PENDING // batch created, awaiting school payment
+  PARTIALLY_PAID // some amount received, not full
+  PAID // full amount received and verified
+  OVERDUE // past due date, not paid
+  CANCELLED // order cancelled, batch voided
+}
+
+// =============================================================================
+// SCHOOL
+// =============================================================================
+
+model School {
+  id       String  @id @default(uuid())
+  name     String
+  address  String?
+  city     String?
+  state    String? // "West Bengal", "Maharashtra" etc.
+  pincode  String?
+  country  String  @default("IN")
+  code     String  @unique // short tenant identifier
+  email    String?
+  phone    String?
+  logo_url String?
+  timezone String  @default("Asia/Kolkata")
+
+  // B2B2B — school type drives pricing
+  school_type  SchoolType  @default(PRIVATE)
+  pricing_tier PricingTier @default(PRIVATE_STANDARD)
+
+  // India-specific identity & verification
+  udise_code       String? @unique // govt school UDISE code
+  affiliation_num  String? // CBSE/ICSE/Board affiliation number
+  affiliated_board String? // "CBSE" "ICSE" "WBBSE" "ICSE" etc.
+
+  // contract tracking
+  contract_signed_at  DateTime?
+  contract_expires_at DateTime?
+  onboarded_by        String? // super_admin id
+  onboarded_at        DateTime?
+
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  // relations
+  apiKeys          ApiKey[]
+  paymentBatches   SchoolPaymentBatch[]
+  auditLogs        AuditLog[]
+  cards            Card[]
+  cardOrders       CardOrder[]
+  cardRenewals     CardRenewal[]
+  cardTemplate     CardTemplate?
+  invoices         Invoice[]
+  notifications    Notification[]
+  parentEditLogs   ParentEditLog[]
+  payments         Payment[]
+  settings         SchoolSettings?
+  students         Student[]
+  subscriptions    Subscription[]
+  tokens           Token[]
+  tokenBatches     TokenBatch[]
+  trustedScanZones TrustedScanZone[]
+  users            SchoolUser[]
+  webhooks         Webhook[]
+
+  @@index([code])
+  @@index([is_active])
+  @@index([school_type])
+  @@index([pricing_tier])
+  @@index([state])
+  @@index([school_type, is_active])
+}
+
+// -----------------------------------------------------------------------------
+// SchoolSettings — school-level toggles, defaults & hours
+// -----------------------------------------------------------------------------
+model SchoolSettings {
+  id                         String            @id @default(uuid())
+  school_id                  String            @unique
+  allow_location             Boolean           @default(false)
+  allow_parent_edit          Boolean           @default(true)
+  scan_notifications_enabled Boolean           @default(true)
+  notify_on_every_scan       Boolean           @default(false)
+  scan_alert_cooldown_mins   Int               @default(60)
+  token_validity_months      Int               @default(12)
+  max_tokens_per_student     Int               @default(1)
+  default_profile_visibility ProfileVisibility @default(PUBLIC)
+
+  // renewal config
+  renewal_reminder_days     Int[]   @default([30, 15, 7, 1])
+  auto_deactivate_on_expiry Boolean @default(true)
+
+  // [F09] school hours — powers AFTER_HOURS anomaly detection
+  school_hours_start String @default("08:00") // "HH:MM" 24hr
+  school_hours_end   String @default("17:00") // "HH:MM" 24hr
+  school_days        Int[]  @default([1, 2, 3, 4, 5]) // 1=Mon 7=Sun
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  school School @relation(fields: [school_id], references: [id], onDelete: Cascade)
+}
+
+// =============================================================================
+// USERS
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// SchoolUser — school admin / staff / viewer (web dashboard)
+// -----------------------------------------------------------------------------
+model SchoolUser {
+  id            String     @id @default(uuid())
+  school_id     String
+  email         String     @unique
+  password_hash String
+  name          String?
+  role          SchoolRole
+  is_active     Boolean    @default(true)
+  last_login_at DateTime?
+  created_at    DateTime   @default(now())
+  updated_at    DateTime   @updatedAt
+
+  school   School    @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  sessions Session[]
+
+  @@index([school_id])
+  @@index([school_id, is_active])
+}
+
+// -----------------------------------------------------------------------------
+// ParentUser — mobile app user
+// On registration → Student (empty) + ParentNotificationPref auto-created
+// -----------------------------------------------------------------------------
+model ParentUser {
+  id                 String     @id @default(uuid())
+  email              String?    @unique
+  phone              String     @unique // E.164 format
+  phone_index        String?    @unique // hashed for lookup
+  password_hash      String?
+  name               String?
+  avatar_url         String?
+  preferred_language String     @default("en")
+  preferred_theme    AppTheme   @default(SYSTEM)
+  is_phone_verified  Boolean    @default(false)
+  is_email_verified  Boolean    @default(false)
+  status             UserStatus @default(ACTIVE)
+  last_login_at      DateTime?
+  deleted_at         DateTime?
+  created_at         DateTime   @default(now())
+  updated_at         DateTime   @updatedAt
+
+  // relations
+  children          ParentStudent[]
+  devices           ParentDevice[]
+  editLogs          ParentEditLog[]
+  notificationPrefs ParentNotificationPref?
+  notifications     Notification[] // [F08]
+  sessions          Session[]
+
+  @@index([phone_index])
+  @@index([status])
+  @@index([deleted_at])
+}
+
+// -----------------------------------------------------------------------------
+// ParentDevice — single device login enforcement
+// Only ONE device active at a time per parent
+// New login → all others set is_active=false → email notification sent
+// -----------------------------------------------------------------------------
+model ParentDevice {
+  id            String              @id @default(uuid())
+  parent_id     String
+  device_token  String              @unique // FCM/APNS push token
+  platform      DevicePlatform
+  device_name   String? // "iPhone 15 Pro"
+  device_model  String? // "iPhone16,1"
+  os_version    String? // "iOS 17.2"
+  app_version   String? // "1.2.3" — force-upgrade logic
+  is_active     Boolean             @default(true) // ← SINGLE DEVICE FLAG
+  last_seen_at  DateTime?
+  logged_out_at DateTime?
+  logout_reason DeviceLogoutReason?
+  created_at    DateTime            @default(now())
+
+  parent ParentUser @relation(fields: [parent_id], references: [id], onDelete: Cascade)
+
+  @@index([parent_id])
+  @@index([parent_id, is_active]) // hot: find active device for parent
+}
+
+// -----------------------------------------------------------------------------
+// ParentNotificationPref — per-parent notification toggles
+// Auto-created on registration with safe defaults
+// device_login_notify_email is FORCED true — cannot be disabled (security)
+// -----------------------------------------------------------------------------
+model ParentNotificationPref {
+  id        String @id @default(uuid())
+  parent_id String @unique
+
+  // scan notifications
+  scan_notify_enabled Boolean @default(true) // master toggle
+  scan_notify_push    Boolean @default(true)
+  scan_notify_sms     Boolean @default(false) // SMS is costly
+  scan_notify_email   Boolean @default(false)
+
+  // anomaly notifications
+  anomaly_notify_enabled Boolean @default(true)
+  anomaly_notify_push    Boolean @default(true)
+  anomaly_notify_sms     Boolean @default(true) // anomaly = always SMS
+  anomaly_notify_email   Boolean @default(true)
+
+  // card notifications
+  card_expiry_notify  Boolean @default(true)
+  card_blocked_notify Boolean @default(true)
+
+  // security — FORCED, cannot be disabled
+  device_login_notify_email Boolean @default(true)
+  account_change_notify     Boolean @default(true)
+
+  // quiet hours — no push during sleep
+  quiet_hours_enabled Boolean @default(false)
+  quiet_hours_start   String? // "22:00" 24hr
+  quiet_hours_end     String? // "07:00" 24hr
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  parent ParentUser @relation(fields: [parent_id], references: [id], onDelete: Cascade)
+}
+
+// -----------------------------------------------------------------------------
+// SuperAdmin — platform owner (coreZ Technologies)
+// -----------------------------------------------------------------------------
+model SuperAdmin {
+  id            String    @id @default(uuid())
+  name          String
+  email         String    @unique
+  password_hash String
+  is_active     Boolean   @default(true)
+  last_login_at DateTime?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+
+  sessions Session[]
+
+  @@index([email])
+  @@index([is_active])
+}
+
+// =============================================================================
+// OTP
+// SEND:   call MSG91 → insert OtpLog (verified=false, expires_at=now+10min)
+// VERIFY: hash input → match otp_hash, check attempts/expiry/flags
+// RESEND: set old invalidated=true → insert new OtpLog
+// =============================================================================
+
+model OtpLog {
+  id           String     @id @default(uuid())
+  phone        String // E.164 "+919876543210"
+  otp_hash     String // sha256 — NEVER plaintext
+  purpose      OtpPurpose
+  attempts     Int        @default(0)
+  max_attempts Int        @default(5)
+  verified     Boolean    @default(false)
+  verified_at  DateTime?
+  expires_at   DateTime // now() + 10 minutes
+  invalidated  Boolean    @default(false) // true when resend burns old OTP
+  msg91_req_id String? // delivery status callback
+  ip_address   String?
+  created_at   DateTime   @default(now())
+
+  @@index([phone, purpose])
+  @@index([expires_at])
+  @@index([msg91_req_id])
+}
+
+// =============================================================================
+// STUDENTS
+// Auto-created as EMPTY block when parent registers (setup_stage = PENDING)
+// Progressively filled via PATCH from parent app — no approval flow
+// school_id = null until school assigns the token to this student
+// profile_type = future-ready for Phase 2 (ELDERLY) and Phase 3 (PET)
+// =============================================================================
+
+model Student {
+  id           String      @id @default(uuid())
+  school_id    String? // null until assigned
+  profile_type ProfileType @default(STUDENT) // Phase 2/3 ready
+  setup_stage  SetupStage  @default(PENDING) // completion tracker
+
+  // basic info — filled progressively by parent
+  first_name    String?
+  last_name     String?
+  photo_url     String?
+  gender        Gender?
+  dob_encrypted String? // AES-256 encrypted
+
+  // school-specific — filled by school or from PRE_DETAILS order
+  class            String?
+  section          String?
+  roll_number      String?
+  admission_number String?
+
+  is_active  Boolean   @default(true)
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+
+  // relations
+  cards           Card[]
+  cardRenewals    CardRenewal[]
+  cardVisibility  CardVisibility?
+  editLogs        ParentEditLog[]
+  emergency       EmergencyProfile?
+  locationConsent LocationConsent?
+  locationEvents  LocationEvent[]
+  notifications   Notification[]
+  parents         ParentStudent[]
+  school          School?           @relation(fields: [school_id], references: [id], onDelete: SetNull)
+  tokens          Token[]
+
+  @@index([school_id])
+  @@index([school_id, is_active])
+  @@index([school_id, profile_type])
+  @@index([setup_stage])
+  @@index([deleted_at])
+}
+
+// -----------------------------------------------------------------------------
+// ParentStudent — many-to-many parent ↔ student
+// -----------------------------------------------------------------------------
+model ParentStudent {
+  id           String   @id @default(uuid())
+  parent_id    String
+  student_id   String
+  relationship String? // "Father" "Mother" "Guardian"
+  is_primary   Boolean  @default(false) // primary contact for alerts
+  created_at   DateTime @default(now())
+
+  parent  ParentUser @relation(fields: [parent_id], references: [id], onDelete: Cascade)
+  student Student    @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@unique([parent_id, student_id])
+  @@index([student_id])
+  @@index([parent_id])
+}
+
+// =============================================================================
+// EMERGENCY PROFILE
+// =============================================================================
+
+model EmergencyProfile {
+  id                     String            @id @default(uuid())
+  student_id             String            @unique
+  blood_group            BloodGroup?
+  allergies              String?
+  conditions             String?
+  medications            String?
+  doctor_name            String?
+  doctor_phone_encrypted String? // AES-256 encrypted
+  notes                  String?
+  visibility             ProfileVisibility @default(PUBLIC)
+  is_visible             Boolean           @default(true)
+  created_at             DateTime          @default(now())
+  updated_at             DateTime          @updatedAt
+
+  contacts EmergencyContact[]
+  student  Student            @relation(fields: [student_id], references: [id], onDelete: Cascade)
+}
+
+// -----------------------------------------------------------------------------
+// EmergencyContact — shown on public emergency page
+// whatsapp_enabled → "Share Location via WhatsApp" button
+// call_enabled     → direct call button
+// -----------------------------------------------------------------------------
+model EmergencyContact {
+  id               String   @id @default(uuid())
+  profile_id       String
+  name             String
+  phone_encrypted  String // AES-256 encrypted
+  relationship     String?
+  priority         Int // 1 = first in alerts
+  display_order    Int      @default(0) // UI order (can differ)
+  is_active        Boolean  @default(true)
+  call_enabled     Boolean  @default(true)
+  whatsapp_enabled Boolean  @default(true)
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  profile EmergencyProfile @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+
+  @@index([profile_id])
+  @@index([profile_id, priority])
+  @@index([profile_id, is_active])
+}
+
+// =============================================================================
+// CARD VISIBILITY — parent-controlled per student
+// =============================================================================
+
+model CardVisibility {
+  id                String            @id @default(uuid())
+  student_id        String            @unique
+  visibility        ProfileVisibility @default(PUBLIC)
+  hidden_fields     String[]          @default([]) // field-level granularity
+  updated_by_parent Boolean           @default(false)
+  created_at        DateTime          @default(now())
+  updated_at        DateTime          @updatedAt
+
+  student Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+}
+
+// =============================================================================
+// PARENT EDIT LOG
+// Audit trail only — NO approval flow, changes apply instantly to DB
+// [F03] school_id nullable — parent can edit before school is assigned
+// =============================================================================
+
+model ParentEditLog {
+  id          String         @id @default(uuid())
+  school_id   String? // [F03] nullable — student may not have school yet
+  student_id  String
+  parent_id   String
+  field_group ParentEditType
+  old_value   Json?
+  new_value   Json
+  ip_address  String?
+  user_agent  String?
+  created_at  DateTime       @default(now())
+
+  school  School?    @relation(fields: [school_id], references: [id], onDelete: SetNull)
+  student Student    @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  parent  ParentUser @relation(fields: [parent_id], references: [id], onDelete: Cascade)
+
+  @@index([student_id])
+  @@index([parent_id])
+  @@index([school_id])
+  @@index([created_at])
+  @@index([field_group])
+}
+
+// =============================================================================
+// TOKENS & CARDS
+// token_hash = sha256(crypto.randomBytes(32)) — 256-bit
+// card_number = shorter human-readable code on physical card
+// ONLY super admin can generate tokens — school has no permission
+// [F04] order_id + order_item_id — full token traceability
+// =============================================================================
+
+model Token {
+  id             String      @id @default(uuid())
+  school_id      String
+  student_id     String?
+  token_hash     String      @unique // sha256 of raw token
+  status         TokenStatus @default(UNASSIGNED)
+  batch_id       String?
+  order_id       String? // [F04] which CardOrder spawned this token
+  order_item_id  String? // [F04] which CardOrderItem (PRE_DETAILS only)
+  replaced_by_id String?
+  activated_at   DateTime?
+  assigned_at    DateTime?
+  expires_at     DateTime?
+  revoked_at     DateTime?
+  created_at     DateTime    @default(now())
+
+  // relations
+  anomalies    ScanAnomaly[]
+  batch        TokenBatch?         @relation(fields: [batch_id], references: [id])
+  cards        Card[]
+  locations    LocationEvent[]
+  nonces       RegistrationNonce[]
+  order        CardOrder?          @relation(fields: [order_id], references: [id])
+  orderItems   CardOrderItem[]
+  qrAsset      QrAsset?
+  replacedBy   Token?              @relation("TokenReplacement", fields: [replaced_by_id], references: [id])
+  replacements Token[]             @relation("TokenReplacement")
+  scans        ScanLog[]
+  school       School              @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  student      Student?            @relation(fields: [student_id], references: [id])
+
+  @@index([school_id])
+  @@index([school_id, status])
+  @@index([student_id])
+  @@index([batch_id])
+  @@index([order_id])
+  @@index([status])
+  @@index([expires_at])
+}
+
+// [F07] order_id added — link batch back to order
+model TokenBatch {
+  id         String   @id @default(uuid())
+  school_id  String
+  order_id   String? // [F07]
+  count      Int
+  created_by String? // super_admin id
+  notes      String?
+  created_at DateTime @default(now())
+
+  order  CardOrder? @relation(fields: [order_id], references: [id])
+  tokens Token[]
+  school School     @relation(fields: [school_id], references: [id], onDelete: Cascade)
+
+  @@index([school_id])
+  @@index([order_id])
+  @@index([school_id, created_at])
+}
+
+model Card {
+  id           String      @id @default(uuid())
+  school_id    String
+  student_id   String?
+  token_id     String?
+  card_number  String      @unique
+  file_url     String
+  print_status PrintStatus @default(PENDING)
+  printed_at   DateTime?
+  created_at   DateTime    @default(now())
+
+  renewals CardRenewal[]
+  school   School        @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  student  Student?      @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  token    Token?        @relation(fields: [token_id], references: [id])
+
+  @@index([school_id])
+  @@index([student_id])
+  @@index([token_id])
+  @@index([print_status])
+}
+
+// -----------------------------------------------------------------------------
+// CardRenewal — tracks every ₹100/student annual renewal (both govt and private)
+// -----------------------------------------------------------------------------
+model CardRenewal {
+  id           String       @id @default(uuid())
+  card_id      String
+  student_id   String
+  school_id    String
+  renewed_by   String? // parent_id or school_user_id
+  renewer_type ActorType    @default(PARENT_USER)
+  old_expiry   DateTime
+  new_expiry   DateTime
+  amount_paid  Int // paise (10000 = ₹100)
+  tax_amount   Int          @default(0) // GST paise
+  payment_id   String?
+  // pricing snapshot — for revenue reports
+  school_type  SchoolType? // GOVERNMENT | PRIVATE at time of renewal
+  pricing_tier PricingTier? // snapshot of tier at renewal time
+  created_at   DateTime     @default(now())
+
+  card    Card    @relation(fields: [card_id], references: [id], onDelete: Cascade)
+  school  School  @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@index([card_id])
+  @@index([student_id])
+  @@index([school_id])
+  @@index([created_at])
+}
+
+// =============================================================================
+// QR ASSET STORE
+// Every generated QR PNG stored here — served to mobile app + dashboard
+// storage_key = path in S3 e.g. "qr/school_abc/token_xyz.png"
+// public_url  = CDN URL — shown directly in app (no regeneration needed)
+// is_active   = false when token revoked — hides QR from app
+// [F11] format is now QrFormat enum
+// =============================================================================
+
+model QrAsset {
+  id           String   @id @default(uuid())
+  token_id     String   @unique // one QR per token
+  school_id    String
+  storage_key  String   @unique // S3 path
+  public_url   String // CDN URL
+  format       QrFormat @default(PNG) // [F11]
+  width_px     Int      @default(512)
+  height_px    Int      @default(512)
+  file_size_kb Int?
+  qr_type      QrType
+  generated_by String // super_admin id
+  order_id     String?
+  is_active    Boolean  @default(true)
+  generated_at DateTime @default(now())
+
+  token Token      @relation(fields: [token_id], references: [id], onDelete: Cascade)
+  order CardOrder? @relation(fields: [order_id], references: [id])
+
+  @@index([school_id])
+  @@index([order_id])
+  @@index([qr_type])
+  @@index([is_active])
+  @@index([generated_at])
+}
+
+// =============================================================================
+// CARD ORDER SYSTEM
+// Schools order via dashboard or by call — super admin processes everything
+// [F01] delivery fields nullable — CALL orders filled progressively
+// [F13] tokenBatches relation added
+// =============================================================================
+
+model CardOrder {
+  id           String       @id @default(uuid())
+  school_id    String
+  order_number String       @unique // "ORD-2024-0042"
+  order_type   QrType
+  order_mode   OrderMode
+  channel      OrderChannel
+  card_count   Int
+  unit_price   Int // paise per card
+  tax_rate     Float        @default(0.18) // 18% GST
+  tax_amount   Int          @default(0)
+  total_amount Int          @default(0)
+  status       OrderStatus  @default(PENDING)
+
+  // [F01] nullable — CALL orders filled progressively by super admin
+  delivery_name    String?
+  delivery_phone   String?
+  delivery_address String?
+  delivery_city    String?
+  delivery_state   String?
+  delivery_pincode String?
+  delivery_notes   String?
+
+  // processing
+  notes        String? // school notes
+  admin_notes  String? // super admin internal notes
+  processed_by String? // super_admin id
+  processed_at DateTime?
+
+  // payment
+  payment_status PaymentStatus @default(PENDING)
+  payment_id     String?
+  invoice_id     String?
+  paid_at        DateTime?
+
+  // 50% advance model
+  advance_amount  Int? // paise — 50% of total_amount
+  advance_paid_at DateTime?
+  balance_amount  Int? // remaining 50%
+  balance_due_at  DateTime? // expected payment date
+  balance_paid_at DateTime?
+
+  // pricing context — snapshot so future price changes don't affect old orders
+  school_type  SchoolType?
+  pricing_tier PricingTier?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  // relations
+  items        CardOrderItem[]
+  qrAssets     QrAsset[]
+  shipment     OrderShipment?
+  tokens       Token[]
+  tokenBatches TokenBatch[] // [F13]
+  school       School          @relation(fields: [school_id], references: [id], onDelete: Cascade)
+
+  @@index([school_id])
+  @@index([status])
+  @@index([payment_status])
+  @@index([channel])
+  @@index([order_type])
+  @@index([created_at])
+  @@index([school_id, status])
+}
+
+// -----------------------------------------------------------------------------
+// CardOrderItem — one row per student in PRE_DETAILS orders
+// BLANK orders → no items needed (no student info on card)
+// PRE_DETAILS  → school uploads student list → one item per student
+// [F05] Token @relation added for FK enforcement
+// -----------------------------------------------------------------------------
+model CardOrderItem {
+  id         String  @id @default(uuid())
+  order_id   String
+  student_id String?
+  token_id   String?
+
+  // student details from school (for card printing)
+  student_name String
+  class        String?
+  section      String?
+  roll_number  String?
+  photo_url    String?
+
+  status       OrderItemStatus @default(PENDING)
+  qr_generated Boolean         @default(false)
+  card_printed Boolean         @default(false)
+  created_at   DateTime        @default(now())
+
+  order CardOrder @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  token Token?    @relation(fields: [token_id], references: [id]) // [F05]
+
+  @@index([order_id])
+  @@index([student_id])
+  @@index([token_id])
+  @@index([status])
+}
+
+// -----------------------------------------------------------------------------
+// OrderShipment — shipping & delivery tracking (one per order)
+// -----------------------------------------------------------------------------
+model OrderShipment {
+  id              String         @id @default(uuid())
+  order_id        String         @unique
+  courier_name    String?
+  tracking_number String?
+  tracking_url    String?
+  shipped_at      DateTime?
+  estimated_at    DateTime?
+  delivered_at    DateTime?
+  status          ShipmentStatus @default(PREPARING)
+  notes           String?
+  created_at      DateTime       @default(now())
+  updated_at      DateTime       @updatedAt
+
+  order CardOrder @relation(fields: [order_id], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([tracking_number])
+}
+
+// =============================================================================
+// INVOICE
+// [F06] New model — was referenced in Payment + CardOrder but never defined
+// =============================================================================
+
+model Invoice {
+  id              String        @id @default(uuid())
+  school_id       String
+  order_id        String?
+  subscription_id String? // renewal invoices link here
+  payment_id      String?
+  invoice_number  String        @unique // "INV-2024-0042"
+  invoice_type    InvoiceType   @default(ORDER) // ORDER | RENEWAL | ADVANCE | BALANCE
+  student_count   Int? // for renewal invoices
+  unit_price      Int? // snapshot of price per student (paise)
+  amount          Int // paise (pre-tax)
+  tax_amount      Int           @default(0)
+  total_amount    Int
+  status          InvoiceStatus @default(DRAFT)
+  issued_at       DateTime?
+  due_at          DateTime?
+  paid_at         DateTime?
+  pdf_url         String?
+  notes           String?
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
+
+  school       School        @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  subscription Subscription? @relation(fields: [subscription_id], references: [id])
+
+  @@index([school_id])
+  @@index([status])
+  @@index([issued_at])
+  @@index([school_id, status])
+}
+
+// =============================================================================
+// SESSIONS & AUTH
+// Single-device login: new login → revoke all other parent sessions instantly
+// =============================================================================
+
+model Session {
+  id                 String               @id @default(uuid())
+  parent_user_id     String?
+  school_user_id     String?
+  admin_user_id      String?
+  refresh_token_hash String               @unique
+  device_id          String?
+  device_info        String?
+  user_agent         String?
+  ip_address         String?
+  is_active          Boolean              @default(true)
+  revoked_at         DateTime?
+  revoke_reason      SessionRevokeReason?
+  last_active_at     DateTime?
+  expires_at         DateTime
+  created_at         DateTime             @default(now())
+
+  parentUser ParentUser? @relation(fields: [parent_user_id], references: [id], onDelete: Cascade)
+  schoolUser SchoolUser? @relation(fields: [school_user_id], references: [id], onDelete: Cascade)
+  superAdmin SuperAdmin? @relation(fields: [admin_user_id], references: [id], onDelete: Cascade)
+
+  @@index([parent_user_id])
+  @@index([parent_user_id, is_active])
+  @@index([school_user_id])
+  @@index([school_user_id, is_active]) // FIX [#11]: mirrors parent compound index for consistent session query performance
+  @@index([admin_user_id])
+  @@index([expires_at])
+  @@index([last_active_at])
+  @@index([is_active])
+}
+
+model BlacklistToken {
+  token_hash String   @id
+  expires_at DateTime
+  created_at DateTime @default(now())
+
+  @@index([expires_at])
+}
+
+// =============================================================================
+// DEVICE LOGIN AUDIT
+// Every new device login → email sent, cannot be disabled by parent
+// =============================================================================
+
+model DeviceLoginLog {
+  id            String         @id @default(uuid())
+  parent_id     String
+  device_name   String?
+  device_model  String?
+  platform      DevicePlatform
+  os_version    String?
+  app_version   String?
+  ip_address    String?
+  ip_city       String?
+  ip_country    String?
+  login_at      DateTime       @default(now())
+  email_sent    Boolean        @default(false)
+  email_sent_at DateTime?
+  was_forced    Boolean        @default(false) // forced logout another device?
+
+  @@index([parent_id])
+  @@index([parent_id, login_at])
+  @@index([login_at])
+}
+
+// =============================================================================
+// SCAN SYSTEM
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// ScanLog — every QR scan on public emergency API
+// IP location = Legitimate Interest under DPDP Act 2023 (safety use case)
+// -----------------------------------------------------------------------------
+model ScanLog {
+  id               String         @id @default(uuid())
+  token_id         String
+  result           ScanResult
+  ip_address       String?
+  ip_city          String?
+  ip_country       String?
+  ip_region        String?
+  ip_capture_basis IpCaptureBasis @default(LEGITIMATE_INTEREST)
+  location_derived Boolean        @default(true)
+  latitude         Float?
+  longitude        Float?
+  device_hash      String? // fingerprint (no PII)
+  user_agent       String?
+  scan_purpose     String?
+  response_time_ms Int?
+  created_at       DateTime       @default(now())
+
+  token Token @relation(fields: [token_id], references: [id], onDelete: Cascade)
+
+  @@index([token_id])
+  @@index([token_id, created_at])
+  @@index([created_at])
+  @@index([result])
+  @@index([result, created_at])
+  @@index([device_hash])
+  @@index([ip_address])
+}
+
+// -----------------------------------------------------------------------------
+// ScanAnomaly — structured anomaly detection with type + severity
+// -----------------------------------------------------------------------------
+model ScanAnomaly {
+  id           String          @id @default(uuid())
+  token_id     String
+  anomaly_type AnomalyType
+  severity     AnomalySeverity @default(MEDIUM)
+  reason       String?
+  metadata     Json?
+  resolved     Boolean         @default(false)
+  resolved_at  DateTime?
+  resolved_by  String?
+  created_at   DateTime        @default(now())
+
+  token Token @relation(fields: [token_id], references: [id], onDelete: Cascade)
+
+  @@index([token_id])
+  @@index([anomaly_type])
+  @@index([severity])
+  @@index([resolved])
+  @@index([created_at])
+}
+
+// -----------------------------------------------------------------------------
+// ScanRateLimit — IP/device/token rate limiting for public emergency API
+// Real-time limiting handled in Redis — this table = persistent blocks + audit
+// [F10] blocked_reason + block_count added
+// -----------------------------------------------------------------------------
+model ScanRateLimit {
+  id              String                  @id @default(uuid())
+  identifier      String
+  identifier_type RateLimitIdentifierType
+  count           Int                     @default(1)
+  window_start    DateTime                @default(now())
+  last_hit        DateTime                @default(now())
+  blocked_until   DateTime?
+  blocked_reason  String? // [F10]
+  block_count     Int                     @default(0) // [F10]
+
+  @@unique([identifier, identifier_type])
+  @@index([identifier, identifier_type])
+  @@index([window_start])
+  @@index([blocked_until])
+}
+
+// =============================================================================
+// LOCATION
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// LocationConsent — parent explicit consent for GPS precision location
+// IP-derived = no consent needed (legitimate interest)
+// GPS/precise = explicit consent required here
+// -----------------------------------------------------------------------------
+model LocationConsent {
+  id           String   @id @default(uuid())
+  student_id   String   @unique
+  enabled      Boolean  @default(false)
+  consented_by String?
+  consent_text String?
+  ip_address   String?
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  student Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+}
+
+model LocationEvent {
+  id         String         @id @default(uuid())
+  student_id String
+  token_id   String?
+  latitude   Float
+  longitude  Float
+  accuracy   Float?
+  altitude   Float?
+  source     LocationSource @default(SCAN_TRIGGER)
+  created_at DateTime       @default(now())
+
+  student Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  token   Token?  @relation(fields: [token_id], references: [id])
+
+  @@index([student_id])
+  @@index([student_id, created_at])
+  @@index([token_id])
+  @@index([source])
+}
+
+// =============================================================================
+// REGISTRATION
+// =============================================================================
+
+model RegistrationNonce {
+  id          String    @id @default(uuid())
+  nonce       String    @unique
+  token_id    String
+  phone_index String?
+  expires_at  DateTime
+  used        Boolean   @default(false)
+  used_at     DateTime?
+  created_at  DateTime  @default(now())
+
+  token Token @relation(fields: [token_id], references: [id], onDelete: Cascade)
+
+  @@index([token_id])
+  @@index([expires_at])
+}
+
+// -----------------------------------------------------------------------------
+// TrustedScanZone — scans from school IP/geo suppress anomaly alerts
+// -----------------------------------------------------------------------------
+model TrustedScanZone {
+  id         String   @id @default(uuid())
+  school_id  String
+  label      String
+  ip_range   String? // CIDR "192.168.1.0/24"
+  latitude   Float?
+  longitude  Float?
+  radius_m   Int      @default(200)
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+
+  school School @relation(fields: [school_id], references: [id], onDelete: Cascade)
+
+  @@index([school_id])
+  @@index([school_id, is_active])
+}
+
+// =============================================================================
+// NOTIFICATIONS
+// Delivery respects ParentNotificationPref per-parent toggles
+// DEVICE_LOGIN type always sent regardless of prefs (security)
+// [F08] parent relation properly defined
+// =============================================================================
+
+model Notification {
+  id           String              @id @default(uuid())
+  school_id    String
+  student_id   String?
+  parent_id    String?
+  type         NotificationType
+  channel      NotificationChannel
+  status       NotificationStatus  @default(QUEUED)
+  payload      Json?
+  pref_checked Boolean             @default(false)
+  retry_count  Int                 @default(0)
+  sent_at      DateTime?
+  error        String?
+  created_at   DateTime            @default(now())
+
+  school  School      @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  student Student?    @relation(fields: [student_id], references: [id])
+  parent  ParentUser? @relation(fields: [parent_id], references: [id]) // [F08]
+
+  @@index([school_id])
+  @@index([student_id])
+  @@index([parent_id])
+  @@index([status])
+  @@index([type])
+  @@index([created_at])
+  @@index([status, created_at])
+}
+
+// =============================================================================
+// AUDIT LOG
+// =============================================================================
+
+model AuditLog {
+  id         String    @id @default(uuid())
+  school_id  String?
+  actor_id   String
+  actor_type ActorType
+  action     String
+  entity     String
+  entity_id  String
+  old_value  Json?
+  new_value  Json?
+  metadata   Json?
+  ip_address String?
+  user_agent String?
+  created_at DateTime  @default(now())
+
+  school School? @relation(fields: [school_id], references: [id])
+
+  @@index([actor_id])
+  @@index([school_id])
+  @@index([entity, entity_id])
+  @@index([action])
+  @@index([created_at])
+  @@index([actor_type, created_at])
+}
+
+// =============================================================================
+// API KEYS & WEBHOOKS
+// =============================================================================
+
+model ApiKey {
+  id           String    @id @default(uuid())
+  school_id    String
+  name         String
+  key_hash     String    @unique
+  key_prefix   String // "rq_live_" shown in UI
+  scopes       String[]
+  last_used_at DateTime?
+  expires_at   DateTime?
+  revoked_at   DateTime?
+  created_at   DateTime  @default(now())
+
+  school School @relation(fields: [school_id], references: [id], onDelete: Cascade)
+
+  @@index([school_id])
+  @@index([revoked_at])
+}
+
+model Webhook {
+  id          String   @id @default(uuid())
+  school_id   String
+  url         String
+  secret_hash String
+  events      String[]
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+
+  deliveries WebhookDelivery[]
+  school     School            @relation(fields: [school_id], references: [id], onDelete: Cascade)
+
+  @@index([school_id])
+  @@index([school_id, is_active])
+}
+
+model WebhookDelivery {
+  id              String    @id @default(uuid())
+  webhook_id      String
+  idempotency_key String?   @unique
+  event_type      String
+  payload         Json
+  status_code     Int?
+  response        String?
+  attempt         Int       @default(1)
+  delivered_at    DateTime?
+  created_at      DateTime  @default(now())
+
+  webhook Webhook @relation(fields: [webhook_id], references: [id], onDelete: Cascade)
+
+  @@index([webhook_id])
+  @@index([webhook_id, created_at])
+}
+
+model WebhookEvent {
+  id           String    @id @default(uuid())
+  provider     String
+  event_type   String
+  payload      Json
+  received_at  DateTime  @default(now())
+  processed    Boolean   @default(false)
+  processed_at DateTime?
+  error        String?
+
+  @@index([provider, event_type])
+  @@index([processed])
+  @@index([received_at])
+}
+
+// =============================================================================
+// BILLING & SUBSCRIPTION
+// ₹249 Basic | ₹349 Premium (one-time card fee)
+// ₹99/yr Basic renewal | ₹149/yr Premium renewal
+// [F02] Payment.subscription_id nullable + order_id added
+// =============================================================================
+
+model Subscription {
+  id              String             @id @default(uuid())
+  school_id       String
+  plan            PlanType           @default(GOVT_STANDARD)
+  status          SubscriptionStatus @default(TRIALING)
+  provider        String
+  provider_sub_id String?            @unique
+
+  // per-student pricing — snapshot at time of subscription
+  school_type   SchoolType  @default(PRIVATE) // snapshot
+  pricing_tier  PricingTier @default(PRIVATE_STANDARD) // snapshot
+  student_count Int         @default(0) // enrolled students
+  unit_price    Int         @default(19900) // paise — 10000=₹100 govt, 19900=₹199 private
+  renewal_price Int         @default(10000) // paise — ₹100/student both tiers
+  total_amount  Int         @default(0) // unit_price × student_count
+  advance_paid  Int         @default(0) // paise — 50% upfront received
+  balance_due   Int         @default(0) // total_amount - advance_paid
+
+  current_period_start DateTime
+  current_period_end   DateTime
+  trial_ends_at        DateTime?
+  cancel_reason        String?
+  cancelled_at         DateTime?
+  created_at           DateTime  @default(now())
+  updated_at           DateTime  @updatedAt
+
+  invoices       Invoice[]
+  paymentBatches SchoolPaymentBatch[]
+  payments       Payment[]
+  school         School               @relation(fields: [school_id], references: [id], onDelete: Cascade)
+
+  @@index([school_id])
+  @@index([status])
+  @@index([current_period_end])
+}
+
+model Payment {
+  id              String        @id @default(uuid())
+  school_id       String
+  subscription_id String? // [F02] nullable — card order payments have no sub
+  order_id        String? // [F02] card order payment link
+  amount          Int // paise
+  tax_amount      Int           @default(0)
+  currency        String        @default("INR")
+  status          PaymentStatus
+  provider        String
+  provider_ref    String?       @unique
+  is_card_fee     Boolean       @default(false)
+  is_renewal      Boolean       @default(false)
+  invoice_id      String?
+  failure_reason  String?
+  metadata        Json?
+  created_at      DateTime      @default(now())
+
+  school       School        @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  subscription Subscription? @relation(fields: [subscription_id], references: [id], onDelete: Cascade)
+
+  @@index([school_id])
+  @@index([subscription_id])
+  @@index([order_id])
+  @@index([status])
+  @@index([created_at])
+}
+
+// =============================================================================
+// FEATURE FLAGS
+// =============================================================================
+
+model FeatureFlag {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  enabled     Boolean  @default(false)
+  description String?
+  metadata    Json?
+  updated_at  DateTime @updatedAt
+}
+
+model SchoolFeatureFlag {
+  id        String  @id @default(uuid())
+  school_id String
+  key       String
+  enabled   Boolean
+
+  @@unique([school_id, key])
+  @@index([school_id])
+}
+
+// =============================================================================
+// CARD TEMPLATE — per school branding
+// [F12] updated_by added
+// =============================================================================
+
+model CardTemplate {
+  id                 String   @id @default(uuid())
+  school_id          String   @unique
+  logo_url           String?
+  background_color   String   @default("#FFFFFF")
+  primary_color      String   @default("#000000")
+  text_color         String   @default("#000000")
+  qr_dark_color      String   @default("#000000")
+  qr_light_color     String   @default("#FFFFFF")
+  cover_accent_color String   @default("#E8342A")
+  cover_tagline      String?
+  cards_per_sheet    Int      @default(8)
+  card_width         Int      @default(640)
+  card_height        Int      @default(400)
+  show_student_name  Boolean  @default(true)
+  show_class         Boolean  @default(true)
+  show_school_name   Boolean  @default(true)
+  show_photo         Boolean  @default(true)
+  is_locked          Boolean  @default(true)
+  updated_by         String? // [F12] school_user_id who last changed
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+
+  school School @relation(fields: [school_id], references: [id], onDelete: Cascade)
+}
+
+// =============================================================================
+// NEW MODEL — SchoolPaymentBatch
+// Records each bulk payment from school → ResQid
+// Flow: school collects from parents → pays ResQid in one transfer
+// =============================================================================
+
+model SchoolPaymentBatch {
+  id              String             @id @default(uuid())
+  school_id       String
+  subscription_id String?
+  batch_number    String             @unique // "BATCH-2025-001"
+  student_count   Int // students covered in this batch
+  unit_price      Int // paise per student (snapshot)
+  subtotal        Int // unit_price × student_count
+  tax_amount      Int                @default(0) // GST paise
+  total_amount    Int // what school should pay
+  amount_received Int                @default(0) // what actually arrived
+  payment_ref     String? // school UTR / NEFT ref / UPI ref
+  payment_mode    PaymentMode        @default(BANK_TRANSFER)
+  status          BatchPaymentStatus @default(PENDING)
+  is_advance      Boolean            @default(false) // true = 50% upfront batch
+  notes           String?
+  received_at     DateTime?
+  verified_by     String? // super_admin id who verified
+  verified_at     DateTime?
+  created_at      DateTime           @default(now())
+  updated_at      DateTime           @updatedAt
+
+  school       School        @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  subscription Subscription? @relation(fields: [subscription_id], references: [id])
+
+  @@index([school_id])
+  @@index([status])
+  @@index([received_at])
+  @@index([school_id, status])
+  @@index([batch_number])
+}
