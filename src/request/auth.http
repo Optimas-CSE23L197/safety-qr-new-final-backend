@@ -1,9 +1,56 @@
-###! USER LOGIN
-POST http://localhost:3000/api/v1/auth/logout
+@baseUrl = http://localhost:3000/api
+
+### 1. XSS Script Tag (your current test) ✅
+POST {{baseUrl}}/auth/super-admin
 Content-Type: application/json
-Authorization: Bearer 
 
 {
-    "phone": "xyz",
-    "password": "xyz"
+  "email": "<script>alert('xss')</script>test@gmail.com",
+  "password": "password123"
+}
+
+### 2. NoSQL Injection
+POST {{baseUrl}}/auth/super-admin
+Content-Type: application/json
+
+{
+  "email": { "$gt": "" },
+  "password": { "$ne": null }
+}
+
+### 3. SQL Injection
+POST {{baseUrl}}/auth/super-admin
+Content-Type: application/json
+
+{
+  "email": "test@gmail.com' UNION SELECT * FROM users--",
+  "password": "password123"
+}
+
+### 4. Prototype Pollution
+POST {{baseUrl}}/auth/super-admin
+Content-Type: application/json
+
+{
+  "email": "test@gmail.com",
+  "password": "password123",
+  "__proto__": { "isAdmin": true }
+}
+
+### 5. Path Traversal
+POST {{baseUrl}}/auth/super-admin
+Content-Type: application/json
+
+{
+  "email": "../../etc/passwd",
+  "password": "password123"
+}
+
+### 6. XSS Event Handler
+POST {{baseUrl}}/auth/super-admin
+Content-Type: application/json
+
+{
+  "email": "test@gmail.com",
+  "password": "<img src=x onerror='alert(1)'>"
 }

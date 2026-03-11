@@ -26,8 +26,8 @@
 //   - Old app versions get a 410 Gone with upgrade instructions
 // =============================================================================
 
-import { ApiError } from "../utils/Response/ApiError.js";
-import { asyncHandler } from "../utils/Response/asyncHandler.js";
+import { ApiError } from "../utils/response/ApiError.js";
+import { asyncHandler } from "../utils/response/asyncHandler.js";
 
 // ─── Version Config ───────────────────────────────────────────────────────────
 

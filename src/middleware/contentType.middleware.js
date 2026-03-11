@@ -18,8 +18,8 @@
 //     whitelist explicitly since they sign the raw body
 // =============================================================================
 
-import { ApiError } from "../utils/Response/ApiError.js";
-import { asyncHandler } from "../utils/Response/asyncHandler.js";
+import { ApiError } from "../utils/response/ApiError.js";
+import { asyncHandler } from "../utils/response/asyncHandler.js";
 
 // Methods that MUST send application/json body
 const REQUIRES_JSON = new Set(["POST", "PUT", "PATCH"]);

@@ -11,7 +11,7 @@
 //   - Emergency contacts: phone decrypted + formatted for tap-to-call
 // =============================================================================
 
-import { decryptField } from "../Security/encryption.js";
+import { decryptField } from "../security/encryption.js";
 
 // ─── Parent User ──────────────────────────────────────────────────────────────
 

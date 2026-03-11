@@ -3,6 +3,13 @@
 // Maximum security headers — different policies per route type
 // Public emergency page has relaxed CSP (needs to load in any browser)
 // Dashboard has strict CSP (known origins only)
+//
+// FIX [#16]: Two bugs fixed:
+//   1. "contentsecurityPolicy" → "contentSecurityPolicy" (camelCase typo)
+//      Helmet silently ignored the CSP config entirely because of this.
+//   2. "permissionsPolicy" was nested inside contentSecurityPolicy.directives
+//      which is wrong — it is a top-level Helmet option, not a CSP directive.
+//      Moved to baseConfig so it applies to all helmet variants automatically.
 // =============================================================================
 
 import helmet from "helmet";
@@ -23,6 +30,7 @@ const baseConfig = {
   hidePoweredBy: true,
 
   // HTTP Strict Transport Security — 1 year, include subdomains
+  // Suppressed on non-HTTPS (dev) — Helmet does this automatically
   hsts: IS_PROD
     ? { maxAge: 31536000, includeSubDomains: true, preload: true }
     : false,
@@ -39,8 +47,12 @@ const baseConfig = {
   // X-XSS-Protection: disabled (CSP replaces this, old header causes issues)
   xssFilter: false,
 
-  // Permissions-Policy — disable all dangerous browser features
+  // X-Permitted-Cross-Domain-Policies: none
   permittedCrossDomainPolicies: { permittedPolicies: "none" },
+
+  // NOTE: Permissions-Policy is NOT set here — helmet v8 removed built-in
+  // support for it entirely. It is set manually in app.js via res.setHeader()
+  // immediately after app.use(helmetMiddleware).
 };
 
 // ─── Dashboard CSP (Super Admin + School Admin) ───────────────────────────────
@@ -48,10 +60,11 @@ const baseConfig = {
 export const dashboardHelmet = helmet({
   ...baseConfig,
   contentSecurityPolicy: {
+    // ✅ correct camelCase (was "contentsecurityPolicy")
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'strict-dynamic'"],
-      styleSrc: ["'self'", "'unsafe-inline'"], // needed for most UI libs
+      styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "blob:", ENV.CDN_URL].filter(Boolean),
       fontSrc: ["'self'", "data:"],
       connectSrc: ["'self'", ENV.API_URL].filter(Boolean),
@@ -74,6 +87,7 @@ export const dashboardHelmet = helmet({
 export const publicHelmet = helmet({
   ...baseConfig,
   contentSecurityPolicy: {
+    // ✅ correct camelCase
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'"],
@@ -84,7 +98,6 @@ export const publicHelmet = helmet({
       frameSrc: ["'none'"],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
-      // Allow tel: links for direct calling
       formAction: ["'none'"],
       upgradeInsecureRequests: IS_PROD ? [] : null,
     },

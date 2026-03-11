@@ -8,11 +8,11 @@ import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { prisma } from "../config/prisma.js";
 import { redis } from "../config/redis.js";
-import { ApiError } from "../utils/Response/ApiError.js";
-import { asyncHandler } from "../utils/Response/asyncHandler.js";
+import { ApiError } from "../utils/response/ApiError.js";
+import { asyncHandler } from "../utils/response/asyncHandler.js";
 import { ENV } from "../config/env.js";
 import { logger } from "../config/logger.js";
-import { hashToken } from "../utils/Security/hashUtil.js";
+import { hashToken } from "../utils/security/hashUtil.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const BLACKLIST_PREFIX = "blacklist:";
@@ -239,8 +239,4 @@ async function updateLastActive(sessionId) {
     where: { id: sessionId },
     data: { last_active_at: new Date() },
   });
-}
-
-function hashToken(token) {
-  return crypto.createHash("sha256").update(token).digest("hex");
 }

@@ -8,11 +8,18 @@
 // between them, the request would proceed with flagged data. Consolidated
 // into a single sanitizeNoSql wrapper that throws immediately on detection,
 // removing the inter-middleware dependency entirely.
+//
+// NOTE on assignment strategy:
+//   req.body   → direct reassignment OK (writable property set by express.json)
+//   req.query  → Object.assign required (getter-only on IncomingMessage)
+//   req.params → Object.assign required (getter-only on IncomingMessage)
+//   This pattern is intentional and must be preserved in any future edits
+//   to this file or xss.middleware.js which follows the same convention.
 // =============================================================================
 
 import mongoSanitize from "express-mongo-sanitize";
-import { asyncHandler } from "../utils/Response/asyncHandler.js";
-import { ApiError } from "../utils/Response/ApiError.js";
+import { asyncHandler } from "../utils/response/asyncHandler.js";
+import { ApiError } from "../utils/response/ApiError.js";
 
 // ─── NoSQL Injection Sanitizer ────────────────────────────────────────────────
 
@@ -29,12 +36,11 @@ import { ApiError } from "../utils/Response/ApiError.js";
  * runs. The mongoSanitize call is executed inline and any detected injection
  * kills the request in the same middleware, no follow-up step required.
  */
-export const sanitizeNoSql = asyncHandler(async (req, res, next) => {
+export const sanitizeNoSql = (req, res, next) => {
   let injectionDetected = false;
   let injectedKey = null;
 
-  // Run mongo-sanitize inline with a flag closure
-  const mongoMiddleware = mongoSanitize({
+  const middleware = mongoSanitize({
     replaceWith: "_",
     allowDots: false,
     onSanitize: ({ key }) => {
@@ -43,25 +49,23 @@ export const sanitizeNoSql = asyncHandler(async (req, res, next) => {
     },
   });
 
-  // Execute the mongo-sanitize middleware synchronously via a promise wrapper
-  await new Promise((resolve, reject) => {
-    mongoMiddleware(req, res, (err) => {
-      if (err) return reject(err);
-      resolve();
-    });
+  middleware(req, res, (err) => {
+    if (err) return next(err);
+
+    if (injectionDetected) {
+      req.log?.warn(
+        { key: injectedKey, userId: req.userId, ip: req.ip },
+        "NoSQL injection attempt blocked",
+      );
+
+      return next(
+        ApiError.badRequest("Invalid characters detected in request"),
+      );
+    }
+
+    next();
   });
-
-  // Immediately reject if injection was detected — no follow-up middleware needed
-  if (injectionDetected) {
-    req.log?.warn(
-      { key: injectedKey, userId: req.userId, ip: req.ip },
-      "NoSQL injection attempt blocked",
-    );
-    throw ApiError.badRequest("Invalid characters detected in request");
-  }
-
-  next();
-});
+};
 
 // ─── Deep Object Sanitizer ────────────────────────────────────────────────────
 
@@ -71,14 +75,27 @@ const MAX_STRING_LEN = 50_000; // 50KB max per string field
 
 /**
  * sanitizeDeep
- * Recursively validates object structure
- * Blocks: prototype pollution, excessively deep nesting, oversized strings
+ * Recursively validates object structure.
+ * Blocks: prototype pollution, excessively deep nesting, oversized strings.
+ *
+ * Assignment strategy:
+ *   req.body   → direct reassignment (body is a plain writable property)
+ *   req.query  → Object.assign (getter-only — cannot be directly reassigned)
+ *   req.params → Object.assign (getter-only — cannot be directly reassigned)
  */
 export const sanitizeDeep = asyncHandler(async (req, _res, next) => {
   try {
-    if (req.body) req.body = deepClean(req.body, 0);
-    if (req.query) req.query = deepClean(req.query, 0);
-    if (req.params) req.params = deepClean(req.params, 0);
+    if (req.body) {
+      req.body = deepClean(req.body, 0);
+    }
+
+    if (req.query) {
+      Object.assign(req.query, deepClean(req.query, 0));
+    }
+
+    if (req.params) {
+      Object.assign(req.params, deepClean(req.params, 0));
+    }
   } catch (err) {
     throw ApiError.badRequest(err.message);
   }

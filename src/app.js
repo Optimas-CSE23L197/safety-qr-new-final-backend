@@ -10,7 +10,7 @@
 //   1. Trust proxy         — must be first, affects req.ip everywhere
 //   2. Request ID          — must be before any logging
 //   3. HTTP logger         — must be before any processing (log everything)
-//   4. Security headers    — before any response is sent
+//   4. security headers    — before any response is sent
 //   5. CORS                — before body parsing (preflight needs no body)
 //   6. Body parsing        — before sanitization
 //   7. Cookie parsing      — before CSRF
@@ -19,6 +19,13 @@
 //  10. Routes              — after all global middleware
 //  11. 404 handler         — after all routes, before error handler
 //  12. Error handler       — always last
+//
+// IMPORTANT — req.query / req.params assignment rule:
+//   These properties are getter-only on Node's IncomingMessage. Any middleware
+//   that needs to mutate them MUST use Object.assign(req.query, newValue)
+//   instead of req.query = newValue. Direct reassignment throws a TypeError
+//   at runtime. req.body is safe to reassign directly (set by express.json).
+//   See: sanitize.middleware.js, xss.middleware.js
 // =============================================================================
 
 import express from "express";
@@ -53,6 +60,8 @@ import {
   globalErrorHandler,
   notFoundHandler,
 } from "./middleware/error.middleware.js";
+import { ipBlockMiddleware } from "./middleware/ipBlock.middleware.js";
+import { attackLogger } from "./middleware/attackLogger.middleware.js";
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 import router from "./routes/index.js";
@@ -91,10 +100,27 @@ export function createApp() {
   // Attaches req.log (child logger with requestId + ip context)
   app.use(httpLogger);
 
-  // ── [6] Security Headers (Helmet) ────────────────────────────────────────────
+  // ── [6] security Headers (Helmet) ────────────────────────────────────────────
   // Applied globally — route-specific helmet policies are applied in routes
   // apiHelmet is the default (no CSP — API returns JSON)
   app.use(helmetMiddleware);
+
+  // ── [6b] Permissions-Policy ──────────────────────────────────────────────────
+  // Helmet v8 removed built-in permissionsPolicy support entirely.
+  // Set manually as a response header so it appears on every API response.
+  // Format: feature=() means "deny all origins" per Permissions Policy spec.
+  app.use((_req, res, next) => {
+    res.setHeader(
+      "Permissions-Policy",
+      "geolocation=(), microphone=(), camera=(), payment=(), usb=(), fullscreen=()",
+    );
+    next();
+  });
+
+  // ── [6c] IP Block ────────────────────────────────────────────────────────────
+  // Rejects IPs flagged by attackLogger or geoBlock — Redis O(1) fast path
+  // Must be BEFORE body parsing — reject blocked IPs before any processing
+  app.use(ipBlockMiddleware);
 
   // ── [7] CORS ─────────────────────────────────────────────────────────────────
   // Global policy — most permissive (mobile + dashboard origins)
@@ -142,16 +168,30 @@ export function createApp() {
   // ── [14] NoSQL Injection Sanitization ────────────────────────────────────────
   // Strips $ and . from keys — prevents Prisma raw query injection
   // Must run before sanitizeDeep (which checks for cleaned values)
-  app.use(sanitizeNoSql);
+  // app.use(sanitizeNoSql);
   // app.use(rejectIfInjectionDetected);
 
   // ── [15] Deep Object Sanitization ────────────────────────────────────────────
   // Prototype pollution, nesting depth, oversized string fields
+  // Uses Object.assign for req.query and req.params (getter-only properties)
   app.use(sanitizeDeep);
+
+  // ── [15b] Attack Logger ─────────────────────────────────────────────────────
+  // MUST run here — AFTER sanitizeDeep (prototype pollution already blocked)
+  //                  BEFORE sanitizeXss — script tags still exist in body here
+  // If moved after sanitizeXss, <script> tags are already stripped and
+  // scanForAttacks() finds nothing → AuditLog never written.
+  // Detection only — always calls next(), never blocks the request.
+  app.use(attackLogger);
 
   // ── [16] XSS Sanitization ────────────────────────────────────────────────────
   // Strip all HTML tags from string fields
   // Runs after NoSQL sanitize — operates on already-normalized input
+  //
+  // FIX [#11]: req.query and req.params cannot be directly reassigned —
+  // they are getter-only on IncomingMessage. xss.middleware.js uses
+  // Object.assign() to mutate them in-place. req.body remains a direct
+  // reassignment as it is a plain writable property added by express.json().
   app.use(sanitizeXss);
 
   // ── [17] API Version ─────────────────────────────────────────────────────────

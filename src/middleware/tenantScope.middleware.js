@@ -6,8 +6,8 @@
 
 import { prisma } from "../config/prisma.js";
 import { redis } from "../config/redis.js";
-import { ApiError } from "../utils/Response/ApiError.js";
-import { asyncHandler } from "../utils/Response/asyncHandler.js";
+import { ApiError } from "../utils/response/ApiError.js";
+import { asyncHandler } from "../utils/response/asyncHandler.js";
 
 const SCHOOL_CACHE_TTL = 5 * 60; // 5 minutes
 
