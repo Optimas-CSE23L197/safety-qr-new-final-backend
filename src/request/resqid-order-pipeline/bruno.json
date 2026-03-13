@@ -1,0 +1,9 @@
+{
+  "version": "1",
+  "name": "RESQID Order Pipeline",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ]
+}

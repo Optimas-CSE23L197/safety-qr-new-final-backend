@@ -130,11 +130,11 @@ function assignTarget(req, target, data) {
 }
 
 function formatZodErrors(error) {
-  return error.errors.map((e) => ({
-    field: e.path.join("."),
+  const issues = error?.issues || error?.errors || [];
+
+  return issues.map((e) => ({
+    field: e.path?.join(".") ?? "",
     message: e.message,
     code: e.code,
-    ...(e.received !== undefined && { received: e.received }),
-    ...(e.expected !== undefined && { expected: e.expected }),
   }));
 }

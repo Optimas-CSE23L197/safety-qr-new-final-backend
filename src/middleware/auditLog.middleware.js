@@ -24,6 +24,7 @@
 import { prisma } from "../config/prisma.js";
 import { extractIp } from "../utils/network/extractIp.js";
 import { logger } from "../config/logger.js";
+import { parseUserAgentSummary } from "../network/userAgent.js";
 
 // ─── Methods That Produce Audit Entries ──────────────────────────────────────
 
@@ -152,7 +153,7 @@ async function writeAuditLog(req, _res, requestBody) {
         sessionId: req.sessionId ?? null,
       },
       ip_address: ip,
-      user_agent: req.headers["user-agent"] ?? null,
+      user_agent: parseUserAgentSummary(req),
     },
   });
 }

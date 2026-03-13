@@ -1,169 +1,158 @@
 // =============================================================================
-// auditLogger.js — RESQID
-// Structured audit trail — every data mutation must be logged here
-// Writes to AuditLog table asynchronously — never blocks the request
+// utils/helpers/auditLogger.js — RESQID
 //
-// When to use:
-//   - Parent updates emergency profile → log it
-//   - Super admin generates tokens → log it
-//   - School admin deactivates student → log it
-//   - Any DELETE → always log with full old value
+// Single source of truth for all audit logging across the entire codebase.
+// Every module — auth, order pipeline, token service — imports from here.
+//
+// SCHEMA (AuditLog):
+//   actor_id    String        — non-nullable
+//   actor_type  ActorType     — non-nullable (SUPER_ADMIN | SCHOOL_USER | PARENT_USER | SYSTEM)
+//   action      String        — non-nullable
+//   entity      String        — non-nullable
+//   entity_id   String        — non-nullable
+//   school_id   String?       — nullable
+//   old_value   Json?         — nullable
+//   new_value   Json?         — nullable
+//   metadata    Json?         — nullable
+//   ip_address  String?       — nullable
+//   user_agent  String?       — nullable
+//
+// CALL SIGNATURE (all fields camelCase — maps to snake_case schema internally):
+//   writeAuditLog({
+//     actorId,      — required
+//     actorType,    — required: "SUPER_ADMIN" | "SCHOOL_USER" | "PARENT_USER" | "SYSTEM"
+//     action,       — required: string (use AuditAction constants below)
+//     entity,       — required: "CardOrder" | "Token" | "SuperAdmin" | etc.
+//     entityId,     — required: UUID of the record
+//     schoolId,     — optional
+//     oldValue,     — optional: object
+//     newValue,     — optional: object
+//     metadata,     — optional: any extra context
+//     ip,           — optional: request IP
+//     ua,           — optional: user-agent string
+//   })
+//
+// BEHAVIOUR:
+//   - Always fire-and-forget (.catch(() => {})). NEVER awaited — audit log
+//     must never block or crash the main request flow.
+//   - Returns the Promise so callers can await if they need to (rare).
+//   - Silently swallows errors — logged to console.error only.
 // =============================================================================
 
 import { prisma } from "../../config/prisma.js";
-import { logger } from "../../config/logger.js";
 
-/**
- * @typedef {Object} AuditEntry
- * @property {string}   actorId    - User ID performing the action
- * @property {'SUPER_ADMIN'|'SCHOOL_USER'|'PARENT_USER'|'SYSTEM'} actorType
- * @property {string}   action     - Verb: 'CREATE', 'UPDATE', 'DELETE', 'REVOKE', etc.
- * @property {string}   entity     - Table/model name: 'Student', 'Token', 'EmergencyProfile'
- * @property {string}   entityId   - Primary key of affected record
- * @property {*}        [oldValue] - Previous state (for UPDATE/DELETE)
- * @property {*}        [newValue] - New state (for CREATE/UPDATE)
- * @property {string}   [schoolId] - For tenant-scoped entries
- * @property {string}   [ip]       - IP from request
- * @property {string}   [ua]       - User agent from request
- */
+// =============================================================================
+// AUDIT ACTION CONSTANTS
+// Central registry — prevents typo'd action strings scattered across files.
+// Add new actions here when new features are built.
+// =============================================================================
 
-// ─── Core Writer ──────────────────────────────────────────────────────────────
-
-/**
- * writeAuditLog(entry)
- * Fire-and-forget — never throws, never blocks the caller
- * If DB write fails → falls back to logger.error (still traceable)
- */
-export function writeAuditLog(entry) {
-  _writeAsync(entry).catch((err) => {
-    // DB audit write failed — log to structured logger as fallback
-    logger.error(
-      {
-        type: "audit_log_failure",
-        entry,
-        err: err.message,
-      },
-      "Audit log DB write failed — logged here as fallback",
-    );
-  });
-}
-
-async function _writeAsync(entry) {
-  await prisma.auditLog.create({
-    data: {
-      actor_id: entry.actorId,
-      actor_type: entry.actorType,
-      action: entry.action,
-      entity: entry.entity,
-      entity_id: entry.entityId,
-      old_value: sanitizeForLog(entry.oldValue),
-      new_value: sanitizeForLog(entry.newValue),
-      school_id: entry.schoolId ?? null,
-      ip_address: entry.ip ?? null,
-      user_agent: entry.ua ?? null,
-      metadata: entry.metadata ?? null,
-    },
-  });
-}
-
-// ─── Context Builder ──────────────────────────────────────────────────────────
-
-/**
- * auditCtx(req)
- * Extract audit context from Express request — use at top of controller
- *
- * @example
- * const ctx = auditCtx(req)
- * writeAuditLog({ ...ctx, action: 'UPDATE', entity: 'Student', entityId: id, newValue: body })
- */
-export function auditCtx(req) {
-  return {
-    actorId: req.userId ?? "SYSTEM",
-    actorType: req.role ?? "SYSTEM",
-    schoolId: req.schoolId ?? null,
-    ip: req.ip ?? null,
-    ua: req.headers?.["user-agent"] ?? null,
-  };
-}
-
-// ─── Action Helpers ───────────────────────────────────────────────────────────
-// Pre-built for the most common RESQID audit events
-
-export const AuditAction = {
-  // General CRUD
-  CREATE: "CREATE",
-  UPDATE: "UPDATE",
-  DELETE: "DELETE",
-
+export const AuditAction = Object.freeze({
   // Auth
   LOGIN: "LOGIN",
   LOGOUT: "LOGOUT",
-  REFRESH: "TOKEN_REFRESH",
-  OTP_SENT: "OTP_SENT",
-  OTP_VERIFY: "OTP_VERIFIED",
+  LOGIN_FAILED: "LOGIN_FAILED",
+  PASSWORD_CHANGED: "PASSWORD_CHANGED",
+  TOKEN_REFRESHED: "TOKEN_REFRESHED",
 
-  // Token/QR
-  TOKEN_GENERATE: "TOKEN_GENERATE",
-  TOKEN_REVOKE: "TOKEN_REVOKE",
-  TOKEN_ASSIGN: "TOKEN_ASSIGN",
-  QR_GENERATE: "QR_GENERATE",
+  // Order lifecycle
+  ORDER_CREATED: "ORDER_CREATED",
+  ORDER_CONFIRMED: "ORDER_CONFIRMED",
+  ADVANCE_INVOICE_ISSUED: "ADVANCE_INVOICE_ISSUED",
+  ADVANCE_PAYMENT_RECEIVED: "ADVANCE_PAYMENT_RECEIVED",
+  TOKENS_GENERATED: "TOKENS_GENERATED",
+  CARD_DESIGN_COMPLETE: "CARD_DESIGN_COMPLETE",
+  FILES_SENT_TO_VENDOR: "FILES_SENT_TO_VENDOR",
+  PRINTING_STARTED: "PRINTING_STARTED",
+  PRINT_COMPLETE: "PRINT_COMPLETE",
+  SHIPMENT_CREATED: "SHIPMENT_CREATED",
+  ORDER_SHIPPED: "ORDER_SHIPPED",
+  ORDER_DELIVERED: "ORDER_DELIVERED",
+  BALANCE_INVOICE_ISSUED: "BALANCE_INVOICE_ISSUED",
+  BALANCE_PAYMENT_RECEIVED: "BALANCE_PAYMENT_RECEIVED",
+  ORDER_COMPLETED: "ORDER_COMPLETED",
+  ORDER_CANCELLED: "ORDER_CANCELLED",
+  ORDER_REFUNDED: "ORDER_REFUNDED",
 
-  // Card
-  CARD_BLOCK: "CARD_BLOCK",
-  CARD_UNBLOCK: "CARD_UNBLOCK",
-  CARD_RENEW: "CARD_RENEW",
-  VISIBILITY_CHANGE: "VISIBILITY_CHANGE",
+  // Token / card
+  TOKEN_REVOKED: "TOKEN_REVOKED",
+  TOKEN_ACTIVATED: "TOKEN_ACTIVATED",
+  CARD_REPLACED: "CARD_REPLACED",
 
-  // Emergency profile
-  PROFILE_UPDATE: "PROFILE_UPDATE",
-  CONTACT_ADD: "CONTACT_ADD",
-  CONTACT_UPDATE: "CONTACT_UPDATE",
-  CONTACT_DELETE: "CONTACT_DELETE",
+  // School / admin
+  SCHOOL_CREATED: "SCHOOL_CREATED",
+  SCHOOL_UPDATED: "SCHOOL_UPDATED",
+  SCHOOL_DEACTIVATED: "SCHOOL_DEACTIVATED",
+  ADMIN_CREATED: "ADMIN_CREATED",
+  IP_BLOCKED: "IP_BLOCKED",
+});
 
-  // School
-  SCHOOL_CREATE: "SCHOOL_CREATE",
-  SCHOOL_SUSPEND: "SCHOOL_SUSPEND",
+// =============================================================================
+// writeAuditLog
+// =============================================================================
 
-  // security
-  DEVICE_REVOKE: "DEVICE_REVOKE",
-  SESSION_REVOKE: "SESSION_REVOKE",
-  ACCOUNT_SUSPEND: "ACCOUNT_SUSPEND",
-
-  // Scan
-  ANOMALY_RESOLVE: "ANOMALY_RESOLVE",
-};
-
-// ─── Sensitive Field Sanitizer ────────────────────────────────────────────────
-
-const SENSITIVE_KEYS = new Set([
-  "password",
-  "password_hash",
-  "otp",
-  "otp_hash",
-  "token_hash",
-  "refresh_token_hash",
-  "phone_encrypted",
-  "dob_encrypted",
-  "doctor_phone_encrypted",
-  "secret",
-  "key",
-]);
-
-function sanitizeForLog(value) {
-  if (value == null) return null;
-  if (typeof value !== "object") return value;
-  return _sanitizeDeep(value);
-}
-
-function _sanitizeDeep(obj) {
-  if (Array.isArray(obj)) return obj.map(_sanitizeDeep);
-  if (typeof obj !== "object" || obj === null) return obj;
-
-  const clean = {};
-  for (const [k, v] of Object.entries(obj)) {
-    clean[k] = SENSITIVE_KEYS.has(k.toLowerCase())
-      ? "[REDACTED]"
-      : _sanitizeDeep(v);
+/**
+ * Write an audit log entry. Always fire-and-forget.
+ *
+ * @param {object} params
+ * @param {string} params.actorId      — required: ID of the actor
+ * @param {string} params.actorType    — required: ActorType enum value
+ * @param {string} params.action       — required: use AuditAction constants
+ * @param {string} params.entity       — required: model name e.g. "CardOrder"
+ * @param {string} params.entityId     — required: UUID of the record
+ * @param {string} [params.schoolId]   — optional
+ * @param {object} [params.oldValue]   — optional: state before change
+ * @param {object} [params.newValue]   — optional: state after change
+ * @param {object} [params.metadata]   — optional: any extra context
+ * @param {string} [params.ip]         — optional: request IP address
+ * @param {string} [params.ua]         — optional: user-agent string
+ *
+ * @returns {Promise<void>} — fire-and-forget, errors are swallowed
+ */
+export const writeAuditLog = ({
+  actorId,
+  actorType,
+  action,
+  entity,
+  entityId,
+  schoolId,
+  oldValue,
+  newValue,
+  metadata,
+  ip,
+  ua,
+}) => {
+  // Guard: these three fields are non-nullable in the schema.
+  // If they're missing, log a warning and skip — don't throw into the main flow.
+  if (!actorId || !action || !entity || !entityId) {
+    console.error("[auditLogger] Missing required field — skipping:", {
+      actorId: !!actorId,
+      action,
+      entity,
+      entityId: !!entityId,
+    });
+    return Promise.resolve();
   }
-  return clean;
-}
+
+  return prisma.auditLog
+    .create({
+      data: {
+        actor_id: actorId,
+        actor_type: actorType ?? "SYSTEM",
+        action,
+        entity,
+        entity_id: entityId,
+        school_id: schoolId ?? null,
+        old_value: oldValue ?? null,
+        new_value: newValue ?? null,
+        metadata: metadata ?? null,
+        ip_address: ip ?? null,
+        user_agent: ua ?? null,
+      },
+    })
+    .catch((err) => {
+      // Audit log failure must never crash the main request.
+      // Log to stderr for visibility in production log aggregators.
+      console.error("[auditLogger] Write failed:", err?.message ?? err);
+    });
+};
