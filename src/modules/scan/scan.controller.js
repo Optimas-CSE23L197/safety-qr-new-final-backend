@@ -43,5 +43,5 @@ export const scanQr = asyncHandler(async (req, res) => {
 
   // All states return 200 — the mobile scanner / PWA reads the `state` field.
   // Returning 404 for REVOKED/EXPIRED would leak token existence to attackers.
-  return res.json(ApiResponse.success(result, "Scan resolved"));
+  return res.json(ApiResponse.ok(result, "Scan resolved"));
 });
