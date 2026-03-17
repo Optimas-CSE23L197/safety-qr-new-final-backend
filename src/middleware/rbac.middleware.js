@@ -12,8 +12,8 @@
 // can be created in the DB but cannot authenticate into any protected route.
 // =============================================================================
 
-import { ApiError } from "../utils/Response/ApiError.js";
-import { asyncHandler } from "../utils/Response/asyncHandler.js";
+import { ApiError } from "../utils/response/ApiError.js";
+import { asyncHandler } from "../utils/response/asyncHandler.js";
 
 // ─── Permission Map ───────────────────────────────────────────────────────────
 // Explicit allow-list — if action is not listed, it is DENIED

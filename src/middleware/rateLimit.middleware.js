@@ -8,12 +8,12 @@
 import { rateLimit } from "express-rate-limit";
 import { RedisStore } from "rate-limit-redis";
 import { redis } from "../config/redis.js";
-import { ApiError } from "../utils/Response/ApiError.js";
-import { asyncHandler } from "../utils/Response/asyncHandler.js";
+import { ApiError } from "../utils/response/ApiError.js";
+import { asyncHandler } from "../utils/response/asyncHandler.js";
 import { prisma } from "../config/prisma.js";
 import { extractIp } from "../utils/network/extractIp.js";
 import { ENV } from "../config/env.js";
-import { hashToken } from "../utils/Security/hashUtil.js";
+import { hashToken } from "../utils/security/hashUtil.js";
 
 // FIX [#1]: logger was referenced in onLimitReached and persistTokenBlock but
 // never imported — caused a ReferenceError at runtime on any rate-limit hit.

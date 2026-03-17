@@ -1,5 +1,12 @@
 // =============================================================================
 // geoBlock.middleware.js — RESQID
+//
+// FIX [#18]: Integrated blockIpNow() from ipBlock.middleware.js so non-Indian
+// IPs are not just rejected for the current request — they are also written to
+// ScanRateLimit (DB) and cached in Redis. All subsequent requests from that IP
+// are rejected at the ipBlock middleware fast path (O(1) Redis check) before
+// they even reach geoBlock. This eliminates the repeated DB geo-lookup cost
+// for persistent attackers probing dashboard routes from foreign IPs.
 // Blocks non-Indian IP addresses on dashboard and admin routes
 // India-only system — reduces attack surface significantly
 //
@@ -26,11 +33,12 @@
 //   or map it to X-Country-Code in your Nginx config.
 // =============================================================================
 
-import { ApiError } from "../utils/Response/ApiError.js";
-import { asyncHandler } from "../utils/Response/asyncHandler.js";
+import { ApiError } from "../utils/response/ApiError.js";
+import { asyncHandler } from "../utils/response/asyncHandler.js";
 import { extractIp } from "../utils/network/extractIp.js";
 import { ENV } from "../config/env.js";
 import { logger } from "../config/logger.js";
+import { blockIpNow } from "./ipBlock.middleware.js";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -167,9 +175,11 @@ export const geoBlock = asyncHandler(async (req, _res, next) => {
   if (country) {
     if (country.toUpperCase() !== "IN") {
       logger.warn(
-        { ip, country, path: req.path, requestId: req.id },
+        { ip, country, path: req.path, requestId: req.id, type: "geo_block" },
         "geoBlock: non-Indian IP blocked from dashboard",
       );
+      // Persist block — future requests rejected at ipBlock middleware (Redis fast path)
+      blockIpNow(ip, `GEO_BLOCK_${country}`).catch(() => {});
       throw ApiError.forbidden("Access to this service is restricted to India");
     }
     return next();
@@ -180,9 +190,11 @@ export const geoBlock = asyncHandler(async (req, _res, next) => {
 
   if (!isIndianIp) {
     logger.warn(
-      { ip, path: req.path, requestId: req.id },
+      { ip, path: req.path, requestId: req.id, type: "geo_block_prefix" },
       "geoBlock: unrecognized IP prefix blocked from dashboard (no CDN country header)",
     );
+    // Persist block — future requests rejected at ipBlock middleware (Redis fast path)
+    blockIpNow(ip, "GEO_BLOCK_UNKNOWN_PREFIX").catch(() => {});
     throw ApiError.forbidden("Access to this service is restricted to India");
   }
 

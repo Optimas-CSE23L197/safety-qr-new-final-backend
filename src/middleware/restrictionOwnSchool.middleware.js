@@ -14,8 +14,8 @@
 
 import { prisma } from "../config/prisma.js";
 import { redis } from "../config/redis.js";
-import { ApiError } from "../utils/Response/ApiError.js";
-import { asyncHandler } from "../utils/Response/asyncHandler.js";
+import { ApiError } from "../utils/response/ApiError.js";
+import { asyncHandler } from "../utils/response/asyncHandler.js";
 
 const PARENT_CHILDREN_TTL = 2 * 60; // 2 minutes
 

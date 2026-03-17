@@ -27,7 +27,7 @@
 
 import { prisma } from "../config/prisma.js";
 import { redis } from "../config/redis.js";
-import { asyncHandler } from "../utils/Response/asyncHandler.js";
+import { asyncHandler } from "../utils/response/asyncHandler.js";
 import { extractIp } from "../utils/network/extractIp.js";
 import { logger } from "../config/logger.js";
 

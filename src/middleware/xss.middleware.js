@@ -3,10 +3,18 @@
 // XSS prevention — sanitize all string fields in request
 // Uses DOMPurify-compatible server-side approach with xss library
 // Runs AFTER sanitize.middleware.js, BEFORE validate.middleware.js
+//
+// FIX [#11]: req.query and req.params are getter-only properties on
+// IncomingMessage — direct assignment throws:
+//   "Cannot set property query of #<IncomingMessage> which has only a getter"
+// Fixed by using Object.assign() to mutate in-place, mirroring the same
+// pattern already used in sanitize.middleware.js for the same reason.
+// req.body is a plain writable property added by express.json(), so it
+// can still be directly reassigned.
 // =============================================================================
 
 import xss from "xss";
-import { asyncHandler } from "../utils/Response/asyncHandler.js";
+import { asyncHandler } from "../utils/response/asyncHandler.js";
 
 // ─── XSS Config ───────────────────────────────────────────────────────────────
 // Strict — no HTML tags allowed in any API field
@@ -39,13 +47,18 @@ const ENCRYPTED_FIELDS = new Set([
 
 /**
  * sanitizeXss
- * Recursively strips XSS from all string fields in body/query/params
- * Encrypted fields are skipped — they're binary-safe already
+ * Recursively strips XSS from all string fields in body/query/params.
+ * Encrypted fields are skipped — they're binary-safe already.
+ *
+ * NOTE on assignment strategy:
+ *   req.body   → direct reassignment OK (writable property set by express.json)
+ *   req.query  → Object.assign required (getter-only on IncomingMessage)
+ *   req.params → Object.assign required (getter-only on IncomingMessage)
  */
 export const sanitizeXss = asyncHandler(async (req, _res, next) => {
-  if (req.body) req.body = xssClean(req.body);
-  if (req.query) req.query = xssClean(req.query);
-  if (req.params) req.params = xssClean(req.params);
+  if (req.body) req.body = xssClean(req.body); // body is writable — direct assign OK
+  if (req.query) Object.assign(req.query, xssClean(req.query)); // getter-only — mutate in-place
+  if (req.params) Object.assign(req.params, xssClean(req.params)); // getter-only — mutate in-place
   next();
 });
 

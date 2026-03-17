@@ -7,10 +7,10 @@
 // =============================================================================
 
 import { Router }                          from "express";
-import { authenticate, requireSchoolUser } from "../../middleware/auth.middleware.js";
-import { can }                             from "../../middleware/rbac.middleware.js";
-import { validate, validateAll }           from "../../middleware/validate.middleware.js";
-import * as ctrl                           from "./monitoring.controller.js";
+import { authenticate, requireSchoolUser } from "../../../middleware/auth.middleware.js";
+import { can }                             from "../../../middleware/rbac.middleware.js";
+import { validate, validateAll }           from "../../../middleware/validate.middleware.js";
+import * as ctrl                           from "./overview.controller.js";
 import {
   statsQuerySchema,
   studentActivityQuerySchema,
@@ -22,7 +22,7 @@ import {
   emergencyProfileQuerySchema,
   notificationQuerySchema,
   uuidParam,
-} from "./monitoring.validation.js";
+} from "./overview.validation.js";
 
 const router = Router();
 
