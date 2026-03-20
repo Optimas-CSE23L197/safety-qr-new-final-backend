@@ -1,56 +1,30 @@
 @baseUrl = http://localhost:3000/api
 
-### 1. XSS Script Tag (your current test) ✅
+###! Super Admin Login
 POST {{baseUrl}}/auth/super-admin
 Content-Type: application/json
 
 {
-  "email": "<script>alert('xss')</script>test@gmail.com",
-  "password": "password123"
+  "email": "karananimesh144@gmail.com",
+  "password": "Karan@144#"
 }
 
-### 2. NoSQL Injection
-POST {{baseUrl}}/auth/super-admin
+###! School Login
+POST {{baseUrl}}/auth/school
 Content-Type: application/json
 
 {
-  "email": { "$gt": "" },
-  "password": { "$ne": null }
+  "email": "schooladmin@test.com",
+  "password": "Admin@123#"
 }
 
-### 3. SQL Injection
-POST {{baseUrl}}/auth/super-admin
+
+
+###! All logout
+POST {{baseUrl}}/auth/logout
 Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI4OWQ0Y2FiOC0xYzFiLTQ0ZWMtYmU1ZC1hNDhmMjgzNDczYWUiLCJyb2xlIjoiU0NIT09MX1VTRVIiLCJzZXNzaW9uSWQiOiJlYTQ5OWYwYy0yMzA3LTQ0MzEtYTk2Yy01YTI5MTljMWUzZmQiLCJzY2hvb2xJZCI6ImVhMjk2MmFlLTBmNWMtNDA0NC1iN2I2LTU2NmJmN2Y5NzMzZiIsImlhdCI6MTc3MzI4OTU1NSwiZXhwIjoxNzczMjkzMTU1LCJhdWQiOiJyZXNxaWQtYXBpIiwiaXNzIjoicmVzcWlkIn0.QoPfRQpr7O6W7h7G6kbH8cVLYzf-DgO0KMQ4P9Y9Z2g
 
 {
-  "email": "test@gmail.com' UNION SELECT * FROM users--",
-  "password": "password123"
-}
-
-### 4. Prototype Pollution
-POST {{baseUrl}}/auth/super-admin
-Content-Type: application/json
-
-{
-  "email": "test@gmail.com",
-  "password": "password123",
-  "__proto__": { "isAdmin": true }
-}
-
-### 5. Path Traversal
-POST {{baseUrl}}/auth/super-admin
-Content-Type: application/json
-
-{
-  "email": "../../etc/passwd",
-  "password": "password123"
-}
-
-### 6. XSS Event Handler
-POST {{baseUrl}}/auth/super-admin
-Content-Type: application/json
-
-{
-  "email": "test@gmail.com",
-  "password": "<img src=x onerror='alert(1)'>"
+  "refreshToken": "e0bd3b9792d67954c4453a592c7c4f9c3fbabd90474097c869608c8e963eba14"
 }

@@ -228,7 +228,7 @@ export const findSessionById = async (sessionId) => {
   });
 };
 
-export const revokeSession = async (sessionId, reason = "LOGOUT") => {
+export const revokeSession = async (sessionId, reason = "MANUAL_LOGOUT") => {
   return prisma.session.update({
     where: { id: sessionId },
     data: {

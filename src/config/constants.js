@@ -404,3 +404,6 @@ export const PROFILE = Object.freeze({
     VERIFIED: "VERIFIED",
   }),
 });
+
+export const TOKEN_BYTE_LENGTH = 32;
+export const CARD_NUMBER_PREFIX = "RESQID";

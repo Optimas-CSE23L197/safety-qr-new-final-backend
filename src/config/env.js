@@ -16,17 +16,13 @@ import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 
-// Load .env file in non-production environments
-// In production, env vars are injected by the deployment platform (Railway/Render/EC2)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 if (process.env.NODE_ENV !== "production") {
-  // Walk up from src/config/ → project root
   const envPath = path.resolve(__dirname, "../../.env");
   const result = dotenv.config({ path: envPath });
   if (result.error) {
-    // Try cwd as fallback (works when running from project root)
     dotenv.config();
   }
 }
@@ -105,7 +101,6 @@ const _env = {
   REDIS_TLS: optionalBool("REDIS_TLS", false),
 
   // ── JWT ────────────────────────────────────────────────────────────────────
-  // FIX: .env uses JWT_ACCESS_SECRET (not JWT_SECRET)
   JWT_ACCESS_SECRET: required("JWT_ACCESS_SECRET", { minLength: 32 }),
   JWT_ACCESS_EXPIRY: optional("JWT_ACCESS_EXPIRY", "15m"),
   JWT_REFRESH_SECRET: required("JWT_REFRESH_SECRET", { minLength: 32 }),
@@ -124,6 +119,12 @@ const _env = {
   SCHOOL_ADMIN_URL: required("SCHOOL_ADMIN_URL"),
   MOBILE_APP_SCHEME: optional("MOBILE_APP_SCHEME", "capacitor://localhost"),
   CDN_URL: optional("CDN_URL", "http://localhost:3000/static"),
+
+  // ── Public Scan URL ────────────────────────────────────────────────────────
+  // Base URL encoded inside QR codes — points to public emergency page
+  // Format: {SCAN_BASE_URL}/{scanCode}
+  // e.g. https://resqid.in/s/5YbX2mKqf3AB9xP9nRtL3vWcUjAe
+  SCAN_BASE_URL: optional("SCAN_BASE_URL", "http://localhost:3000/s"),
 
   // ── AWS S3 ─────────────────────────────────────────────────────────────────
   AWS_ACCESS_KEY_ID: required("AWS_ACCESS_KEY_ID", { prodOnly: true }),
@@ -166,13 +167,31 @@ const _env = {
   ),
 
   // ── Encryption — AES-256-GCM ───────────────────────────────────────────────
-  // IV is generated per-field via crypto.randomBytes(12) in encryption.js
-  // A static IV in env would break GCM security — intentionally not here
+  // Used for encrypting PII fields: phone, dob, doctor_phone
+  // IV generated per-field via crypto.randomBytes(12) — never stored in env
   ENCRYPTION_KEY: required("ENCRYPTION_KEY", { minLength: 64 }),
 
   // ── Phone Index Hashing ────────────────────────────────────────────────────
-  // Used by hashForLookup() in encryption.js for phone_index HMAC
+  // HMAC secret for phone_index — used for phone lookup without exposing number
   LOOKUP_HASH_SECRET: required("LOOKUP_HASH_SECRET", { minLength: 32 }),
+
+  // ── Token Hashing ──────────────────────────────────────────────────────────
+  // HMAC-SHA256 secret for hashing raw tokens before DB storage
+  // Raw token shown once to super admin — only hash stored in DB
+  // Generate: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+  TOKEN_HASH_SECRET: required("TOKEN_HASH_SECRET", { minLength: 32 }),
+
+  // ── QR Scan Code ───────────────────────────────────────────────────────────
+  // HMAC secret for signing scan codes embedded in QR
+  // Allows instant signature verification before any DB query
+  // Changing this invalidates ALL existing QR codes — never rotate without migration
+  // Generate: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+  SCAN_CODE_SECRET: required("SCAN_CODE_SECRET", { minLength: 64 }),
+
+  // ── Branding ───────────────────────────────────────────────────────────────
+  // Default ResQid logo shown on cards for FREE_PILOT schools
+  // Paid schools (GOVT/PRIVATE/ENTERPRISE) use their own school logo
+  RESQID_DEFAULT_LOGO_URL: optional("RESQID_DEFAULT_LOGO_URL", ""),
 
   // ── IP Geolocation ─────────────────────────────────────────────────────────
   IP_GEO_API_KEY: optional("IP_GEO_API_KEY"),
@@ -215,6 +234,26 @@ if (_env.ENCRYPTION_KEY && !/^[0-9a-fA-F]{64}$/.test(_env.ENCRYPTION_KEY)) {
   errors.push(
     "  ✗ ENCRYPTION_KEY must be exactly 64 hexadecimal characters (32 bytes)",
   );
+}
+
+// All three HMAC secrets must be different from each other
+const hmacSecrets = [
+  ["TOKEN_HASH_SECRET", _env.TOKEN_HASH_SECRET],
+  ["SCAN_CODE_SECRET", _env.SCAN_CODE_SECRET],
+  ["LOOKUP_HASH_SECRET", _env.LOOKUP_HASH_SECRET],
+  ["JWT_ACCESS_SECRET", _env.JWT_ACCESS_SECRET],
+  ["JWT_REFRESH_SECRET", _env.JWT_REFRESH_SECRET],
+  ["CSRF_SECRET", _env.CSRF_SECRET],
+];
+
+for (let i = 0; i < hmacSecrets.length; i++) {
+  for (let j = i + 1; j < hmacSecrets.length; j++) {
+    const [nameA, valA] = hmacSecrets[i];
+    const [nameB, valB] = hmacSecrets[j];
+    if (valA && valB && valA === valB) {
+      errors.push(`  ✗ ${nameA} and ${nameB} must be different values`);
+    }
+  }
 }
 
 // ─── Startup Guard ────────────────────────────────────────────────────────────

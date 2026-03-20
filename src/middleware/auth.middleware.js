@@ -4,7 +4,6 @@
 // Covers: JWT verify, blacklist check, session active check, user status check
 // =============================================================================
 
-import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { prisma } from "../config/prisma.js";
 import { redis } from "../config/redis.js";
@@ -137,6 +136,8 @@ export const authenticate = asyncHandler(async (req, _res, next) => {
   req.userId = payload.sub;
   req.role = payload.role;
   req.sessionId = payload.sessionId;
+  req.token = token;
+  req.tokenExp = payload.exp;
 
   // [8] Update last_active_at async — non-blocking, never fails the request
   updateLastActive(payload.sessionId).catch((e) =>

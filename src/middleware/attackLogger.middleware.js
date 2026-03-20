@@ -68,8 +68,6 @@ function scanForAttacks(obj, depth = 0) {
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
 export const attackLogger = (req, _res, next) => {
-  console.log("🔍 attackLogger fired — body:", JSON.stringify(req.body)); // ← add this
-
   // Only scan if there's a body — skip GET/HEAD/health endpoints
   if (!req.body || Object.keys(req.body).length === 0) return next();
 

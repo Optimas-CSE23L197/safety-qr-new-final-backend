@@ -9,6 +9,7 @@
 // =============================================================================
 
 import jwt from "jsonwebtoken";
+import { randomUUID } from "crypto"; // built-in — no extra dependency needed
 import { ENV } from "../../config/env.js";
 import { hashToken, generateSecureToken } from "./hashUtil.js";
 
@@ -40,17 +41,28 @@ const BASE_OPTIONS = {
 
 /**
  * signAccessToken({ userId, role, sessionId, schoolId? })
- * @returns {string} signed JWT
+ *
+ * FIX 1 — now stamps jti (JWT ID) on every token.
+ * jti is a unique ID per token — required for blacklisting on logout/revoke.
+ * Without jti, you can only invalidate ALL tokens for a user, not one specific token.
+ *
+ * @returns {{ token: string, jti: string }}
+ *   token — signed JWT to send to client
+ *   jti   — store this in Session record so it can be blacklisted on logout
  */
 export function signAccessToken({ userId, role, sessionId, schoolId = null }) {
   const config = TOKEN_CONFIG[role];
   if (!config) throw new Error(`signAccessToken: unknown role '${role}'`);
 
-  return jwt.sign(
+  // FIX 1: unique ID per token — this is the blacklist key
+  const jti = randomUUID();
+
+  const token = jwt.sign(
     {
       sub: userId,
       role,
       sessionId,
+      jti, // ← FIX 1: added
       ...(schoolId && { schoolId }),
     },
     ENV.JWT_ACCESS_SECRET,
@@ -60,6 +72,9 @@ export function signAccessToken({ userId, role, sessionId, schoolId = null }) {
       expiresIn: config.accessTTL,
     },
   );
+
+  // Return both so callers can store jti in the Session record
+  return { token, jti };
 }
 
 /**
@@ -71,6 +86,51 @@ export function verifyAccessToken(token) {
     ...BASE_OPTIONS,
     algorithms: ["HS256"], // explicit — reject any other algorithm
   });
+}
+
+// ─── FIX 1 — Token Blacklist (Redis) ─────────────────────────────────────────
+// After logout or forced revocation, the access token's jti is stored in Redis
+// with a TTL equal to the token's remaining lifetime.
+// auth.middleware.js checks this on every authenticated request.
+//
+// Redis key pattern: blacklist:{jti}
+// TTL: remaining seconds until token naturally expires (auto-cleanup)
+//
+// Why TTL = remaining lifetime?
+//   The token is already expired after its TTL — no need to keep the blacklist
+//   entry forever. Redis auto-deletes it, keeping the blacklist set lean.
+
+/**
+ * blacklistToken(jti, remainingTtlSeconds)
+ * Call on: logout, password change, forced revoke, suspicious activity
+ */
+export async function blacklistToken(jti, remainingTtlSeconds) {
+  // Lazy import to avoid circular dependency at module load time
+  const { redis } = await import("../../config/redis.js");
+  const ttl = Math.max(Math.ceil(remainingTtlSeconds), 1);
+  await redis.setEx(`blacklist:${jti}`, ttl, "1");
+}
+
+/**
+ * isTokenBlacklisted(jti)
+ * Called in auth.middleware.js AFTER verifyAccessToken succeeds.
+ * A valid signature is not enough — the token must also not be blacklisted.
+ * @returns {boolean}
+ */
+export async function isTokenBlacklisted(jti) {
+  const { redis } = await import("../../config/redis.js");
+  const result = await redis.get(`blacklist:${jti}`);
+  return result !== null;
+}
+
+/**
+ * getRemainingTtlSeconds(decodedPayload)
+ * Calculates how many seconds remain before this token expires.
+ * Pass to blacklistToken() so the Redis key auto-expires correctly.
+ */
+export function getRemainingTtlSeconds(decodedPayload) {
+  if (!decodedPayload?.exp) return 0;
+  return Math.max(decodedPayload.exp - Math.floor(Date.now() / 1000), 0);
 }
 
 // ─── Refresh Token ────────────────────────────────────────────────────────────
@@ -115,25 +175,33 @@ export function getRefreshTokenTTL(role) {
 
 /**
  * issueTokenPair({ userId, role, sessionId, schoolId? })
- * Issues both access + refresh token in one call
- * Used after successful login or token refresh
+ * Issues both access + refresh token in one call.
+ * Used after successful login or token refresh.
  *
  * @returns {{
  *   accessToken:  string,   ← send in response body
+ *   jti:          string,   ← store in Session.access_token_jti (for blacklisting)
  *   refreshToken: string,   ← send in httpOnly cookie
  *   refreshHash:  string,   ← store in Session.refresh_token_hash
  *   expiresAt:    Date,     ← Session.expires_at
  * }}
  */
 export function issueTokenPair({ userId, role, sessionId, schoolId = null }) {
-  const accessToken = signAccessToken({ userId, role, sessionId, schoolId });
+  // FIX 1: destructure { token, jti } — both are needed by session.service.js
+  const { token: accessToken, jti } = signAccessToken({
+    userId,
+    role,
+    sessionId,
+    schoolId,
+  });
   const {
     raw: refreshToken,
     hash: refreshHash,
     expiresAt,
   } = issueRefreshToken(role);
 
-  return { accessToken, refreshToken, refreshHash, expiresAt };
+  // jti must be stored in Session record so logout can blacklist this specific token
+  return { accessToken, jti, refreshToken, refreshHash, expiresAt };
 }
 
 // ─── Cookie Helper ────────────────────────────────────────────────────────────

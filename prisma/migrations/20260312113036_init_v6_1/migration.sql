@@ -35,13 +35,67 @@ CREATE TYPE "AnomalySeverity" AS ENUM ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL');
 CREATE TYPE "SubscriptionStatus" AS ENUM ('TRIALING', 'ACTIVE', 'PAST_DUE', 'CANCELED', 'EXPIRED');
 
 -- CreateEnum
-CREATE TYPE "PlanType" AS ENUM ('TRIAL', 'BASIC', 'PREMIUM', 'ENTERPRISE');
+CREATE TYPE "PlanType" AS ENUM ('FREE_PILOT', 'GOVT_STANDARD', 'PRIVATE_STANDARD', 'ENTERPRISE');
 
 -- CreateEnum
 CREATE TYPE "PaymentStatus" AS ENUM ('PENDING', 'SUCCESS', 'FAILED', 'REFUNDED');
 
 -- CreateEnum
+CREATE TYPE "OrderPaymentStatus" AS ENUM ('UNPAID', 'PARTIALLY_PAID', 'PAID', 'REFUNDED');
+
+-- CreateEnum
 CREATE TYPE "InvoiceStatus" AS ENUM ('DRAFT', 'ISSUED', 'PAID', 'OVERDUE', 'CANCELLED');
+
+-- CreateEnum
+CREATE TYPE "OrderType" AS ENUM ('BLANK', 'PRE_DETAILS');
+
+-- CreateEnum
+CREATE TYPE "OrderMode" AS ENUM ('BULK', 'SINGLE');
+
+-- CreateEnum
+CREATE TYPE "OrderChannel" AS ENUM ('DASHBOARD', 'CALL');
+
+-- CreateEnum
+CREATE TYPE "OrderStatus" AS ENUM ('PENDING', 'CONFIRMED', 'PAYMENT_PENDING', 'ADVANCE_RECEIVED', 'TOKEN_GENERATION', 'TOKEN_GENERATED', 'CARD_DESIGN', 'CARD_DESIGN_READY', 'CARD_DESIGN_REVISION', 'SENT_TO_VENDOR', 'PRINTING', 'PRINT_COMPLETE', 'READY_TO_SHIP', 'SHIPPED', 'OUT_FOR_DELIVERY', 'DELIVERED', 'BALANCE_PENDING', 'COMPLETED', 'CANCELLED', 'REFUNDED');
+
+-- CreateEnum
+CREATE TYPE "OrderItemStatus" AS ENUM ('PENDING', 'TOKEN_GENERATED', 'CARD_DESIGNED', 'PRINTED', 'SHIPPED', 'DELIVERED');
+
+-- CreateEnum
+CREATE TYPE "ShipmentStatus" AS ENUM ('PENDING', 'PICKUP_SCHEDULED', 'PICKED_UP', 'IN_TRANSIT', 'OUT_FOR_DELIVERY', 'DELIVERED', 'FAILED', 'RETURNED');
+
+-- CreateEnum
+CREATE TYPE "TokenBatchStatus" AS ENUM ('PENDING', 'PROCESSING', 'COMPLETE', 'PARTIAL', 'FAILED');
+
+-- CreateEnum
+CREATE TYPE "SchoolType" AS ENUM ('GOVERNMENT', 'PRIVATE', 'INTERNATIONAL', 'NGO');
+
+-- CreateEnum
+CREATE TYPE "PricingTier" AS ENUM ('GOVT_STANDARD', 'PRIVATE_STANDARD', 'ENTERPRISE', 'FREE_PILOT');
+
+-- CreateEnum
+CREATE TYPE "InvoiceType" AS ENUM ('ADVANCE', 'BALANCE', 'RENEWAL', 'CUSTOM');
+
+-- CreateEnum
+CREATE TYPE "PaymentMode" AS ENUM ('BANK_TRANSFER', 'UPI', 'CHEQUE', 'RAZORPAY', 'CASH');
+
+-- CreateEnum
+CREATE TYPE "BatchPaymentStatus" AS ENUM ('PENDING', 'PARTIALLY_PAID', 'PAID', 'OVERDUE', 'CANCELLED');
+
+-- CreateEnum
+CREATE TYPE "VendorStatus" AS ENUM ('ACTIVE', 'INACTIVE', 'BLACKLISTED');
+
+-- CreateEnum
+CREATE TYPE "ShiprocketStatus" AS ENUM ('PENDING', 'PICKUP_SCHEDULED', 'PICKED_UP', 'IN_TRANSIT', 'OUT_FOR_DELIVERY', 'DELIVERED', 'UNDELIVERED', 'CANCELLED', 'RTO_INITIATED', 'RTO_DELIVERED');
+
+-- CreateEnum
+CREATE TYPE "PrintStatus" AS ENUM ('PENDING', 'PRINTED', 'REPRINTED', 'FAILED');
+
+-- CreateEnum
+CREATE TYPE "QrFormat" AS ENUM ('PNG', 'SVG', 'PDF');
+
+-- CreateEnum
+CREATE TYPE "QrType" AS ENUM ('BLANK', 'PRE_DETAILS');
 
 -- CreateEnum
 CREATE TYPE "NotificationType" AS ENUM ('SCAN_ALERT', 'SCAN_ANOMALY', 'CARD_EXPIRING', 'CARD_REVOKED', 'CARD_REPLACED', 'BILLING_ALERT', 'DEVICE_LOGIN', 'SYSTEM');
@@ -65,10 +119,10 @@ CREATE TYPE "LocationSource" AS ENUM ('SCAN_TRIGGER', 'PARENT_APP', 'MANUAL');
 CREATE TYPE "IpCaptureBasis" AS ENUM ('LEGITIMATE_INTEREST', 'CONSENT', 'LEGAL_OBLIGATION');
 
 -- CreateEnum
-CREATE TYPE "ParentEditType" AS ENUM ('EMERGENCY_CONTACTS', 'EMERGENCY_PROFILE', 'STUDENT_NAME', 'STUDENT_PHOTO', 'PARENT_PHONE', 'PARENT_EMAIL', 'CARD_VISIBILITY', 'NOTIFICATION_PREFS');
+CREATE TYPE "ParentEditType" AS ENUM ('EMERGENCY_CONTACTS', 'EMERGENCY_PROFILE', 'STUDENT_NAME', 'STUDENT_PHOTO', 'PARENT_PHONE', 'PARENT_EMAIL', 'CARD_VISIBILITY', 'CARD_BLOCK', 'CARD_REPLACEMENT', 'NOTIFICATION_PREFS');
 
 -- CreateEnum
-CREATE TYPE "OtpPurpose" AS ENUM ('LOGIN', 'PHONE_VERIFY', 'CARD_BLOCK', 'EMAIL_VERIFY', 'DEVICE_CHANGE');
+CREATE TYPE "OtpPurpose" AS ENUM ('LOGIN', 'PHONE_VERIFY', 'CARD_BLOCK', 'CARD_REPLACEMENT', 'EMAIL_VERIFY', 'DEVICE_CHANGE', 'CHANGE_PIN');
 
 -- CreateEnum
 CREATE TYPE "RateLimitIdentifierType" AS ENUM ('IP', 'DEVICE', 'TOKEN');
@@ -82,42 +136,29 @@ CREATE TYPE "DeviceLogoutReason" AS ENUM ('NEW_DEVICE_LOGIN', 'MANUAL_LOGOUT', '
 -- CreateEnum
 CREATE TYPE "SessionRevokeReason" AS ENUM ('NEW_DEVICE_LOGIN', 'MANUAL_LOGOUT', 'SESSION_EXPIRED', 'ADMIN_REVOKED', 'PASSWORD_CHANGED', 'PHONE_CHANGED');
 
--- CreateEnum
-CREATE TYPE "PrintStatus" AS ENUM ('PENDING', 'PRINTED', 'REPRINTED', 'FAILED');
-
--- CreateEnum
-CREATE TYPE "QrFormat" AS ENUM ('PNG', 'SVG', 'PDF');
-
--- CreateEnum
-CREATE TYPE "QrType" AS ENUM ('SINGLE_BLANK', 'BULK_BLANK', 'SINGLE_PRE_DETAILS', 'BULK_PRE_DETAILS');
-
--- CreateEnum
-CREATE TYPE "OrderMode" AS ENUM ('SINGLE', 'BULK');
-
--- CreateEnum
-CREATE TYPE "OrderChannel" AS ENUM ('DASHBOARD', 'CALL');
-
--- CreateEnum
-CREATE TYPE "OrderStatus" AS ENUM ('PENDING', 'CONFIRMED', 'PAYMENT_PENDING', 'PAID', 'PROCESSING', 'PRINTING', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'REFUNDED');
-
--- CreateEnum
-CREATE TYPE "OrderItemStatus" AS ENUM ('PENDING', 'TOKEN_GENERATED', 'PRINTED', 'SHIPPED', 'DELIVERED');
-
--- CreateEnum
-CREATE TYPE "ShipmentStatus" AS ENUM ('PREPARING', 'DISPATCHED', 'IN_TRANSIT', 'OUT_FOR_DELIVERY', 'DELIVERED', 'FAILED', 'RETURNED');
-
 -- CreateTable
 CREATE TABLE "School" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "address" TEXT,
     "city" TEXT,
+    "state" TEXT,
+    "pincode" TEXT,
     "country" TEXT NOT NULL DEFAULT 'IN',
     "code" TEXT NOT NULL,
     "email" TEXT,
     "phone" TEXT,
     "logo_url" TEXT,
     "timezone" TEXT NOT NULL DEFAULT 'Asia/Kolkata',
+    "school_type" "SchoolType" NOT NULL DEFAULT 'PRIVATE',
+    "pricing_tier" "PricingTier" NOT NULL DEFAULT 'PRIVATE_STANDARD',
+    "udise_code" TEXT,
+    "affiliation_num" TEXT,
+    "affiliated_board" TEXT,
+    "contract_signed_at" TIMESTAMP(3),
+    "contract_expires_at" TIMESTAMP(3),
+    "onboarded_by" TEXT,
+    "onboarded_at" TIMESTAMP(3),
     "is_active" BOOLEAN NOT NULL DEFAULT true,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
@@ -155,7 +196,7 @@ CREATE TABLE "SchoolUser" (
     "email" TEXT NOT NULL,
     "password_hash" TEXT NOT NULL,
     "name" TEXT,
-    "role" "SchoolRole" NOT NULL,
+    "role" "SchoolRole" NOT NULL DEFAULT 'ADMIN',
     "is_active" BOOLEAN NOT NULL DEFAULT true,
     "last_login_at" TIMESTAMP(3),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -390,44 +431,17 @@ CREATE TABLE "TokenBatch" (
     "school_id" TEXT NOT NULL,
     "order_id" TEXT,
     "count" INTEGER NOT NULL,
-    "created_by" TEXT,
+    "generated_count" INTEGER NOT NULL DEFAULT 0,
+    "failed_count" INTEGER NOT NULL DEFAULT 0,
+    "status" "TokenBatchStatus" NOT NULL DEFAULT 'PENDING',
+    "created_by" TEXT NOT NULL,
     "notes" TEXT,
+    "completed_at" TIMESTAMP(3),
+    "error_log" JSONB,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "TokenBatch_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "Card" (
-    "id" TEXT NOT NULL,
-    "school_id" TEXT NOT NULL,
-    "student_id" TEXT,
-    "token_id" TEXT,
-    "card_number" TEXT NOT NULL,
-    "file_url" TEXT NOT NULL,
-    "print_status" "PrintStatus" NOT NULL DEFAULT 'PENDING',
-    "printed_at" TIMESTAMP(3),
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "Card_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "CardRenewal" (
-    "id" TEXT NOT NULL,
-    "card_id" TEXT NOT NULL,
-    "student_id" TEXT NOT NULL,
-    "school_id" TEXT NOT NULL,
-    "renewed_by" TEXT,
-    "renewer_type" "ActorType" NOT NULL DEFAULT 'PARENT_USER',
-    "old_expiry" TIMESTAMP(3) NOT NULL,
-    "new_expiry" TIMESTAMP(3) NOT NULL,
-    "amount_paid" INTEGER NOT NULL,
-    "tax_amount" INTEGER NOT NULL DEFAULT 0,
-    "payment_id" TEXT,
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "CardRenewal_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -454,16 +468,21 @@ CREATE TABLE "QrAsset" (
 CREATE TABLE "CardOrder" (
     "id" TEXT NOT NULL,
     "school_id" TEXT NOT NULL,
+    "subscription_id" TEXT,
     "order_number" TEXT NOT NULL,
-    "order_type" "QrType" NOT NULL,
-    "order_mode" "OrderMode" NOT NULL,
+    "order_type" "OrderType" NOT NULL,
+    "order_mode" "OrderMode" NOT NULL DEFAULT 'BULK',
     "channel" "OrderChannel" NOT NULL,
     "card_count" INTEGER NOT NULL,
-    "unit_price" INTEGER NOT NULL,
-    "tax_rate" DOUBLE PRECISION NOT NULL DEFAULT 0.18,
-    "tax_amount" INTEGER NOT NULL DEFAULT 0,
-    "total_amount" INTEGER NOT NULL DEFAULT 0,
     "status" "OrderStatus" NOT NULL DEFAULT 'PENDING',
+    "payment_status" "OrderPaymentStatus" NOT NULL DEFAULT 'UNPAID',
+    "advance_amount" INTEGER,
+    "advance_paid_at" TIMESTAMP(3),
+    "balance_amount" INTEGER,
+    "balance_due_at" TIMESTAMP(3),
+    "balance_paid_at" TIMESTAMP(3),
+    "advance_invoice_id" TEXT,
+    "balance_invoice_id" TEXT,
     "delivery_name" TEXT,
     "delivery_phone" TEXT,
     "delivery_address" TEXT,
@@ -471,14 +490,27 @@ CREATE TABLE "CardOrder" (
     "delivery_state" TEXT,
     "delivery_pincode" TEXT,
     "delivery_notes" TEXT,
+    "caller_name" TEXT,
+    "caller_phone" TEXT,
+    "call_notes" TEXT,
     "notes" TEXT,
     "admin_notes" TEXT,
-    "processed_by" TEXT,
-    "processed_at" TIMESTAMP(3),
-    "payment_status" "PaymentStatus" NOT NULL DEFAULT 'PENDING',
-    "payment_id" TEXT,
-    "invoice_id" TEXT,
-    "paid_at" TIMESTAMP(3),
+    "confirmed_by" TEXT,
+    "confirmed_at" TIMESTAMP(3),
+    "tokens_generated_by" TEXT,
+    "tokens_generated_at" TIMESTAMP(3),
+    "card_design_files" JSONB,
+    "card_design_by" TEXT,
+    "card_design_at" TIMESTAMP(3),
+    "vendor_id" TEXT,
+    "vendor_notes" TEXT,
+    "files_sent_to_vendor_at" TIMESTAMP(3),
+    "files_sent_by" TEXT,
+    "print_complete_at" TIMESTAMP(3),
+    "print_complete_noted_by" TEXT,
+    "status_changed_by" TEXT,
+    "status_changed_at" TIMESTAMP(3),
+    "status_note" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -498,23 +530,65 @@ CREATE TABLE "CardOrderItem" (
     "photo_url" TEXT,
     "status" "OrderItemStatus" NOT NULL DEFAULT 'PENDING',
     "qr_generated" BOOLEAN NOT NULL DEFAULT false,
+    "card_design_url" TEXT,
     "card_printed" BOOLEAN NOT NULL DEFAULT false,
+    "has_issue" BOOLEAN NOT NULL DEFAULT false,
+    "issue_note" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "CardOrderItem_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "OrderStatusLog" (
+    "id" TEXT NOT NULL,
+    "order_id" TEXT NOT NULL,
+    "from_status" "OrderStatus",
+    "to_status" "OrderStatus" NOT NULL,
+    "changed_by" TEXT NOT NULL,
+    "note" TEXT,
+    "metadata" JSONB,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "OrderStatusLog_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "OrderShipment" (
     "id" TEXT NOT NULL,
     "order_id" TEXT NOT NULL,
+    "shiprocket_order_id" TEXT,
+    "shiprocket_shipment_id" TEXT,
+    "awb_code" TEXT,
     "courier_name" TEXT,
-    "tracking_number" TEXT,
+    "courier_id" INTEGER,
     "tracking_url" TEXT,
-    "shipped_at" TIMESTAMP(3),
-    "estimated_at" TIMESTAMP(3),
+    "label_url" TEXT,
+    "manifest_url" TEXT,
+    "pickup_vendor_id" TEXT,
+    "pickup_name" TEXT,
+    "pickup_contact" TEXT,
+    "pickup_address" TEXT,
+    "pickup_city" TEXT,
+    "pickup_state" TEXT,
+    "pickup_pincode" TEXT,
+    "delivery_name" TEXT,
+    "delivery_phone" TEXT,
+    "delivery_address" TEXT,
+    "delivery_city" TEXT,
+    "delivery_state" TEXT,
+    "delivery_pincode" TEXT,
+    "status" "ShipmentStatus" NOT NULL DEFAULT 'PENDING',
+    "shiprocket_status" "ShiprocketStatus",
+    "created_by" TEXT,
+    "tracking_shared_at" TIMESTAMP(3),
+    "tracking_shared_by" TEXT,
+    "pickup_scheduled_at" TIMESTAMP(3),
+    "picked_up_at" TIMESTAMP(3),
+    "estimated_delivery_at" TIMESTAMP(3),
     "delivered_at" TIMESTAMP(3),
-    "status" "ShipmentStatus" NOT NULL DEFAULT 'PREPARING',
+    "delivery_confirmed_by" TEXT,
     "notes" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
@@ -523,12 +597,128 @@ CREATE TABLE "OrderShipment" (
 );
 
 -- CreateTable
+CREATE TABLE "VendorProfile" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "contact_name" TEXT,
+    "phone" TEXT,
+    "email" TEXT,
+    "status" "VendorStatus" NOT NULL DEFAULT 'ACTIVE',
+    "address" TEXT,
+    "city" TEXT,
+    "state" TEXT,
+    "pincode" TEXT,
+    "gstin" TEXT,
+    "speciality" TEXT,
+    "avg_turnaround_days" INTEGER,
+    "notes" TEXT,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "VendorProfile_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Card" (
+    "id" TEXT NOT NULL,
+    "school_id" TEXT NOT NULL,
+    "student_id" TEXT,
+    "token_id" TEXT,
+    "order_id" TEXT,
+    "card_number" TEXT NOT NULL,
+    "file_url" TEXT,
+    "print_status" "PrintStatus" NOT NULL DEFAULT 'PENDING',
+    "printed_at" TIMESTAMP(3),
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Card_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "CardRenewal" (
+    "id" TEXT NOT NULL,
+    "card_id" TEXT NOT NULL,
+    "student_id" TEXT NOT NULL,
+    "school_id" TEXT NOT NULL,
+    "renewed_by" TEXT,
+    "renewer_type" "ActorType" NOT NULL DEFAULT 'PARENT_USER',
+    "old_expiry" TIMESTAMP(3) NOT NULL,
+    "new_expiry" TIMESTAMP(3) NOT NULL,
+    "amount_paid" INTEGER NOT NULL,
+    "tax_amount" INTEGER NOT NULL DEFAULT 0,
+    "payment_id" TEXT,
+    "school_type" "SchoolType",
+    "pricing_tier" "PricingTier",
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "CardRenewal_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Subscription" (
+    "id" TEXT NOT NULL,
+    "school_id" TEXT NOT NULL,
+    "plan" "PlanType" NOT NULL DEFAULT 'GOVT_STANDARD',
+    "status" "SubscriptionStatus" NOT NULL DEFAULT 'TRIALING',
+    "provider" TEXT NOT NULL DEFAULT 'manual',
+    "provider_sub_id" TEXT,
+    "school_type" "SchoolType" NOT NULL DEFAULT 'PRIVATE',
+    "pricing_tier" "PricingTier" NOT NULL DEFAULT 'PRIVATE_STANDARD',
+    "student_count" INTEGER NOT NULL DEFAULT 0,
+    "unit_price" INTEGER NOT NULL DEFAULT 19900,
+    "renewal_price" INTEGER NOT NULL DEFAULT 10000,
+    "total_amount" INTEGER NOT NULL DEFAULT 0,
+    "tax_amount" INTEGER NOT NULL DEFAULT 0,
+    "grand_total" INTEGER NOT NULL DEFAULT 0,
+    "advance_paid" INTEGER NOT NULL DEFAULT 0,
+    "balance_due" INTEGER NOT NULL DEFAULT 0,
+    "fully_paid_at" TIMESTAMP(3),
+    "current_period_start" TIMESTAMP(3) NOT NULL,
+    "current_period_end" TIMESTAMP(3) NOT NULL,
+    "trial_ends_at" TIMESTAMP(3),
+    "cancel_reason" TEXT,
+    "cancelled_at" TIMESTAMP(3),
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "Subscription_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "SchoolPaymentBatch" (
+    "id" TEXT NOT NULL,
+    "school_id" TEXT NOT NULL,
+    "subscription_id" TEXT,
+    "batch_number" TEXT NOT NULL,
+    "student_count" INTEGER NOT NULL,
+    "unit_price" INTEGER NOT NULL,
+    "subtotal" INTEGER NOT NULL,
+    "tax_amount" INTEGER NOT NULL DEFAULT 0,
+    "total_amount" INTEGER NOT NULL,
+    "amount_received" INTEGER NOT NULL DEFAULT 0,
+    "payment_ref" TEXT,
+    "payment_mode" "PaymentMode" NOT NULL DEFAULT 'BANK_TRANSFER',
+    "status" "BatchPaymentStatus" NOT NULL DEFAULT 'PENDING',
+    "is_advance" BOOLEAN NOT NULL DEFAULT false,
+    "notes" TEXT,
+    "received_at" TIMESTAMP(3),
+    "verified_by" TEXT,
+    "verified_at" TIMESTAMP(3),
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "SchoolPaymentBatch_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "Invoice" (
     "id" TEXT NOT NULL,
     "school_id" TEXT NOT NULL,
-    "order_id" TEXT,
-    "payment_id" TEXT,
+    "subscription_id" TEXT,
     "invoice_number" TEXT NOT NULL,
+    "invoice_type" "InvoiceType" NOT NULL DEFAULT 'ADVANCE',
+    "student_count" INTEGER,
+    "unit_price" INTEGER,
     "amount" INTEGER NOT NULL,
     "tax_amount" INTEGER NOT NULL DEFAULT 0,
     "total_amount" INTEGER NOT NULL,
@@ -542,6 +732,79 @@ CREATE TABLE "Invoice" (
     "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "Invoice_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Payment" (
+    "id" TEXT NOT NULL,
+    "school_id" TEXT NOT NULL,
+    "subscription_id" TEXT,
+    "order_id" TEXT,
+    "invoice_id" TEXT,
+    "amount" INTEGER NOT NULL,
+    "tax_amount" INTEGER NOT NULL DEFAULT 0,
+    "currency" TEXT NOT NULL DEFAULT 'INR',
+    "status" "PaymentStatus" NOT NULL,
+    "provider" TEXT NOT NULL,
+    "provider_ref" TEXT,
+    "payment_mode" "PaymentMode" NOT NULL DEFAULT 'BANK_TRANSFER',
+    "is_advance" BOOLEAN NOT NULL DEFAULT false,
+    "is_renewal" BOOLEAN NOT NULL DEFAULT false,
+    "failure_reason" TEXT,
+    "metadata" JSONB,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Payment_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "FeatureFlag" (
+    "id" TEXT NOT NULL,
+    "key" TEXT NOT NULL,
+    "enabled" BOOLEAN NOT NULL DEFAULT false,
+    "description" TEXT,
+    "metadata" JSONB,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "FeatureFlag_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "SchoolFeatureFlag" (
+    "id" TEXT NOT NULL,
+    "school_id" TEXT NOT NULL,
+    "key" TEXT NOT NULL,
+    "enabled" BOOLEAN NOT NULL,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "SchoolFeatureFlag_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "CardTemplate" (
+    "id" TEXT NOT NULL,
+    "school_id" TEXT NOT NULL,
+    "logo_url" TEXT,
+    "background_color" TEXT NOT NULL DEFAULT '#FFFFFF',
+    "primary_color" TEXT NOT NULL DEFAULT '#000000',
+    "text_color" TEXT NOT NULL DEFAULT '#000000',
+    "qr_dark_color" TEXT NOT NULL DEFAULT '#000000',
+    "qr_light_color" TEXT NOT NULL DEFAULT '#FFFFFF',
+    "cover_accent_color" TEXT NOT NULL DEFAULT '#E8342A',
+    "cover_tagline" TEXT,
+    "cards_per_sheet" INTEGER NOT NULL DEFAULT 8,
+    "card_width" INTEGER NOT NULL DEFAULT 640,
+    "card_height" INTEGER NOT NULL DEFAULT 400,
+    "show_student_name" BOOLEAN NOT NULL DEFAULT true,
+    "show_class" BOOLEAN NOT NULL DEFAULT true,
+    "show_school_name" BOOLEAN NOT NULL DEFAULT true,
+    "show_photo" BOOLEAN NOT NULL DEFAULT true,
+    "is_locked" BOOLEAN NOT NULL DEFAULT true,
+    "updated_by" TEXT,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "CardTemplate_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -598,6 +861,7 @@ CREATE TABLE "DeviceLoginLog" (
 CREATE TABLE "ScanLog" (
     "id" TEXT NOT NULL,
     "token_id" TEXT NOT NULL,
+    "school_id" TEXT NOT NULL,
     "result" "ScanResult" NOT NULL,
     "ip_address" TEXT,
     "ip_city" TEXT,
@@ -665,6 +929,7 @@ CREATE TABLE "LocationConsent" (
 CREATE TABLE "LocationEvent" (
     "id" TEXT NOT NULL,
     "student_id" TEXT NOT NULL,
+    "school_id" TEXT NOT NULL,
     "token_id" TEXT,
     "latitude" DOUBLE PRECISION NOT NULL,
     "longitude" DOUBLE PRECISION NOT NULL,
@@ -700,7 +965,10 @@ CREATE TABLE "TrustedScanZone" (
     "longitude" DOUBLE PRECISION,
     "radius_m" INTEGER NOT NULL DEFAULT 200,
     "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "created_by" TEXT,
+    "updated_by" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "TrustedScanZone_pkey" PRIMARY KEY ("id")
 );
@@ -802,98 +1070,11 @@ CREATE TABLE "WebhookEvent" (
     CONSTRAINT "WebhookEvent_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
-CREATE TABLE "Subscription" (
-    "id" TEXT NOT NULL,
-    "school_id" TEXT NOT NULL,
-    "plan" "PlanType" NOT NULL DEFAULT 'BASIC',
-    "status" "SubscriptionStatus" NOT NULL DEFAULT 'TRIALING',
-    "provider" TEXT NOT NULL,
-    "provider_sub_id" TEXT,
-    "current_period_start" TIMESTAMP(3) NOT NULL,
-    "current_period_end" TIMESTAMP(3) NOT NULL,
-    "trial_ends_at" TIMESTAMP(3),
-    "cancel_reason" TEXT,
-    "cancelled_at" TIMESTAMP(3),
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "Subscription_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "Payment" (
-    "id" TEXT NOT NULL,
-    "school_id" TEXT NOT NULL,
-    "subscription_id" TEXT,
-    "order_id" TEXT,
-    "amount" INTEGER NOT NULL,
-    "tax_amount" INTEGER NOT NULL DEFAULT 0,
-    "currency" TEXT NOT NULL DEFAULT 'INR',
-    "status" "PaymentStatus" NOT NULL,
-    "provider" TEXT NOT NULL,
-    "provider_ref" TEXT,
-    "is_card_fee" BOOLEAN NOT NULL DEFAULT false,
-    "is_renewal" BOOLEAN NOT NULL DEFAULT false,
-    "invoice_id" TEXT,
-    "failure_reason" TEXT,
-    "metadata" JSONB,
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "Payment_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "FeatureFlag" (
-    "id" TEXT NOT NULL,
-    "key" TEXT NOT NULL,
-    "enabled" BOOLEAN NOT NULL DEFAULT false,
-    "description" TEXT,
-    "metadata" JSONB,
-    "updated_at" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "FeatureFlag_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "SchoolFeatureFlag" (
-    "id" TEXT NOT NULL,
-    "school_id" TEXT NOT NULL,
-    "key" TEXT NOT NULL,
-    "enabled" BOOLEAN NOT NULL,
-
-    CONSTRAINT "SchoolFeatureFlag_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "CardTemplate" (
-    "id" TEXT NOT NULL,
-    "school_id" TEXT NOT NULL,
-    "logo_url" TEXT,
-    "background_color" TEXT NOT NULL DEFAULT '#FFFFFF',
-    "primary_color" TEXT NOT NULL DEFAULT '#000000',
-    "text_color" TEXT NOT NULL DEFAULT '#000000',
-    "qr_dark_color" TEXT NOT NULL DEFAULT '#000000',
-    "qr_light_color" TEXT NOT NULL DEFAULT '#FFFFFF',
-    "cover_accent_color" TEXT NOT NULL DEFAULT '#E8342A',
-    "cover_tagline" TEXT,
-    "cards_per_sheet" INTEGER NOT NULL DEFAULT 8,
-    "card_width" INTEGER NOT NULL DEFAULT 640,
-    "card_height" INTEGER NOT NULL DEFAULT 400,
-    "show_student_name" BOOLEAN NOT NULL DEFAULT true,
-    "show_class" BOOLEAN NOT NULL DEFAULT true,
-    "show_school_name" BOOLEAN NOT NULL DEFAULT true,
-    "show_photo" BOOLEAN NOT NULL DEFAULT true,
-    "is_locked" BOOLEAN NOT NULL DEFAULT true,
-    "updated_by" TEXT,
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "CardTemplate_pkey" PRIMARY KEY ("id")
-);
-
 -- CreateIndex
 CREATE UNIQUE INDEX "School_code_key" ON "School"("code");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "School_udise_code_key" ON "School"("udise_code");
 
 -- CreateIndex
 CREATE INDEX "School_code_idx" ON "School"("code");
@@ -902,7 +1083,25 @@ CREATE INDEX "School_code_idx" ON "School"("code");
 CREATE INDEX "School_is_active_idx" ON "School"("is_active");
 
 -- CreateIndex
+CREATE INDEX "School_school_type_idx" ON "School"("school_type");
+
+-- CreateIndex
+CREATE INDEX "School_pricing_tier_idx" ON "School"("pricing_tier");
+
+-- CreateIndex
+CREATE INDEX "School_state_idx" ON "School"("state");
+
+-- CreateIndex
+CREATE INDEX "School_school_type_is_active_idx" ON "School"("school_type", "is_active");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "SchoolSettings_school_id_key" ON "SchoolSettings"("school_id");
+
+-- CreateIndex
+CREATE INDEX "SchoolSettings_allow_location_idx" ON "SchoolSettings"("allow_location");
+
+-- CreateIndex
+CREATE INDEX "SchoolSettings_school_id_allow_location_idx" ON "SchoolSettings"("school_id", "allow_location");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "SchoolUser_email_key" ON "SchoolUser"("email");
@@ -1046,34 +1245,10 @@ CREATE INDEX "TokenBatch_school_id_idx" ON "TokenBatch"("school_id");
 CREATE INDEX "TokenBatch_order_id_idx" ON "TokenBatch"("order_id");
 
 -- CreateIndex
+CREATE INDEX "TokenBatch_status_idx" ON "TokenBatch"("status");
+
+-- CreateIndex
 CREATE INDEX "TokenBatch_school_id_created_at_idx" ON "TokenBatch"("school_id", "created_at");
-
--- CreateIndex
-CREATE UNIQUE INDEX "Card_card_number_key" ON "Card"("card_number");
-
--- CreateIndex
-CREATE INDEX "Card_school_id_idx" ON "Card"("school_id");
-
--- CreateIndex
-CREATE INDEX "Card_student_id_idx" ON "Card"("student_id");
-
--- CreateIndex
-CREATE INDEX "Card_token_id_idx" ON "Card"("token_id");
-
--- CreateIndex
-CREATE INDEX "Card_print_status_idx" ON "Card"("print_status");
-
--- CreateIndex
-CREATE INDEX "CardRenewal_card_id_idx" ON "CardRenewal"("card_id");
-
--- CreateIndex
-CREATE INDEX "CardRenewal_student_id_idx" ON "CardRenewal"("student_id");
-
--- CreateIndex
-CREATE INDEX "CardRenewal_school_id_idx" ON "CardRenewal"("school_id");
-
--- CreateIndex
-CREATE INDEX "CardRenewal_created_at_idx" ON "CardRenewal"("created_at");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "QrAsset_token_id_key" ON "QrAsset"("token_id");
@@ -1115,10 +1290,22 @@ CREATE INDEX "CardOrder_channel_idx" ON "CardOrder"("channel");
 CREATE INDEX "CardOrder_order_type_idx" ON "CardOrder"("order_type");
 
 -- CreateIndex
+CREATE INDEX "CardOrder_vendor_id_idx" ON "CardOrder"("vendor_id");
+
+-- CreateIndex
 CREATE INDEX "CardOrder_created_at_idx" ON "CardOrder"("created_at");
 
 -- CreateIndex
 CREATE INDEX "CardOrder_school_id_status_idx" ON "CardOrder"("school_id", "status");
+
+-- CreateIndex
+CREATE INDEX "CardOrder_status_created_at_idx" ON "CardOrder"("status", "created_at");
+
+-- CreateIndex
+CREATE INDEX "CardOrder_channel_status_idx" ON "CardOrder"("channel", "status");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "CardOrderItem_token_id_key" ON "CardOrderItem"("token_id");
 
 -- CreateIndex
 CREATE INDEX "CardOrderItem_order_id_idx" ON "CardOrderItem"("order_id");
@@ -1127,19 +1314,103 @@ CREATE INDEX "CardOrderItem_order_id_idx" ON "CardOrderItem"("order_id");
 CREATE INDEX "CardOrderItem_student_id_idx" ON "CardOrderItem"("student_id");
 
 -- CreateIndex
-CREATE INDEX "CardOrderItem_token_id_idx" ON "CardOrderItem"("token_id");
+CREATE INDEX "CardOrderItem_status_idx" ON "CardOrderItem"("status");
 
 -- CreateIndex
-CREATE INDEX "CardOrderItem_status_idx" ON "CardOrderItem"("status");
+CREATE INDEX "CardOrderItem_order_id_status_idx" ON "CardOrderItem"("order_id", "status");
+
+-- CreateIndex
+CREATE INDEX "CardOrderItem_order_id_card_printed_idx" ON "CardOrderItem"("order_id", "card_printed");
+
+-- CreateIndex
+CREATE INDEX "OrderStatusLog_order_id_idx" ON "OrderStatusLog"("order_id");
+
+-- CreateIndex
+CREATE INDEX "OrderStatusLog_order_id_created_at_idx" ON "OrderStatusLog"("order_id", "created_at");
+
+-- CreateIndex
+CREATE INDEX "OrderStatusLog_changed_by_idx" ON "OrderStatusLog"("changed_by");
+
+-- CreateIndex
+CREATE INDEX "OrderStatusLog_to_status_created_at_idx" ON "OrderStatusLog"("to_status", "created_at");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "OrderShipment_order_id_key" ON "OrderShipment"("order_id");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "OrderShipment_awb_code_key" ON "OrderShipment"("awb_code");
+
+-- CreateIndex
 CREATE INDEX "OrderShipment_status_idx" ON "OrderShipment"("status");
 
 -- CreateIndex
-CREATE INDEX "OrderShipment_tracking_number_idx" ON "OrderShipment"("tracking_number");
+CREATE INDEX "OrderShipment_awb_code_idx" ON "OrderShipment"("awb_code");
+
+-- CreateIndex
+CREATE INDEX "OrderShipment_shiprocket_order_id_idx" ON "OrderShipment"("shiprocket_order_id");
+
+-- CreateIndex
+CREATE INDEX "OrderShipment_status_created_at_idx" ON "OrderShipment"("status", "created_at");
+
+-- CreateIndex
+CREATE INDEX "VendorProfile_status_idx" ON "VendorProfile"("status");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Card_card_number_key" ON "Card"("card_number");
+
+-- CreateIndex
+CREATE INDEX "Card_school_id_idx" ON "Card"("school_id");
+
+-- CreateIndex
+CREATE INDEX "Card_student_id_idx" ON "Card"("student_id");
+
+-- CreateIndex
+CREATE INDEX "Card_token_id_idx" ON "Card"("token_id");
+
+-- CreateIndex
+CREATE INDEX "Card_order_id_idx" ON "Card"("order_id");
+
+-- CreateIndex
+CREATE INDEX "Card_print_status_idx" ON "Card"("print_status");
+
+-- CreateIndex
+CREATE INDEX "CardRenewal_card_id_idx" ON "CardRenewal"("card_id");
+
+-- CreateIndex
+CREATE INDEX "CardRenewal_student_id_idx" ON "CardRenewal"("student_id");
+
+-- CreateIndex
+CREATE INDEX "CardRenewal_school_id_idx" ON "CardRenewal"("school_id");
+
+-- CreateIndex
+CREATE INDEX "CardRenewal_created_at_idx" ON "CardRenewal"("created_at");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Subscription_provider_sub_id_key" ON "Subscription"("provider_sub_id");
+
+-- CreateIndex
+CREATE INDEX "Subscription_school_id_idx" ON "Subscription"("school_id");
+
+-- CreateIndex
+CREATE INDEX "Subscription_status_idx" ON "Subscription"("status");
+
+-- CreateIndex
+CREATE INDEX "Subscription_current_period_end_idx" ON "Subscription"("current_period_end");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "SchoolPaymentBatch_batch_number_key" ON "SchoolPaymentBatch"("batch_number");
+
+-- CreateIndex
+CREATE INDEX "SchoolPaymentBatch_school_id_idx" ON "SchoolPaymentBatch"("school_id");
+
+-- CreateIndex
+CREATE INDEX "SchoolPaymentBatch_status_idx" ON "SchoolPaymentBatch"("status");
+
+-- CreateIndex
+CREATE INDEX "SchoolPaymentBatch_received_at_idx" ON "SchoolPaymentBatch"("received_at");
+
+-- CreateIndex
+CREATE INDEX "SchoolPaymentBatch_school_id_status_idx" ON "SchoolPaymentBatch"("school_id", "status");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Invoice_invoice_number_key" ON "Invoice"("invoice_number");
@@ -1155,6 +1426,39 @@ CREATE INDEX "Invoice_issued_at_idx" ON "Invoice"("issued_at");
 
 -- CreateIndex
 CREATE INDEX "Invoice_school_id_status_idx" ON "Invoice"("school_id", "status");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Payment_provider_ref_key" ON "Payment"("provider_ref");
+
+-- CreateIndex
+CREATE INDEX "Payment_school_id_idx" ON "Payment"("school_id");
+
+-- CreateIndex
+CREATE INDEX "Payment_subscription_id_idx" ON "Payment"("subscription_id");
+
+-- CreateIndex
+CREATE INDEX "Payment_order_id_idx" ON "Payment"("order_id");
+
+-- CreateIndex
+CREATE INDEX "Payment_invoice_id_idx" ON "Payment"("invoice_id");
+
+-- CreateIndex
+CREATE INDEX "Payment_status_idx" ON "Payment"("status");
+
+-- CreateIndex
+CREATE INDEX "Payment_created_at_idx" ON "Payment"("created_at");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "FeatureFlag_key_key" ON "FeatureFlag"("key");
+
+-- CreateIndex
+CREATE INDEX "SchoolFeatureFlag_school_id_idx" ON "SchoolFeatureFlag"("school_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "SchoolFeatureFlag_school_id_key_key" ON "SchoolFeatureFlag"("school_id", "key");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "CardTemplate_school_id_key" ON "CardTemplate"("school_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Session_refresh_token_hash_key" ON "Session"("refresh_token_hash");
@@ -1200,6 +1504,12 @@ CREATE INDEX "ScanLog_token_id_idx" ON "ScanLog"("token_id");
 
 -- CreateIndex
 CREATE INDEX "ScanLog_token_id_created_at_idx" ON "ScanLog"("token_id", "created_at");
+
+-- CreateIndex
+CREATE INDEX "ScanLog_school_id_created_at_idx" ON "ScanLog"("school_id", "created_at");
+
+-- CreateIndex
+CREATE INDEX "ScanLog_school_id_result_idx" ON "ScanLog"("school_id", "result");
 
 -- CreateIndex
 CREATE INDEX "ScanLog_created_at_idx" ON "ScanLog"("created_at");
@@ -1251,6 +1561,9 @@ CREATE INDEX "LocationEvent_student_id_idx" ON "LocationEvent"("student_id");
 
 -- CreateIndex
 CREATE INDEX "LocationEvent_student_id_created_at_idx" ON "LocationEvent"("student_id", "created_at");
+
+-- CreateIndex
+CREATE INDEX "LocationEvent_school_id_created_at_idx" ON "LocationEvent"("school_id", "created_at");
 
 -- CreateIndex
 CREATE INDEX "LocationEvent_token_id_idx" ON "LocationEvent"("token_id");
@@ -1345,48 +1658,6 @@ CREATE INDEX "WebhookEvent_processed_idx" ON "WebhookEvent"("processed");
 -- CreateIndex
 CREATE INDEX "WebhookEvent_received_at_idx" ON "WebhookEvent"("received_at");
 
--- CreateIndex
-CREATE UNIQUE INDEX "Subscription_provider_sub_id_key" ON "Subscription"("provider_sub_id");
-
--- CreateIndex
-CREATE INDEX "Subscription_school_id_idx" ON "Subscription"("school_id");
-
--- CreateIndex
-CREATE INDEX "Subscription_status_idx" ON "Subscription"("status");
-
--- CreateIndex
-CREATE INDEX "Subscription_current_period_end_idx" ON "Subscription"("current_period_end");
-
--- CreateIndex
-CREATE UNIQUE INDEX "Payment_provider_ref_key" ON "Payment"("provider_ref");
-
--- CreateIndex
-CREATE INDEX "Payment_school_id_idx" ON "Payment"("school_id");
-
--- CreateIndex
-CREATE INDEX "Payment_subscription_id_idx" ON "Payment"("subscription_id");
-
--- CreateIndex
-CREATE INDEX "Payment_order_id_idx" ON "Payment"("order_id");
-
--- CreateIndex
-CREATE INDEX "Payment_status_idx" ON "Payment"("status");
-
--- CreateIndex
-CREATE INDEX "Payment_created_at_idx" ON "Payment"("created_at");
-
--- CreateIndex
-CREATE UNIQUE INDEX "FeatureFlag_key_key" ON "FeatureFlag"("key");
-
--- CreateIndex
-CREATE INDEX "SchoolFeatureFlag_school_id_idx" ON "SchoolFeatureFlag"("school_id");
-
--- CreateIndex
-CREATE UNIQUE INDEX "SchoolFeatureFlag_school_id_key_key" ON "SchoolFeatureFlag"("school_id", "key");
-
--- CreateIndex
-CREATE UNIQUE INDEX "CardTemplate_school_id_key" ON "CardTemplate"("school_id");
-
 -- AddForeignKey
 ALTER TABLE "SchoolSettings" ADD CONSTRAINT "SchoolSettings_school_id_fkey" FOREIGN KEY ("school_id") REFERENCES "School"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
@@ -1448,6 +1719,42 @@ ALTER TABLE "TokenBatch" ADD CONSTRAINT "TokenBatch_order_id_fkey" FOREIGN KEY (
 ALTER TABLE "TokenBatch" ADD CONSTRAINT "TokenBatch_school_id_fkey" FOREIGN KEY ("school_id") REFERENCES "School"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "QrAsset" ADD CONSTRAINT "QrAsset_token_id_fkey" FOREIGN KEY ("token_id") REFERENCES "Token"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "QrAsset" ADD CONSTRAINT "QrAsset_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "CardOrder"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "QrAsset" ADD CONSTRAINT "QrAsset_school_id_fkey" FOREIGN KEY ("school_id") REFERENCES "School"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CardOrder" ADD CONSTRAINT "CardOrder_advance_invoice_id_fkey" FOREIGN KEY ("advance_invoice_id") REFERENCES "Invoice"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CardOrder" ADD CONSTRAINT "CardOrder_balance_invoice_id_fkey" FOREIGN KEY ("balance_invoice_id") REFERENCES "Invoice"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CardOrder" ADD CONSTRAINT "CardOrder_vendor_id_fkey" FOREIGN KEY ("vendor_id") REFERENCES "VendorProfile"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CardOrder" ADD CONSTRAINT "CardOrder_school_id_fkey" FOREIGN KEY ("school_id") REFERENCES "School"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CardOrder" ADD CONSTRAINT "CardOrder_subscription_id_fkey" FOREIGN KEY ("subscription_id") REFERENCES "Subscription"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CardOrderItem" ADD CONSTRAINT "CardOrderItem_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "CardOrder"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CardOrderItem" ADD CONSTRAINT "CardOrderItem_token_id_fkey" FOREIGN KEY ("token_id") REFERENCES "Token"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "OrderStatusLog" ADD CONSTRAINT "OrderStatusLog_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "CardOrder"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "OrderShipment" ADD CONSTRAINT "OrderShipment_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "CardOrder"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "Card" ADD CONSTRAINT "Card_school_id_fkey" FOREIGN KEY ("school_id") REFERENCES "School"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -1457,7 +1764,13 @@ ALTER TABLE "Card" ADD CONSTRAINT "Card_student_id_fkey" FOREIGN KEY ("student_i
 ALTER TABLE "Card" ADD CONSTRAINT "Card_token_id_fkey" FOREIGN KEY ("token_id") REFERENCES "Token"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "Card" ADD CONSTRAINT "Card_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "CardOrder"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "CardRenewal" ADD CONSTRAINT "CardRenewal_card_id_fkey" FOREIGN KEY ("card_id") REFERENCES "Card"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CardRenewal" ADD CONSTRAINT "CardRenewal_payment_id_fkey" FOREIGN KEY ("payment_id") REFERENCES "Payment"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "CardRenewal" ADD CONSTRAINT "CardRenewal_school_id_fkey" FOREIGN KEY ("school_id") REFERENCES "School"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -1466,25 +1779,37 @@ ALTER TABLE "CardRenewal" ADD CONSTRAINT "CardRenewal_school_id_fkey" FOREIGN KE
 ALTER TABLE "CardRenewal" ADD CONSTRAINT "CardRenewal_student_id_fkey" FOREIGN KEY ("student_id") REFERENCES "Student"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "QrAsset" ADD CONSTRAINT "QrAsset_token_id_fkey" FOREIGN KEY ("token_id") REFERENCES "Token"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Subscription" ADD CONSTRAINT "Subscription_school_id_fkey" FOREIGN KEY ("school_id") REFERENCES "School"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "QrAsset" ADD CONSTRAINT "QrAsset_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "CardOrder"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "SchoolPaymentBatch" ADD CONSTRAINT "SchoolPaymentBatch_school_id_fkey" FOREIGN KEY ("school_id") REFERENCES "School"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "CardOrder" ADD CONSTRAINT "CardOrder_school_id_fkey" FOREIGN KEY ("school_id") REFERENCES "School"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "CardOrderItem" ADD CONSTRAINT "CardOrderItem_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "CardOrder"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "CardOrderItem" ADD CONSTRAINT "CardOrderItem_token_id_fkey" FOREIGN KEY ("token_id") REFERENCES "Token"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "OrderShipment" ADD CONSTRAINT "OrderShipment_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "CardOrder"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "SchoolPaymentBatch" ADD CONSTRAINT "SchoolPaymentBatch_subscription_id_fkey" FOREIGN KEY ("subscription_id") REFERENCES "Subscription"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Invoice" ADD CONSTRAINT "Invoice_school_id_fkey" FOREIGN KEY ("school_id") REFERENCES "School"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Invoice" ADD CONSTRAINT "Invoice_subscription_id_fkey" FOREIGN KEY ("subscription_id") REFERENCES "Subscription"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Payment" ADD CONSTRAINT "Payment_invoice_id_fkey" FOREIGN KEY ("invoice_id") REFERENCES "Invoice"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Payment" ADD CONSTRAINT "Payment_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "CardOrder"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Payment" ADD CONSTRAINT "Payment_school_id_fkey" FOREIGN KEY ("school_id") REFERENCES "School"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Payment" ADD CONSTRAINT "Payment_subscription_id_fkey" FOREIGN KEY ("subscription_id") REFERENCES "Subscription"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "SchoolFeatureFlag" ADD CONSTRAINT "SchoolFeatureFlag_school_id_fkey" FOREIGN KEY ("school_id") REFERENCES "School"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CardTemplate" ADD CONSTRAINT "CardTemplate_school_id_fkey" FOREIGN KEY ("school_id") REFERENCES "School"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Session" ADD CONSTRAINT "Session_parent_user_id_fkey" FOREIGN KEY ("parent_user_id") REFERENCES "ParentUser"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -1499,6 +1824,9 @@ ALTER TABLE "Session" ADD CONSTRAINT "Session_admin_user_id_fkey" FOREIGN KEY ("
 ALTER TABLE "ScanLog" ADD CONSTRAINT "ScanLog_token_id_fkey" FOREIGN KEY ("token_id") REFERENCES "Token"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "ScanLog" ADD CONSTRAINT "ScanLog_school_id_fkey" FOREIGN KEY ("school_id") REFERENCES "School"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "ScanAnomaly" ADD CONSTRAINT "ScanAnomaly_token_id_fkey" FOREIGN KEY ("token_id") REFERENCES "Token"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -1506,6 +1834,9 @@ ALTER TABLE "LocationConsent" ADD CONSTRAINT "LocationConsent_student_id_fkey" F
 
 -- AddForeignKey
 ALTER TABLE "LocationEvent" ADD CONSTRAINT "LocationEvent_student_id_fkey" FOREIGN KEY ("student_id") REFERENCES "Student"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "LocationEvent" ADD CONSTRAINT "LocationEvent_school_id_fkey" FOREIGN KEY ("school_id") REFERENCES "School"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "LocationEvent" ADD CONSTRAINT "LocationEvent_token_id_fkey" FOREIGN KEY ("token_id") REFERENCES "Token"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -1536,15 +1867,3 @@ ALTER TABLE "Webhook" ADD CONSTRAINT "Webhook_school_id_fkey" FOREIGN KEY ("scho
 
 -- AddForeignKey
 ALTER TABLE "WebhookDelivery" ADD CONSTRAINT "WebhookDelivery_webhook_id_fkey" FOREIGN KEY ("webhook_id") REFERENCES "Webhook"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Subscription" ADD CONSTRAINT "Subscription_school_id_fkey" FOREIGN KEY ("school_id") REFERENCES "School"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Payment" ADD CONSTRAINT "Payment_school_id_fkey" FOREIGN KEY ("school_id") REFERENCES "School"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Payment" ADD CONSTRAINT "Payment_subscription_id_fkey" FOREIGN KEY ("subscription_id") REFERENCES "Subscription"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "CardTemplate" ADD CONSTRAINT "CardTemplate_school_id_fkey" FOREIGN KEY ("school_id") REFERENCES "School"("id") ON DELETE CASCADE ON UPDATE CASCADE;

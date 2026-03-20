@@ -14,8 +14,11 @@ const router = Router();
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 import authRoute from "../modules/auth/auth.routes.js";
+// order routes
+import orderRoutes from "../modules/order/order.routes.js";
 
 router.use("/auth", authRoute);
+router.use("/order", orderRoutes);
 
 // future routes
 // router.use("/school", schoolRoute);

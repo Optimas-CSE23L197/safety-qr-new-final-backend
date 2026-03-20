@@ -39,6 +39,7 @@ const PERMISSIONS = {
     "qr:delete",
 
     // Orders
+    "order:create",
     "order:read",
     "order:update",
     "order:confirm",
