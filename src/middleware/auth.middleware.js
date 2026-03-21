@@ -16,79 +16,100 @@ import { hashToken } from "../utils/security/hashUtil.js";
 // ─── Constants ────────────────────────────────────────────────────────────────
 const BLACKLIST_PREFIX = "blacklist:";
 const SESSION_PREFIX = "session:";
+const USER_PREFIX = "auth:user:";
+const LAST_ACTIVE_PREFIX = "auth:la:";
 const BEARER_REGEX = /^Bearer\s[\w-]+\.[\w-]+\.[\w-]+$/;
+
+// ─── Redis values for blacklist ───────────────────────────────────────────────
+// "1" = token IS blacklisted (revoked)
+// "0" = token confirmed clean (cached negative — skip DB check)
+// null = never seen before → must check DB
+const BLACKLISTED = "1";
+const CLEAN = "0";
+
+// ─── TTLs ─────────────────────────────────────────────────────────────────────
+const SESSION_TTL = 60; // 60s  — session active status
+const USER_TTL = 5 * 60; // 5min — user profile (is_active, school_id, role)
+const LAST_ACTIVE_TTL = 60; // 60s  — last_active_at write throttle window
 
 // ─── Core Auth ────────────────────────────────────────────────────────────────
 
-/**
- * authenticate
- * Strict JWT verification — every check must pass or request dies immediately
- * No partial auth, no "optional" mode, no silent failures
- */
 export const authenticate = asyncHandler(async (req, _res, next) => {
   const authHeader = req.headers.authorization;
 
-  // [1] Header must exist and match exact Bearer format
+  // [1] Header format check
   if (!authHeader || !BEARER_REGEX.test(authHeader)) {
     throw ApiError.unauthorized("Missing or malformed authorization header");
   }
 
   const token = authHeader.split(" ")[1];
 
-  // [2] Verify JWT signature + expiry — no try/catch swallowing
+  // [2] Verify JWT signature + expiry
   let payload;
   try {
     payload = jwt.verify(token, ENV.JWT_ACCESS_SECRET, {
-      algorithms: ["HS256"], // explicit — reject all other algorithms
+      algorithms: ["HS256"],
       issuer: "resqid",
       audience: "resqid-api",
     });
   } catch (err) {
-    if (err.name === "TokenExpiredError") {
+    if (err.name === "TokenExpiredError")
       throw ApiError.unauthorized("Access token expired");
-    }
-    if (err.name === "JsonWebTokenError") {
+    if (err.name === "JsonWebTokenError")
       throw ApiError.unauthorized("Invalid access token");
-    }
     throw ApiError.unauthorized("Token verification failed");
   }
 
-  // [3] Token must have required fields
+  // [3] Payload integrity
   if (!payload.sub || !payload.role || !payload.sessionId) {
     throw ApiError.unauthorized("Malformed token payload");
   }
 
-  // [4] Blacklist check — Redis first, DB fallback
-  // DB fallback ensures revoked tokens stay revoked even if Redis loses the key
+  // [4] Blacklist check
+  // Redis values:
+  //   "1"  → blacklisted → reject immediately
+  //   "0"  → confirmed clean (cached negative) → skip DB entirely
+  //   null → never seen → must check DB, then cache result
   const tokenHash = hashToken(token);
-  const isBlacklistedRedis = await redis.get(`${BLACKLIST_PREFIX}${tokenHash}`);
-  if (isBlacklistedRedis) {
-    throw ApiError.unauthorized("Token has been revoked");
-  }
-  // DB fallback — catches Redis eviction / restart gaps
-  const dbBlacklist = await prisma.blacklistToken.findUnique({
-    where: { token_hash: tokenHash },
-    select: { expires_at: true },
-  });
-  if (dbBlacklist && new Date(dbBlacklist.expires_at) > new Date()) {
-    // Re-hydrate Redis so future checks skip the DB round-trip
-    const ttlSecs = Math.ceil(
-      (new Date(dbBlacklist.expires_at) - Date.now()) / 1000,
-    );
-    if (ttlSecs > 0) {
-      await redis
-        .setex(`${BLACKLIST_PREFIX}${tokenHash}`, ttlSecs, "1")
-        .catch(() => {}); // non-blocking, best-effort
-    }
+  const blacklistKey = `${BLACKLIST_PREFIX}${tokenHash}`;
+  const cachedStatus = await redis.get(blacklistKey).catch(() => null);
+
+  if (cachedStatus === BLACKLISTED) {
     throw ApiError.unauthorized("Token has been revoked");
   }
 
-  // [5] Session must be active in DB — not revoked, not expired
-  const cacheKey = `${SESSION_PREFIX}${payload.sessionId}`;
+  if (cachedStatus === null) {
+    // Cache miss — check DB (only happens once per token lifetime)
+    const dbBlacklist = await prisma.blacklistToken.findUnique({
+      where: { token_hash: tokenHash },
+      select: { expires_at: true },
+    });
+
+    if (dbBlacklist && new Date(dbBlacklist.expires_at) > new Date()) {
+      // Token IS blacklisted — cache as "1" for remaining lifetime
+      const ttlSecs = Math.ceil(
+        (new Date(dbBlacklist.expires_at) - Date.now()) / 1000,
+      );
+      if (ttlSecs > 0) {
+        redis.setex(blacklistKey, ttlSecs, BLACKLISTED).catch(() => {});
+      }
+      throw ApiError.unauthorized("Token has been revoked");
+    }
+
+    // Token is clean — cache as "0" for remaining JWT lifetime
+    // This eliminates ALL future DB blacklist checks for this token
+    const remainingTtl = Math.ceil(payload.exp - Date.now() / 1000);
+    if (remainingTtl > 0) {
+      redis.setex(blacklistKey, remainingTtl, CLEAN).catch(() => {});
+    }
+  }
+  // cachedStatus === "0" → confirmed clean → fall through, no DB check needed
+
+  // [5] Session check — Redis cache → DB fallback
+  const sessionKey = `${SESSION_PREFIX}${payload.sessionId}`;
   let session = null;
 
-  // Try Redis cache first
-  const cachedSession = await redis.get(cacheKey);
+  const cachedSession = await redis.get(sessionKey).catch(() => null);
   if (cachedSession) {
     session = JSON.parse(cachedSession);
   } else {
@@ -105,33 +126,27 @@ export const authenticate = asyncHandler(async (req, _res, next) => {
       },
     });
     if (session) {
-      await redis.setex(cacheKey, 60, JSON.stringify(session));
+      redis
+        .setex(sessionKey, SESSION_TTL, JSON.stringify(session))
+        .catch(() => {});
     }
   }
 
-  if (!session) {
-    throw ApiError.unauthorized("Session not found");
-  }
-  if (!session.is_active) {
+  if (!session) throw ApiError.unauthorized("Session not found");
+  if (!session.is_active)
     throw ApiError.unauthorized(
       `Session ended: ${session.revoke_reason ?? "unknown"}`,
     );
-  }
-  if (new Date(session.expires_at) < new Date()) {
+  if (new Date(session.expires_at) < new Date())
     throw ApiError.unauthorized("Session expired");
-  }
 
-  // [6] Load user based on role — fail hard if not found or not active
-  // FIX: SCHOOL_USER now includes `role` field so RBAC sub-role resolution works
-  const user = await loadUser(payload.role, payload.sub);
-  if (!user) {
-    throw ApiError.unauthorized("User account not found");
-  }
-  if (!isUserActive(user, payload.role)) {
+  // [6] User profile — Redis cache → DB fallback
+  const user = await loadUserCached(payload.role, payload.sub);
+  if (!user) throw ApiError.unauthorized("User account not found");
+  if (!isUserActive(user, payload.role))
     throw ApiError.unauthorized("User account is inactive or suspended");
-  }
 
-  // [7] Attach to request — downstream can trust these completely
+  // [7] Attach to request
   req.user = user;
   req.userId = payload.sub;
   req.role = payload.role;
@@ -139,11 +154,11 @@ export const authenticate = asyncHandler(async (req, _res, next) => {
   req.token = token;
   req.tokenExp = payload.exp;
 
-  // [8] Update last_active_at async — non-blocking, never fails the request
-  updateLastActive(payload.sessionId).catch((e) =>
+  // [8] Throttled last_active_at — DB write at most once per 60s per session
+  throttledLastActive(payload.sessionId).catch((e) =>
     logger.warn(
       { sessionId: payload.sessionId, err: e.message },
-      "Failed to update session last_active_at",
+      "Failed to update last_active_at",
     ),
   );
 
@@ -152,23 +167,15 @@ export const authenticate = asyncHandler(async (req, _res, next) => {
 
 // ─── Role Guards ──────────────────────────────────────────────────────────────
 
-/**
- * requireRole(...roles)
- * Must be called AFTER authenticate
- * Single mismatch = immediate 403
- */
 export const requireRole = (...roles) =>
   asyncHandler(async (req, _res, next) => {
-    if (!req.role) {
-      throw ApiError.unauthorized("Not authenticated");
-    }
+    if (!req.role) throw ApiError.unauthorized("Not authenticated");
     if (!roles.includes(req.role)) {
       throw ApiError.forbidden(`Role '${req.role}' is not permitted here`);
     }
     next();
   });
 
-// Shorthand guards — semantic clarity in routes
 export const requireSuperAdmin = requireRole("SUPER_ADMIN");
 export const requireSchoolUser = requireRole("SCHOOL_USER");
 export const requireParent = requireRole("PARENT_USER");
@@ -176,11 +183,6 @@ export const requireDashboard = requireRole("SUPER_ADMIN", "SCHOOL_USER");
 
 // ─── Optional Auth ────────────────────────────────────────────────────────────
 
-/**
- * optionalAuth
- * ONLY used on public emergency endpoint to enrich logs
- * Never blocks — never throws — attaches user if valid, continues either way
- */
 export const optionalAuth = asyncHandler(async (req, _res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -201,9 +203,28 @@ export const optionalAuth = asyncHandler(async (req, _res, next) => {
   next();
 });
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── User Cache ───────────────────────────────────────────────────────────────
 
-async function loadUser(role, userId) {
+async function loadUserCached(role, userId) {
+  const cacheKey = `${USER_PREFIX}${role}:${userId}`;
+
+  try {
+    const cached = await redis.get(cacheKey);
+    if (cached) return JSON.parse(cached);
+  } catch {
+    // Redis failure → fall through to DB
+  }
+
+  const user = await loadUserFromDb(role, userId);
+
+  if (user) {
+    redis.setex(cacheKey, USER_TTL, JSON.stringify(user)).catch(() => {});
+  }
+
+  return user;
+}
+
+async function loadUserFromDb(role, userId) {
   switch (role) {
     case "PARENT_USER":
       return prisma.parentUser.findUnique({
@@ -213,9 +234,6 @@ async function loadUser(role, userId) {
     case "SCHOOL_USER":
       return prisma.schoolUser.findUnique({
         where: { id: userId },
-        // FIX [#2]: Added `role` field so rbac.middleware can resolve sub-role
-        // (ADMIN / STAFF / VIEWER). Without this, all school users were silently
-        // treated as ADMIN and received full permissions.
         select: { id: true, is_active: true, school_id: true, role: true },
       });
     case "SUPER_ADMIN":
@@ -229,15 +247,56 @@ async function loadUser(role, userId) {
 }
 
 function isUserActive(user, role) {
-  if (role === "PARENT_USER") {
+  if (role === "PARENT_USER")
     return user.status === "ACTIVE" && !user.deleted_at;
-  }
   return user.is_active === true;
 }
 
-async function updateLastActive(sessionId) {
+// ─── Throttled last_active_at ─────────────────────────────────────────────────
+
+async function throttledLastActive(sessionId) {
+  const gateKey = `${LAST_ACTIVE_PREFIX}${sessionId}`;
+
+  try {
+    // SET NX EX — atomic: set only if key doesn't exist, with TTL
+    // Returns "OK" if set (first call in window) → write to DB
+    // Returns null if key exists (already updated recently) → skip
+    const set = await redis.set(gateKey, "1", "EX", LAST_ACTIVE_TTL, "NX");
+    if (!set) return;
+  } catch {
+    // Redis failure → write to DB anyway (safe fallback)
+  }
+
   await prisma.session.update({
     where: { id: sessionId },
     data: { last_active_at: new Date() },
   });
+}
+
+// ─── Cache Invalidation (exported — called from auth.service.js) ──────────────
+
+/**
+ * invalidateUserCache(role, userId)
+ * Call when: user suspended, deleted, role changed, school transferred
+ */
+export async function invalidateUserCache(role, userId) {
+  await redis.del(`${USER_PREFIX}${role}:${userId}`).catch(() => {});
+}
+
+/**
+ * invalidateSessionCache(sessionId)
+ * Call when: logout, session revoked, refresh token rotated
+ */
+export async function invalidateSessionCache(sessionId) {
+  await redis.del(`${SESSION_PREFIX}${sessionId}`).catch(() => {});
+}
+
+/**
+ * invalidateBlacklistCache(tokenHash)
+ * Call when: token added to blacklist (logout/revoke)
+ * Forces next request to re-check DB and cache "1" (blacklisted)
+ * Prevents the "0" (clean) cached value from serving a revoked token
+ */
+export async function invalidateBlacklistCache(tokenHash) {
+  await redis.del(`${BLACKLIST_PREFIX}${tokenHash}`).catch(() => {});
 }

@@ -1,6 +1,24 @@
-@baseUrl = http://localhost:3000/api
+### =============================================================================
+### RESQID — Auth API Tests
+### File: src/request/auth.http
+### Use with: VS Code REST Client
+### =============================================================================
+### FLOW:
+###   1. Run Super Admin Login or School Login
+###   2. Copy access_token from response → paste into @accessToken
+###   3. Copy refresh_token from response → paste into @refreshToken
+###   4. Run any protected endpoint
+### =============================================================================
 
-###! Super Admin Login
+@baseUrl      = http://localhost:3000/api
+@accessToken  = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3N2FlZmY0Zi1kM2I1LTQ5MGQtYTdjYS00ZWJiYmQ4ZGNjYTciLCJyb2xlIjoiU0NIT09MX1VTRVIiLCJzZXNzaW9uSWQiOiIwZGZlMDk3Mi05ZmZiLTQ0NDktYWE3My1kOTJmY2MyMWEzODAiLCJqdGkiOiIxMDM5ODI0Yi02YzFjLTQ3M2UtOTk1ZS0xNjQzOWY4OWQ1ODkiLCJzY2hvb2xJZCI6ImVlMjBiZDMyLWM1MzktNDQ4OS1hZTIyLWNlMzVjNGIyNGE3YiIsImlhdCI6MTc3NDEyMDU4MCwiZXhwIjoxNzc0MTI0MTgwLCJhdWQiOiJyZXNxaWQtYXBpIiwiaXNzIjoicmVzcWlkIn0.4U7bej-XYsVwVBagi6gy4HHb6fGIgZkZfY8CWa5rit4
+@refreshToken = 8591c831935191fa820cffceff3bc4394544e501d6bb5b3f623d313f4f1bb716
+
+### =============================================================================
+### ✅ SUPER ADMIN LOGIN
+### =============================================================================
+
+### [1] Valid credentials — expect 200 + tokens
 POST {{baseUrl}}/auth/super-admin
 Content-Type: application/json
 
@@ -9,7 +27,36 @@ Content-Type: application/json
   "password": "Karan@144#"
 }
 
-###! School Login
+###
+
+### [2] Wrong password — expect 401 + AuditLog row with WRONG_PASSWORD
+POST {{baseUrl}}/auth/super-admin
+Content-Type: application/json
+
+{
+  "email": "karananimesh144@gmail.com",
+  "password": "wrongpassword"
+}
+
+###
+
+### [3] Email not found — expect 401 + AuditLog row with EMAIL_NOT_FOUND
+### Response time should be same as [2] — timing attack protection
+POST {{baseUrl}}/auth/super-admin
+Content-Type: application/json
+
+{
+  "email": "doesnotexist@test.com",
+  "password": "wrongpassword"
+}
+
+###
+
+### =============================================================================
+### ✅ SCHOOL USER LOGIN
+### =============================================================================
+
+### [4] Valid credentials — expect 200 + tokens
 POST {{baseUrl}}/auth/school
 Content-Type: application/json
 
@@ -18,13 +65,144 @@ Content-Type: application/json
   "password": "Admin@123#"
 }
 
+###
 
-
-###! All logout
-POST {{baseUrl}}/auth/logout
+### [5] Wrong password — expect 401
+POST {{baseUrl}}/auth/school
 Content-Type: application/json
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI4OWQ0Y2FiOC0xYzFiLTQ0ZWMtYmU1ZC1hNDhmMjgzNDczYWUiLCJyb2xlIjoiU0NIT09MX1VTRVIiLCJzZXNzaW9uSWQiOiJlYTQ5OWYwYy0yMzA3LTQ0MzEtYTk2Yy01YTI5MTljMWUzZmQiLCJzY2hvb2xJZCI6ImVhMjk2MmFlLTBmNWMtNDA0NC1iN2I2LTU2NmJmN2Y5NzMzZiIsImlhdCI6MTc3MzI4OTU1NSwiZXhwIjoxNzczMjkzMTU1LCJhdWQiOiJyZXNxaWQtYXBpIiwiaXNzIjoicmVzcWlkIn0.QoPfRQpr7O6W7h7G6kbH8cVLYzf-DgO0KMQ4P9Y9Z2g
 
 {
-  "refreshToken": "e0bd3b9792d67954c4453a592c7c4f9c3fbabd90474097c869608c8e963eba14"
+  "email": "schooladmin@test.com",
+  "password": "wrongpassword"
 }
+
+###
+
+### =============================================================================
+### ✅ OTP FLOW (Parent)
+### =============================================================================
+
+### [6] Send OTP — expect 200, same message regardless of phone registered or not
+POST {{baseUrl}}/auth/otp/send
+Content-Type: application/json
+
+{
+  "phone": "+919876543210"
+}
+
+###
+
+### [7] Verify OTP — expect 200 + tokens
+POST {{baseUrl}}/auth/otp/verify
+Content-Type: application/json
+
+{
+  "phone": "+919876543210",
+  "otp": "123456"
+}
+
+###
+
+### [8] Wrong OTP — expect 401
+POST {{baseUrl}}/auth/otp/verify
+Content-Type: application/json
+
+{
+  "phone": "+919876543210",
+  "otp": "000000"
+}
+
+###
+
+### [9] Exceed OTP attempts (run [8] 5 times then this) — expect 429
+POST {{baseUrl}}/auth/otp/verify
+Content-Type: application/json
+
+{
+  "phone": "+919876543210",
+  "otp": "000000"
+}
+
+###
+
+### =============================================================================
+### ✅ REFRESH TOKEN
+### =============================================================================
+
+### [10] Valid refresh — expect 200 + new token pair
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+###
+
+### [11] Replay old refresh token after rotation (reuse detection)
+###      Run [10] first, then paste the OLD refreshToken below
+###      Expect 401 "Security alert" + ALL sessions wiped for that user
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "PASTE_OLD_REFRESH_TOKEN_HERE"
+}
+
+###
+
+### [12] Invalid refresh token — expect 401
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "thisisnotavalidtoken"
+}
+
+###
+
+### =============================================================================
+### ✅ LOGOUT
+### =============================================================================
+
+### [13] Valid logout — expect 200
+###      Check server logs: session cache + user cache should be invalidated
+POST {{baseUrl}}/auth/logout
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+###
+
+### [14] Use same access token after logout — expect 401 (blacklisted)
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+###
+
+### [15] Logout with no refresh token — expect 200 (still valid, just no refresh cleanup)
+POST {{baseUrl}}/auth/logout
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{}
+
+###
+
+### [16] Logout with no auth token — expect 401
+POST {{baseUrl}}/auth/logout
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+###

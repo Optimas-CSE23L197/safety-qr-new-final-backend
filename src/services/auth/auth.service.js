@@ -1,21 +1,5 @@
 // =============================================================================
 // auth.service.js — RESQID
-//
-// FIX [#14]: Session creation was happening BEFORE token issuance across all
-// three login flows (loginSuperAdmin, loginSchoolUser, verifyOtp). Since
-// Session.refresh_token_hash is non-nullable in the schema, Prisma rejected
-// the create() call with:
-//   "Argument `refresh_token_hash` is missing."
-//
-// FIX [#15]: sessionId was null in JWT payload across all login flows because
-// the session DB record didn't exist yet when tokens were issued. Fixed by
-// pre-generating the session UUID with crypto.randomUUID() and passing it
-// into both issueTokenPair (so the JWT carries the real sessionId) and
-// createSession (so Prisma uses that same ID via id: sessionId in data).
-// This keeps tokens first + single DB write, while having a valid sessionId.
-//
-// updateSessionRefreshHash is still needed for the REFRESH flow (rotating
-// the hash on every token refresh) — that call is intentional and kept.
 // =============================================================================
 
 import crypto from "crypto";
@@ -30,13 +14,17 @@ import {
   hashForLookup,
 } from "../../utils/security/encryption.js";
 import { issueTokenPair } from "../../utils/security/jwt.js";
-
 import { generateOtp, hashOtp } from "../../services/otp/otp.service.js";
 
 import { redis } from "../../config/redis.js";
 import { logger } from "../../config/logger.js";
-
 import { writeAuditLog, AuditAction } from "../../utils/helpers/auditLogger.js";
+
+import {
+  invalidateSessionCache,
+  invalidateUserCache,
+  invalidateBlacklistCache,
+} from "../../middleware/auth.middleware.js";
 
 // =============================================================================
 // CONSTANTS
@@ -48,8 +36,13 @@ const OTP_MAX_ATTEMPTS = 5;
 const otpHashKey = (phone) => `otp:hash:${phone}`;
 const otpAttemptsKey = (phone) => `otp:attempts:${phone}`;
 
+// Refresh token blacklist key in Redis — mirrors access token blacklist
+const refreshBlacklistKey = (hash) => `blacklist:${hash}`;
+
 // =============================================================================
 // SUPER ADMIN LOGIN
+// SECURITY: constant-time password check (verifyPassword uses bcrypt which
+// is already constant-time). Failed logins written to AuditLog.
 // =============================================================================
 
 export const loginSuperAdmin = async ({
@@ -57,30 +50,44 @@ export const loginSuperAdmin = async ({
   password,
   ipAddress,
   deviceInfo,
+  userAgent,
 }) => {
   const admin = await repo.findSuperAdminByEmail(email);
 
-  const valid = await verifyPassword(password, admin?.password_hash);
+  // SECURITY: always run verifyPassword even if admin not found —
+  // prevents timing attack that reveals whether email exists
+  const valid = await verifyPassword(
+    password,
+    admin?.password_hash ?? "$2b$12$invalidhashfortimingprotection",
+  );
 
   if (!admin || !valid) {
+    // SECURITY: log failed attempt — invisible brute force before this fix
+    repo
+      .logFailedLogin({
+        actorType: "SUPER_ADMIN",
+        identifier: email,
+        ipAddress,
+        userAgent,
+        reason: !admin ? "EMAIL_NOT_FOUND" : "WRONG_PASSWORD",
+      })
+      .catch(() => {});
+
     throw ApiError.unauthorized("Invalid credentials");
   }
 
-  if (!admin.is_active) {
-    throw ApiError.forbidden("Account disabled");
-  }
+  if (!admin.is_active) throw ApiError.forbidden("Account disabled");
 
-  // Pre-generate sessionId so JWT payload carries a real session reference
   const sessionId = crypto.randomUUID();
 
   const { accessToken, refreshToken, refreshHash, expiresAt } = issueTokenPair({
     userId: admin.id,
     role: "SUPER_ADMIN",
-    sessionId, // ✅ real UUID — not null
+    sessionId,
   });
 
   await repo.createSession({
-    id: sessionId, // ✅ Prisma uses this exact UUID — JWT and DB are in sync
+    id: sessionId,
     superAdminId: admin.id,
     ipAddress,
     deviceInfo,
@@ -97,7 +104,7 @@ export const loginSuperAdmin = async ({
     entity: "SuperAdmin",
     entityId: admin.id,
     ip: ipAddress,
-    ua: deviceInfo,
+    ua: userAgent,
   });
 
   return {
@@ -114,6 +121,7 @@ export const loginSuperAdmin = async ({
 
 // =============================================================================
 // SCHOOL USER LOGIN
+// SECURITY: same timing protection + failed login audit as super admin
 // =============================================================================
 
 export const loginSchoolUser = async ({
@@ -121,18 +129,29 @@ export const loginSchoolUser = async ({
   password,
   ipAddress,
   deviceInfo,
+  userAgent,
 }) => {
   const user = await repo.findSchoolUserByEmail(email);
-
-  const valid = await verifyPassword(password, user?.password_hash);
+  const valid = await verifyPassword(
+    password,
+    user?.password_hash ?? "$2b$12$invalidhashfortimingprotection",
+  );
 
   if (!user || !valid) {
+    repo
+      .logFailedLogin({
+        actorType: "SCHOOL_USER",
+        identifier: email,
+        ipAddress,
+        userAgent,
+        reason: !user ? "EMAIL_NOT_FOUND" : "WRONG_PASSWORD",
+      })
+      .catch(() => {});
+
     throw ApiError.unauthorized("Invalid credentials");
   }
 
-  if (!user.is_active) {
-    throw ApiError.forbidden("Account disabled");
-  }
+  if (!user.is_active) throw ApiError.forbidden("Account disabled");
 
   const sessionId = crypto.randomUUID();
 
@@ -140,11 +159,11 @@ export const loginSchoolUser = async ({
     userId: user.id,
     role: "SCHOOL_USER",
     schoolId: user.school_id,
-    sessionId, // ✅
+    sessionId,
   });
 
   await repo.createSession({
-    id: sessionId, // ✅
+    id: sessionId,
     schoolUserId: user.id,
     ipAddress,
     deviceInfo,
@@ -153,6 +172,16 @@ export const loginSchoolUser = async ({
   });
 
   repo.updateSchoolUserLastLogin(user.id).catch(() => {});
+
+  writeAuditLog({
+    actorId: user.id,
+    actorType: "SCHOOL_USER",
+    action: AuditAction.LOGIN,
+    entity: "SchoolUser",
+    entityId: user.id,
+    ip: ipAddress,
+    ua: userAgent,
+  });
 
   return {
     access_token: accessToken,
@@ -169,30 +198,32 @@ export const loginSchoolUser = async ({
 
 // =============================================================================
 // SEND OTP
+// SECURITY: DB lookup removed — no user existence leak on send.
+// isNewUser check moved to verifyOtp (after OTP confirmed valid).
 // =============================================================================
 
 export const sendOtp = async ({ phone }) => {
   const otp = generateOtp();
   const hashed = hashOtp(otp);
 
-  await redis.setex(otpHashKey(phone), OTP_TTL_SECONDS, hashed);
-  await redis.del(otpAttemptsKey(phone));
+  await Promise.all([
+    redis.setex(otpHashKey(phone), OTP_TTL_SECONDS, hashed),
+    redis.del(otpAttemptsKey(phone)),
+  ]);
 
   if (process.env.NODE_ENV !== "production") {
     logger.info({ phone, otp }, "[DEV] OTP");
   }
 
-  const phoneIndex = hashForLookup(phone);
-  const existingParent = await repo.findParentByPhoneIndex(phoneIndex);
-
-  return {
-    message: "OTP sent successfully",
-    isNewUser: !existingParent,
-  };
+  // Always return same message — never reveal if phone is registered or not
+  return { message: "OTP sent successfully" };
 };
 
 // =============================================================================
 // VERIFY OTP
+// SECURITY: constant-time OTP comparison using crypto.timingSafeEqual —
+// prevents timing attacks that could allow guessing OTP digits by measuring
+// response time differences.
 // =============================================================================
 
 export const verifyOtp = async ({ phone, otp, ipAddress, deviceInfo }) => {
@@ -202,25 +233,35 @@ export const verifyOtp = async ({ phone, otp, ipAddress, deviceInfo }) => {
   );
 
   if (attempts >= OTP_MAX_ATTEMPTS) {
-    throw ApiError.tooManyRequests("Too many OTP attempts");
+    throw ApiError.tooManyRequests("Too many OTP attempts. Try again later.");
   }
 
   const storedHash = await redis.get(otpHashKey(phone));
+  if (!storedHash) throw ApiError.badRequest("OTP expired or not requested");
 
-  if (!storedHash) {
-    throw ApiError.badRequest("OTP expired");
-  }
+  const inputHash = hashOtp(otp);
 
-  const valid = storedHash === hashOtp(otp);
+  // SECURITY: constant-time comparison — prevents timing attack on OTP
+  // Without this, an attacker can measure μs differences to guess digits
+  const storedBuf = Buffer.from(storedHash, "hex");
+  const inputBuf = Buffer.from(inputHash, "hex");
+
+  const valid =
+    storedBuf.length === inputBuf.length &&
+    crypto.timingSafeEqual(storedBuf, inputBuf);
 
   if (!valid) {
     await redis.incr(otpAttemptsKey(phone));
     throw ApiError.unauthorized("Invalid OTP");
   }
 
-  await redis.del(otpHashKey(phone));
-  await redis.del(otpAttemptsKey(phone));
+  // OTP valid — clean up Redis in parallel
+  await Promise.all([
+    redis.del(otpHashKey(phone)),
+    redis.del(otpAttemptsKey(phone)),
+  ]);
 
+  // DB lookup happens HERE — after OTP confirmed valid, not on send
   const phoneIndex = hashForLookup(phone);
   let parent = await repo.findParentByPhoneIndex(phoneIndex);
   const isNewUser = !parent;
@@ -237,11 +278,11 @@ export const verifyOtp = async ({ phone, otp, ipAddress, deviceInfo }) => {
   const { accessToken, refreshToken, refreshHash, expiresAt } = issueTokenPair({
     userId: parent.id,
     role: "PARENT_USER",
-    sessionId, // ✅
+    sessionId,
   });
 
   await repo.createSession({
-    id: sessionId, // ✅
+    id: sessionId,
     parentUserId: parent.id,
     ipAddress,
     deviceInfo,
@@ -256,14 +297,25 @@ export const verifyOtp = async ({ phone, otp, ipAddress, deviceInfo }) => {
     refreshToken,
     expiresAt: jwt.decode(accessToken)?.exp,
     isNewUser,
-    parent: {
-      id: parent.id,
-    },
+    parent: { id: parent.id },
   };
 };
 
 // =============================================================================
-// REFRESH TOKEN
+// REFRESH TOKENS
+// SECURITY: refresh token reuse detection — if a refresh token that was
+// already rotated is presented again, it means either:
+//   a) Legitimate client has a bug and replayed an old token
+//   b) Token was stolen — attacker used it first, now legitimate client
+//      is presenting it and getting 401
+// In EITHER case: wipe ALL sessions for this user across all devices.
+// User is forced to re-login. If it was theft, attacker loses access too.
+//
+// How it works with current schema:
+//   Session has refresh_token_hash (current valid hash).
+//   On rotate: new hash replaces old hash in DB.
+//   Old hash is blacklisted in Redis + BlacklistToken.
+//   If old hash presented again → found in blacklist → reuse detected → wipe.
 // =============================================================================
 
 export const refreshTokens = async ({
@@ -272,19 +324,36 @@ export const refreshTokens = async ({
   deviceInfo,
 }) => {
   const hash = hashToken(refreshToken);
+
+  // SECURITY: check if this refresh token was already rotated (reuse detection)
+  // If it's in the blacklist, it was used before — potential theft
+  const isBlacklisted = await redis.get(`blacklist:${hash}`);
+  if (isBlacklisted) {
+    // Extract userId from the blacklisted token metadata to wipe sessions
+    const meta = JSON.parse(isBlacklisted);
+    if (meta?.userId && meta?.role) {
+      logger.error(
+        {
+          userId: meta.userId,
+          role: meta.role,
+          ip: ipAddress,
+          type: "refresh_token_reuse",
+        },
+        "Refresh token reuse detected — wiping all sessions",
+      );
+      await wipeAllSessions(meta.userId, meta.role);
+    }
+    throw ApiError.unauthorized("Security alert: please log in again");
+  }
+
   const session = await repo.findSessionByRefreshHash(hash);
 
-  if (!session || !session.is_active) {
+  if (!session || !session.is_active)
     throw ApiError.unauthorized("Session invalid");
-  }
+  if (session.expires_at < new Date()) throw ApiError.sessionExpired();
 
-  if (session.expires_at < new Date()) {
-    throw ApiError.sessionExpired();
-  }
-
-  let role;
-  let userId;
-  let schoolId;
+  // Resolve user identity from session
+  let role, userId, schoolId;
 
   if (session.admin_user_id) {
     role = "SUPER_ADMIN";
@@ -310,8 +379,24 @@ export const refreshTokens = async ({
     schoolId,
   });
 
-  // Intentional — rotating hash on every token refresh
+  // Rotate: update DB with new hash
   await repo.updateSessionRefreshHash(session.id, refreshHash);
+
+  // SECURITY: blacklist OLD refresh token hash with userId metadata
+  // so reuse detection can identify WHO to wipe if it's replayed
+  const oldHashTtl = Math.ceil(
+    (new Date(session.expires_at) - Date.now()) / 1000,
+  );
+  if (oldHashTtl > 0) {
+    await redis
+      .setex(`blacklist:${hash}`, oldHashTtl, JSON.stringify({ userId, role }))
+      .catch(() => {});
+    // Also persist to DB for Redis-eviction safety
+    repo.addRefreshToBlacklist(hash, session.expires_at).catch(() => {});
+  }
+
+  // Invalidate session cache — old cached session has stale refresh hash
+  await invalidateSessionCache(session.id);
 
   return {
     access_token: accessToken,
@@ -322,21 +407,74 @@ export const refreshTokens = async ({
 
 // =============================================================================
 // LOGOUT
+// SECURITY: kills Redis caches immediately — previously logged-out users
+// could authenticate for up to 60s (session TTL) + 5min (user cache TTL).
+// Also blacklists refresh token so it can't be replayed post-logout.
 // =============================================================================
 
-export const logoutUser = async ({ token, exp, refreshToken, sessionId }) => {
-  await repo.addToBlacklist(hashToken(token), new Date(exp * 1000));
+export const logoutUser = async ({
+  token,
+  exp,
+  refreshToken,
+  sessionId,
+  userId,
+  role,
+}) => {
+  const ops = [];
 
+  // 1. Blacklist access token + invalidate its Redis "clean" cache immediately
+  const accessHash = hashToken(token);
+  ops.push(repo.addToBlacklist(accessHash, new Date(exp * 1000)));
+  ops.push(invalidateBlacklistCache(accessHash));
+
+  // 2. Revoke session in DB
   if (sessionId) {
-    await repo.revokeSession(sessionId);
+    ops.push(repo.revokeSession(sessionId, "MANUAL_LOGOUT"));
   }
 
+  // 3. SECURITY: blacklist refresh token so it can't be replayed after logout
   if (refreshToken) {
-    const session = await repo.findSessionByRefreshHash(
-      hashToken(refreshToken),
+    const refreshHash = hashToken(refreshToken);
+    const refreshExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days max
+    ops.push(repo.addRefreshToBlacklist(refreshHash, refreshExpiry));
+
+    // Also kill session found via refresh hash (edge case: different sessionId)
+    ops.push(
+      repo.findSessionByRefreshHash(refreshHash).then((s) => {
+        if (s && s.id !== sessionId)
+          return repo.revokeSession(s.id, "MANUAL_LOGOUT");
+      }),
     );
-    if (session) {
-      await repo.revokeSession(session.id);
-    }
   }
+
+  await Promise.all(ops);
+
+  // 4. Kill Redis caches immediately — don't wait for TTL expiry
+  await Promise.all([
+    sessionId ? invalidateSessionCache(sessionId) : Promise.resolve(),
+    userId && role ? invalidateUserCache(role, userId) : Promise.resolve(),
+  ]);
 };
+
+// =============================================================================
+// INTERNAL: Wipe all sessions (reuse detection nuclear option)
+// =============================================================================
+
+async function wipeAllSessions(userId, role) {
+  // Get all active session IDs before revoking (for Redis cache invalidation)
+  const sessionIds = await repo.findAllActiveSessionIds(userId, role);
+
+  // Revoke all in DB
+  await repo.revokeAllUserSessions(userId, role, "SUSPICIOUS_ACTIVITY");
+
+  // Kill all Redis session caches in parallel
+  await Promise.all([
+    ...sessionIds.map((id) => invalidateSessionCache(id)),
+    invalidateUserCache(role, userId),
+  ]);
+
+  logger.warn(
+    { userId, role, sessionCount: sessionIds.length },
+    "All sessions wiped — reuse detected",
+  );
+}

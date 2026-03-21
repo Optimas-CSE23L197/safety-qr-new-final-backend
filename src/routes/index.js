@@ -10,19 +10,25 @@
 
 import { Router } from "express";
 
-const router = Router();
-
-// ── Routes ────────────────────────────────────────────────────────────────────
+// ── Module routers ────────────────────────────────────────────────────────────
 import authRoute from "../modules/auth/auth.routes.js";
-// order routes
 import orderRoutes from "../modules/order/order.routes.js";
+
+// ── School admin sub-router ───────────────────────────────────────────────────
+import schoolAdminRouter from "./schoolAdmin.routes.js";
+
+// ── Super admin sub-router (future) ──────────────────────────────────────────
+// import superAdminRouter from "./superAdmin.routes.js";
+
+// ── Parent sub-router (future) ────────────────────────────────────────────────
+// import parentRouter from "./parent.routes.js";
+
+const router = Router();
 
 router.use("/auth", authRoute);
 router.use("/orders", orderRoutes);
-
-// future routes
-// router.use("/school", schoolRoute);
-// router.use("/parents", parentsRoute);
-// router.use("/super-admin", superRoute);
+router.use("/school-admin", schoolAdminRouter);
+// router.use("/super-admin",  superAdminRouter);
+// router.use("/parents",      parentRouter);
 
 export default router;

@@ -6,55 +6,39 @@ import { asyncHandler } from "../../utils/response/asyncHandler.js";
 import { extractIp } from "../../utils/network/extractIp.js";
 import { parseUserAgentSummary } from "../../utils/network/userAgent.js";
 
-/**
- * =============================================================================
- * SUPER ADMIN LOGIN
- * =============================================================================
- */
+// ─── Super Admin Login ────────────────────────────────────────────────────────
 
 export const loginSuperAdminController = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
-  const ipAddress = extractIp(req);
-  const deviceInfo = parseUserAgentSummary(req);
-
   const result = await authService.loginSuperAdmin({
     email,
     password,
-    ipAddress,
-    deviceInfo,
+    ipAddress: extractIp(req),
+    deviceInfo: parseUserAgentSummary(req),
+    userAgent: req.headers["user-agent"] ?? null, // FIX: needed for failed login audit
   });
 
   return ApiResponse.ok(result, "Login successful").send(res);
 });
 
-/**
- * =============================================================================
- * SCHOOL USER LOGIN
- * =============================================================================
- */
+// ─── School User Login ────────────────────────────────────────────────────────
 
 export const loginSchoolUserController = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
-  const ipAddress = extractIp(req);
-  const deviceInfo = parseUserAgentSummary(req);
-
   const result = await authService.loginSchoolUser({
     email,
     password,
-    ipAddress,
-    deviceInfo,
+    ipAddress: extractIp(req),
+    deviceInfo: parseUserAgentSummary(req),
+    userAgent: req.headers["user-agent"] ?? null, // FIX: needed for failed login audit
   });
 
   return ApiResponse.ok(result, "Login successful").send(res);
 });
 
-/**
- * =============================================================================
- * SEND OTP
- * =============================================================================
- */
+// ─── Send OTP ─────────────────────────────────────────────────────────────────
 
 export const sendOtpController = asyncHandler(async (req, res) => {
   const { phone } = req.body;
@@ -64,67 +48,47 @@ export const sendOtpController = asyncHandler(async (req, res) => {
   return ApiResponse.ok(result, "OTP sent successfully").send(res);
 });
 
-/**
- * =============================================================================
- * VERIFY OTP
- * =============================================================================
- */
+// ─── Verify OTP ───────────────────────────────────────────────────────────────
 
 export const verifyOtpController = asyncHandler(async (req, res) => {
   const { phone, otp } = req.body;
 
-  const ipAddress = extractIp(req);
-  const deviceInfo = parseUserAgentSummary(req);
-
   const result = await authService.verifyOtp({
     phone,
     otp,
-    ipAddress,
-    deviceInfo,
+    ipAddress: extractIp(req),
+    deviceInfo: parseUserAgentSummary(req),
   });
 
   return ApiResponse.ok(result, "Login successful").send(res);
 });
 
-/**
- * =============================================================================
- * REFRESH TOKEN
- * =============================================================================
- */
+// ─── Refresh Token ────────────────────────────────────────────────────────────
 
 export const refreshTokenController = asyncHandler(async (req, res) => {
   const { refreshToken } = req.body;
 
-  const ipAddress = extractIp(req);
-  const deviceInfo = parseUserAgentSummary(req);
-
   const result = await authService.refreshTokens({
     refreshToken,
-    ipAddress,
-    deviceInfo,
+    ipAddress: extractIp(req),
+    deviceInfo: parseUserAgentSummary(req),
   });
 
   return ApiResponse.ok(result, "Token refreshed").send(res);
 });
 
-/**
- * =============================================================================
- * LOGOUT
- * =============================================================================
- */
+// ─── Logout ───────────────────────────────────────────────────────────────────
 
 export const logoutController = asyncHandler(async (req, res) => {
-  const token = req.token;
-  const exp = req.tokenExp;
-  const sessionId = req.sessionId;
-
   const { refreshToken } = req.body ?? {};
 
   await authService.logoutUser({
-    token,
-    exp,
+    token: req.token,
+    exp: req.tokenExp,
+    sessionId: req.sessionId,
+    userId: req.userId, // FIX: required to invalidate user Redis cache on logout
+    role: req.role, // FIX: required to invalidate user Redis cache on logout
     refreshToken,
-    sessionId,
   });
 
   return ApiResponse.ok(null, "Logged out successfully").send(res);
