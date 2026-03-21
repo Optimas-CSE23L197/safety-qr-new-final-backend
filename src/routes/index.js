@@ -18,7 +18,7 @@ import authRoute from "../modules/auth/auth.routes.js";
 import orderRoutes from "../modules/order/order.routes.js";
 
 router.use("/auth", authRoute);
-router.use("/order", orderRoutes);
+router.use("/orders", orderRoutes);
 
 // future routes
 // router.use("/school", schoolRoute);

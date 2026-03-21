@@ -236,6 +236,55 @@ export const createBatchWithPreloadedTokens = ({
 };
 
 // =============================================================================
+// TOKEN BATCH — finalization
+// =============================================================================
+
+/**
+ * Mark a TokenBatch as COMPLETED / PARTIAL / FAILED after step4 generation run.
+ * Called once after all QR + Card + QrAsset writes are done.
+ *
+ *   COMPLETED — all tokens generated successfully (failedCount === 0)
+ *   PARTIAL   — some succeeded, some failed
+ *   FAILED    — every single token errored (generatedCount === 0)
+ */
+export const finalizeBatch = ({
+  batchId,
+  generatedCount,
+  failedCount,
+  errorLog,
+}) => {
+  const status =
+    generatedCount === 0 ? "FAILED" : failedCount > 0 ? "PARTIAL" : "COMPLETE";
+
+  return prisma.tokenBatch.update({
+    where: { id: batchId },
+    data: {
+      status,
+      generated_count: generatedCount,
+      failed_count: failedCount,
+      completed_at: new Date(),
+      error_log: errorLog ?? null,
+    },
+  });
+};
+
+// =============================================================================
+// ORDER ITEM — token assignment (PRE_DETAILS flow)
+// =============================================================================
+
+/**
+ * Link a generated token back to its CardOrderItem row.
+ * Called per-item in step4 after Card + QrAsset are written.
+ * Schema: CardOrderItem.token_id → Token.id (nullable FK).
+ */
+export const updateOrderItemTokenAssigned = ({ orderItemId, tokenId }) => {
+  return prisma.cardOrderItem.update({
+    where: { id: orderItemId },
+    data: { token_id: tokenId },
+  });
+};
+
+// =============================================================================
 // CARD + QR ASSET — always written together atomically
 // =============================================================================
 

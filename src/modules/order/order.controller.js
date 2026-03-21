@@ -51,17 +51,16 @@ export const getOrders = asyncHandler(async (req, res) => {
     channel,
   });
 
-  return res.json(
-    ApiResponse.success(
-      { orders, total, page: parseInt(page) || 1 },
-      "Orders fetched",
-    ),
-  );
+  return ApiResponse.ok(
+    { orders, total, page: parseInt(page) || 1 },
+    "Orders fetched",
+  ).send(res);
 });
 
 export const getOrderById = asyncHandler(async (req, res) => {
   const order = await findOrderById(req.params.id);
-  if (!order) return res.status(404).json(ApiResponse.error("Order not found"));
+  if (!order)
+    return res.status(404).json({ success: false, message: "Order not found" });
 
   // SEC: strip internal-only fields before sending to client.
   const {
@@ -73,7 +72,7 @@ export const getOrderById = asyncHandler(async (req, res) => {
     ...safeOrder
   } = order;
 
-  return res.json(ApiResponse.success({ order: safeOrder }, "Order fetched"));
+  return ApiResponse.ok({ order: safeOrder }, "Order fetched").send(res);
 });
 
 // =============================================================================
@@ -97,7 +96,7 @@ export const createOrder = asyncHandler(async (req, res) => {
 
   const result = await createOrderStep({
     schoolId: school_id,
-    adminId: req.admin.id,
+    adminId: req.user.id,
     channel,
     orderType: order_type,
     cardCount: card_count,
@@ -108,9 +107,7 @@ export const createOrder = asyncHandler(async (req, res) => {
     ip: extractIp(req),
   });
 
-  return res
-    .status(201)
-    .json(ApiResponse.success(result, "Order created successfully"));
+  return ApiResponse.created(result, "Order created successfully").send(res);
 });
 
 // =============================================================================
@@ -121,14 +118,14 @@ export const createOrder = asyncHandler(async (req, res) => {
 export const confirmOrder = asyncHandler(async (req, res) => {
   const result = await confirmOrderStep({
     orderId: req.params.id,
-    adminId: req.admin.id,
+    adminId: req.user.id,
     delivery: req.body.delivery ?? {},
     customUnitPrice: req.body.custom_unit_price ?? null,
     note: req.body.note,
     ip: extractIp(req),
   });
 
-  return res.json(ApiResponse.success(result, "Order confirmed"));
+  return ApiResponse.ok(result, "Order confirmed").send(res);
 });
 
 // =============================================================================
@@ -139,15 +136,13 @@ export const confirmOrder = asyncHandler(async (req, res) => {
 export const sendAdvanceInvoice = asyncHandler(async (req, res) => {
   const result = await sendAdvanceInvoiceStep({
     orderId: req.params.id,
-    adminId: req.admin.id,
+    adminId: req.user.id,
     dueAt: req.body.due_at,
     note: req.body.note,
     ip: extractIp(req),
   });
 
-  return res
-    .status(201)
-    .json(ApiResponse.success(result, "Advance invoice issued"));
+  return ApiResponse.created(result, "Advance invoice issued").send(res);
 });
 
 // =============================================================================
@@ -158,7 +153,7 @@ export const sendAdvanceInvoice = asyncHandler(async (req, res) => {
 export const markAdvancePaid = asyncHandler(async (req, res) => {
   const result = await markAdvancePaidStep({
     orderId: req.params.id,
-    adminId: req.admin.id,
+    adminId: req.user.id,
     amountReceived: req.body.amount_received,
     paymentMode: req.body.payment_mode,
     paymentRef: req.body.payment_ref,
@@ -166,7 +161,7 @@ export const markAdvancePaid = asyncHandler(async (req, res) => {
     ip: extractIp(req),
   });
 
-  return res.json(ApiResponse.success(result, "Advance payment recorded"));
+  return ApiResponse.ok(result, "Advance payment recorded").send(res);
 });
 
 // =============================================================================
@@ -177,7 +172,7 @@ export const markAdvancePaid = asyncHandler(async (req, res) => {
 export const generateTokens = asyncHandler(async (req, res) => {
   const result = await generateTokensStep({
     orderId: req.params.id,
-    adminId: req.admin.id,
+    adminId: req.user.id,
     note: req.body.note,
     ip: extractIp(req),
   });
@@ -189,11 +184,10 @@ export const generateTokens = asyncHandler(async (req, res) => {
   // returns `tokens` — fixed to strip the correct field.
   const { tokens, ...safeResult } = result;
 
-  return res
-    .status(201)
-    .json(
-      ApiResponse.success(safeResult, `${result.tokenCount} tokens generated`),
-    );
+  return ApiResponse.created(
+    safeResult,
+    `${result.tokenCount} tokens generated`,
+  ).send(res);
 });
 
 // =============================================================================
@@ -205,27 +199,23 @@ export const generateTokens = asyncHandler(async (req, res) => {
 export const generateCardDesign = asyncHandler(async (req, res) => {
   const result = await generateCardDesignStep({
     orderId: req.params.id,
-    adminId: req.admin.id,
+    adminId: req.user.id,
     note: req.body.note,
     ip: extractIp(req),
   });
 
-  return res
-    .status(201)
-    .json(ApiResponse.success(result, "Card designs generated"));
+  return ApiResponse.created(result, "Card designs generated").send(res);
 });
 
 export const retryCardDesign = asyncHandler(async (req, res) => {
   const result = await retryCardDesignStep({
     orderId: req.params.id,
-    adminId: req.admin.id,
+    adminId: req.user.id,
     note: req.body.note,
     ip: extractIp(req),
   });
 
-  return res
-    .status(201)
-    .json(ApiResponse.success(result, "Card design retry complete"));
+  return ApiResponse.created(result, "Card design retry complete").send(res);
 });
 
 // =============================================================================
@@ -236,14 +226,14 @@ export const retryCardDesign = asyncHandler(async (req, res) => {
 export const sendToVendor = asyncHandler(async (req, res) => {
   const result = await sendToVendorStep({
     orderId: req.params.id,
-    adminId: req.admin.id,
+    adminId: req.user.id,
     vendorId: req.body.vendor_id,
     vendorNotes: req.body.vendor_notes,
     note: req.body.note,
     ip: extractIp(req),
   });
 
-  return res.json(ApiResponse.success(result, "Files sent to vendor"));
+  return ApiResponse.ok(result, "Files sent to vendor").send(res);
 });
 
 // =============================================================================
@@ -255,23 +245,23 @@ export const sendToVendor = asyncHandler(async (req, res) => {
 export const markPrintingStarted = asyncHandler(async (req, res) => {
   const result = await markPrintingStep({
     orderId: req.params.id,
-    adminId: req.admin.id,
+    adminId: req.user.id,
     note: req.body.note,
     ip: extractIp(req),
   });
 
-  return res.json(ApiResponse.success(result, "Printing started"));
+  return ApiResponse.ok(result, "Printing started").send(res);
 });
 
 export const markPrintingComplete = asyncHandler(async (req, res) => {
   const result = await markPrintCompleteStep({
     orderId: req.params.id,
-    adminId: req.admin.id,
+    adminId: req.user.id,
     note: req.body.note,
     ip: extractIp(req),
   });
 
-  return res.json(ApiResponse.success(result, "Print complete"));
+  return ApiResponse.ok(result, "Print complete").send(res);
 });
 
 // =============================================================================
@@ -284,7 +274,7 @@ export const markPrintingComplete = asyncHandler(async (req, res) => {
 export const createShipment = asyncHandler(async (req, res) => {
   const result = await createShipmentStep({
     orderId: req.params.id,
-    adminId: req.admin.id,
+    adminId: req.user.id,
     shiprocketOrderId: req.body.shiprocket_order_id,
     shiprocketShipmentId: req.body.shiprocket_shipment_id,
     awbCode: req.body.awb_code,
@@ -295,35 +285,33 @@ export const createShipment = asyncHandler(async (req, res) => {
     ip: extractIp(req),
   });
 
-  return res.status(201).json(ApiResponse.success(result, "Shipment created"));
+  return ApiResponse.created(result, "Shipment created").send(res);
 });
 
 export const markShipped = asyncHandler(async (req, res) => {
   const result = await markShippedStep({
     orderId: req.params.id,
-    adminId: req.admin.id,
+    adminId: req.user.id,
     trackingUrl: req.body.tracking_url,
     note: req.body.note,
     ip: extractIp(req),
   });
 
-  return res.json(ApiResponse.success(result, "Order marked as shipped"));
+  return ApiResponse.ok(result, "Order marked as shipped").send(res);
 });
 
 export const markDelivered = asyncHandler(async (req, res) => {
   const result = await markDeliveredStep({
     orderId: req.params.id,
-    adminId: req.admin.id,
+    adminId: req.user.id,
     note: req.body.note,
     ip: extractIp(req),
   });
 
-  return res.json(
-    ApiResponse.success(
-      result,
-      `Order delivered. ${result.tokensIssued} tokens issued.`,
-    ),
-  );
+  return ApiResponse.ok(
+    result,
+    `Order delivered. ${result.tokensIssued} tokens issued.`,
+  ).send(res);
 });
 
 // =============================================================================
@@ -335,21 +323,19 @@ export const markDelivered = asyncHandler(async (req, res) => {
 export const sendBalanceInvoice = asyncHandler(async (req, res) => {
   const result = await sendBalanceInvoiceStep({
     orderId: req.params.id,
-    adminId: req.admin.id,
+    adminId: req.user.id,
     dueAt: req.body.due_at,
     note: req.body.note,
     ip: extractIp(req),
   });
 
-  return res
-    .status(201)
-    .json(ApiResponse.success(result, "Balance invoice issued"));
+  return ApiResponse.created(result, "Balance invoice issued").send(res);
 });
 
 export const markBalancePaid = asyncHandler(async (req, res) => {
   const result = await markBalancePaidStep({
     orderId: req.params.id,
-    adminId: req.admin.id,
+    adminId: req.user.id,
     amountReceived: req.body.amount_received,
     paymentMode: req.body.payment_mode,
     paymentRef: req.body.payment_ref,
@@ -357,8 +343,8 @@ export const markBalancePaid = asyncHandler(async (req, res) => {
     ip: extractIp(req),
   });
 
-  return res.json(
-    ApiResponse.success(result, "Order completed — full payment received"),
+  return ApiResponse.ok(result, "Order completed — full payment received").send(
+    res,
   );
 });
 
@@ -371,25 +357,23 @@ export const markBalancePaid = asyncHandler(async (req, res) => {
 export const cancelOrder = asyncHandler(async (req, res) => {
   const result = await cancelOrderStep({
     orderId: req.params.id,
-    adminId: req.admin.id,
+    adminId: req.user.id,
     reason: req.body.reason,
     ip: extractIp(req),
   });
 
-  return res.json(
-    ApiResponse.success(
-      result,
-      result.requiresRefund
-        ? "Order cancelled. Refund required — use /refund to record it."
-        : "Order cancelled successfully.",
-    ),
-  );
+  return ApiResponse.ok(
+    result,
+    result.requiresRefund
+      ? "Order cancelled. Refund required — use /refund to record it."
+      : "Order cancelled successfully.",
+  ).send(res);
 });
 
 export const refundOrder = asyncHandler(async (req, res) => {
   const result = await markRefundedStep({
     orderId: req.params.id,
-    adminId: req.admin.id,
+    adminId: req.user.id,
     amountRefunded: req.body.amount_refunded,
     refundRef: req.body.refund_ref,
     paymentMode: req.body.payment_mode,
@@ -397,5 +381,5 @@ export const refundOrder = asyncHandler(async (req, res) => {
     ip: extractIp(req),
   });
 
-  return res.json(ApiResponse.success(result, "Refund recorded"));
+  return ApiResponse.ok(result, "Refund recorded").send(res);
 });

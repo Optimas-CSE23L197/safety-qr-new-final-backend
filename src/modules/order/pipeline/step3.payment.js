@@ -42,14 +42,18 @@ export const sendAdvanceInvoiceStep = async ({
   const order = await repo.findOrderById(orderId);
   if (!order) throw ApiError.notFound("Order not found");
 
+  // FIX [S3-2]: Check advance_invoice_id BEFORE status check.
+  // If invoice already exists, return 409 regardless of current status.
+  // Previously, the status check fired first — when order was PAYMENT_PENDING
+  // (after first invoice), it returned 400 instead of the correct 409.
+  if (order.advance_invoice_id) {
+    throw ApiError.conflict("Advance invoice already exists for this order");
+  }
+
   if (order.status !== "CONFIRMED") {
     throw ApiError.badRequest(
       `Cannot send advance invoice for order in status: ${order.status}. Expected: CONFIRMED`,
     );
-  }
-
-  if (order.advance_invoice_id) {
-    throw ApiError.conflict("Advance invoice already exists for this order");
   }
 
   if (!order.advance_amount) {

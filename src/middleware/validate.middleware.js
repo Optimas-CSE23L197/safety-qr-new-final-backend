@@ -31,20 +31,51 @@ import { asyncHandler } from "../utils/response/asyncHandler.js";
  * Uses Zod .strict() behavior via schema definition.
  * Unknown fields cause validation failure — no extra data leaks through.
  */
-export const validate = (schema, target = "body") =>
+export const validate = (schema) =>
   asyncHandler(async (req, _res, next) => {
-    const data = selectTarget(req, target);
+    // Auto-detect schema shape:
+    //   envelope shape  — z.object({ body: z.object(...), params?, query? })
+    //   flat shape      — z.object({ email, password, ... }) — validates req.body directly
+    //
+    // Detection: if the schema has a "body" key in its shape, it is an envelope schema.
+    // Otherwise treat it as a flat body schema (legacy auth routes).
+    const isEnvelope =
+      typeof schema.shape === "object" &&
+      schema.shape !== null &&
+      "body" in schema.shape;
 
-    const result = schema.safeParse(data);
+    let data, result;
 
-    if (!result.success) {
-      const errors = formatZodErrors(result.error);
-      throw ApiError.validationError("Validation failed", errors);
+    if (isEnvelope) {
+      data = {
+        body: req.body ?? {},
+        query: req.query ?? {},
+        params: req.params ?? {},
+      };
+      result = schema.safeParse(data);
+      if (!result.success) {
+        throw ApiError.validationError(
+          "Validation failed",
+          formatZodErrors(result.error),
+        );
+      }
+      if (result.data.body !== undefined) req.body = result.data.body;
+      if (result.data.query !== undefined)
+        Object.assign(req.query, result.data.query);
+      if (result.data.params !== undefined)
+        Object.assign(req.params, result.data.params);
+    } else {
+      // Flat schema — validate req.body directly (auth routes)
+      data = req.body ?? {};
+      result = schema.safeParse(data);
+      if (!result.success) {
+        throw ApiError.validationError(
+          "Validation failed",
+          formatZodErrors(result.error),
+        );
+      }
+      req.body = result.data;
     }
-
-    // Replace raw input with validated + transformed data
-    // This ensures coerced types, defaults, and strips unknown fields
-    assignTarget(req, target, result.data);
 
     next();
   });

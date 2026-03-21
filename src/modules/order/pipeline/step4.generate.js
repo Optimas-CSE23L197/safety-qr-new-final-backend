@@ -340,33 +340,29 @@ export const generateTokensStep = async ({ orderId, adminId, note, ip }) => {
     const { token, cardNumber, scanUrl, storageKey, publicUrl, orderItem } =
       result;
 
-    // Atomic Card + QrAsset per token
-    await prisma.$transaction([
-      prisma.card.create({
-        data: {
-          school_id: school.id,
-          student_id: orderItem?.student_id ?? null,
-          token_id: token.id,
-          order_id: orderId,
-          card_number: cardNumber,
-          file_url: null, // populated by step5 (card design)
-          print_status: "PENDING",
-        },
-      }),
-      prisma.qrAsset.create({
-        data: {
-          token_id: token.id,
-          school_id: school.id,
-          storage_key: storageKey,
-          public_url: publicUrl,
-          format: "PNG",
-          qr_type: qrType,
-          generated_by: adminId,
-          order_id: orderId,
-          is_active: true,
-        },
-      }),
-    ]);
+    // Atomic Card + QrAsset per token — delegated to repo (arch rule: no prisma.* in pipeline)
+    await tokenRepo.createCardWithQrAsset({
+      cardData: {
+        school_id: school.id,
+        student_id: orderItem?.student_id ?? null,
+        token_id: token.id,
+        order_id: orderId,
+        card_number: cardNumber,
+        file_url: null, // populated by step5 (card design)
+        print_status: "PENDING",
+      },
+      qrData: {
+        token_id: token.id,
+        school_id: school.id,
+        storage_key: storageKey,
+        public_url: publicUrl,
+        format: "PNG",
+        qr_type: qrType,
+        generated_by: adminId,
+        order_id: orderId,
+        is_active: true,
+      },
+    });
 
     // Update CardOrderItem for PRE_DETAILS orders
     if (isPreDetails && orderItem) {

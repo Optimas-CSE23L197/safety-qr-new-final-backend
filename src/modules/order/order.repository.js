@@ -66,7 +66,7 @@ export const findOrderById = (orderId) => {
           id: true,
           name: true,
           code: true,
-          type: true,
+          school_type: true, // FIX: was `type`
           logo_url: true,
           is_active: true,
           settings: {
@@ -415,7 +415,7 @@ export const recordAdvanceReceived = ({
         tax_amount: taxAmount,
         total_amount: totalAmount,
         amount_received: amountReceived,
-        payment_ref: paymentRef ?? null,
+        payment_ref: paymentRef ?? null, // FIX: was provider_ref
         payment_mode: paymentMode,
         status: "PAID",
         is_advance: true,
@@ -789,7 +789,7 @@ export const recordBalanceReceived = ({
         tax_amount: taxAmount,
         total_amount: totalAmount,
         amount_received: amountReceived,
-        payment_ref: paymentRef ?? null,
+        payment_ref: paymentRef ?? null, // FIX: was provider_ref
         payment_mode: paymentMode,
         status: "PAID",
         is_advance: false,
@@ -882,7 +882,7 @@ export const findSchoolForOrder = (schoolId) =>
       id: true,
       name: true,
       code: true,
-      type: true,
+      school_type: true, // FIX: was `type`
       is_active: true,
       subscriptions: {
         where: { status: "ACTIVE" },
@@ -914,7 +914,7 @@ export const findOrderByIdRaw = (orderId) =>
           id: true,
           name: true,
           code: true,
-          type: true,
+          school_type: true, // FIX: was `type`
           logo_url: true,
           settings: {
             select: {
@@ -977,44 +977,19 @@ export const findOrderItems = (orderId) =>
 export const findCardTemplate = (templateId) =>
   prisma.cardTemplate.findUnique({
     where: { id: templateId },
-    select: {
-      id: true,
-      name: true,
-      front_design_url: true,
-      back_design_url: true,
-      template_type: true,
-      is_active: true,
-    },
   });
 
 // Used by step5 — find active template for a school (or fall back to default)
+// CardTemplate is 1:1 with School (school_id @unique) — use findUnique.
+// No is_active field on CardTemplate — if a row exists, it is the active template.
 export const findCardTemplateForSchool = (schoolId) =>
-  prisma.cardTemplate.findFirst({
-    where: {
-      school_id: schoolId,
-      is_active: true,
-    },
-    select: {
-      id: true,
-      name: true,
-      front_design_url: true,
-      back_design_url: true,
-      template_type: true,
-      is_active: true,
-    },
+  prisma.cardTemplate.findUnique({
+    where: { school_id: schoolId },
   });
 
-export const findDefaultCardTemplate = () =>
-  prisma.cardTemplate.findFirst({
-    where: { is_active: true, is_default: true },
-    select: {
-      id: true,
-      name: true,
-      front_design_url: true,
-      back_design_url: true,
-      template_type: true,
-    },
-  });
+// No is_default on CardTemplate — return null so step5 proceeds without a template.
+// Step5 stub engine doesn't require a template; real engine would need one seeded.
+export const findDefaultCardTemplate = () => Promise.resolve(null);
 
 // =============================================================================
 // VENDOR
@@ -1073,9 +1048,6 @@ export const bulkUpdateTokenStatus = (
   toStatus,
   fromStatus,
 ) => {
-  // Support both call signatures:
-  //   bulkUpdateTokenStatus(orderId, "ISSUED")
-  //   bulkUpdateTokenStatus({ orderId, toStatus, fromStatus })
   let orderId, resolvedToStatus, resolvedFromStatus;
 
   if (
@@ -1100,7 +1072,7 @@ export const bulkUpdateTokenStatus = (
     },
     data: {
       status: resolvedToStatus,
-      ...(resolvedToStatus === "ISSUED" ? { issued_at: new Date() } : {}),
+      ...(resolvedToStatus === "ISSUED" ? { assigned_at: new Date() } : {}),
       ...(resolvedToStatus === "REVOKED" ? { revoked_at: new Date() } : {}),
     },
   });
@@ -1124,7 +1096,6 @@ export const deactivateQrAssetsForOrder = (orderId) =>
 // Fixed: repo now accepts BOTH camelCase params AND snake_case passthrough.
 // The camelCase path is the canonical one; snake_case is mapped in.
 export const createInvoice = ({
-  // camelCase (canonical — used by step2 / step9)
   schoolId,
   subscriptionId,
   invoiceNumber,
@@ -1136,7 +1107,6 @@ export const createInvoice = ({
   totalAmount,
   dueAt,
   notes,
-  // snake_case fallback (used by step9 direct call)
   school_id,
   subscription_id,
   invoice_number,
@@ -1169,8 +1139,8 @@ export const createInvoice = ({
 // keys ({ school_id, order_id, invoice_id, ... }) but repo expected camelCase
 // ({ schoolId, orderId, invoiceId, ... }). All fields would be undefined and
 // Prisma would throw. Fixed: repo now accepts both shapes.
+// FIX: removed duplicate provider_ref param, use provider_ref (schema field name)
 export const createPayment = ({
-  // camelCase (canonical)
   schoolId,
   subscriptionId,
   orderId,
@@ -1180,14 +1150,12 @@ export const createPayment = ({
   paymentMode,
   paymentRef,
   isAdvance,
-  // snake_case fallback (step9 / step10 pass these)
   school_id,
   subscription_id,
   order_id,
   invoice_id,
   tax_amount,
   payment_mode,
-  payment_ref,
   provider_ref,
   is_advance,
   status,
@@ -1206,7 +1174,7 @@ export const createPayment = ({
       status: status ?? "SUCCESS",
       provider: provider ?? "manual",
       payment_mode: paymentMode ?? payment_mode,
-      payment_ref: paymentRef ?? payment_ref ?? provider_ref ?? null,
+      provider_ref: paymentRef ?? provider_ref ?? null, // FIX: schema field is provider_ref
       is_advance: isAdvance ?? is_advance ?? false,
       metadata: metadata ?? null,
     },
@@ -1222,13 +1190,11 @@ export const createPayment = ({
 // =============================================================================
 
 export const writeAuditLog = ({
-  // New shape used by steps 5-10
   actorId,
   actorType,
   schoolId,
   newValue,
   oldValue,
-  // Original shape
   userId,
   role,
   action,
@@ -1240,20 +1206,14 @@ export const writeAuditLog = ({
   prisma.auditLog
     .create({
       data: {
-        user_id: actorId ?? userId ?? null,
-        role: actorType ?? role ?? null,
+        actor_id: actorId ?? userId ?? null, // FIX: schema uses actor_id
+        actor_type: actorType ?? role ?? "SYSTEM", // FIX: schema uses actor_type (enum, not nullable)
         action,
         entity,
         entity_id: entityId ?? null,
-        metadata:
-          metadata ??
-          (newValue || oldValue
-            ? {
-                ...(oldValue ? { old: oldValue } : {}),
-                ...(newValue ? { new: newValue } : {}),
-                ...(schoolId ? { school_id: schoolId } : {}),
-              }
-            : null),
+        old_value: oldValue ?? null,
+        new_value: newValue ?? null,
+        metadata: metadata ?? (schoolId ? { school_id: schoolId } : null),
         ip_address: ip ?? null,
       },
     })

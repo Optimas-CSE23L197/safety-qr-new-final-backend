@@ -369,9 +369,171 @@ exports.Prisma.TokenBatchScalarFieldEnum = {
   school_id: 'school_id',
   order_id: 'order_id',
   count: 'count',
+  generated_count: 'generated_count',
+  failed_count: 'failed_count',
+  status: 'status',
   created_by: 'created_by',
   notes: 'notes',
+  completed_at: 'completed_at',
+  error_log: 'error_log',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
+};
+
+exports.Prisma.QrAssetScalarFieldEnum = {
+  id: 'id',
+  token_id: 'token_id',
+  school_id: 'school_id',
+  storage_key: 'storage_key',
+  public_url: 'public_url',
+  format: 'format',
+  width_px: 'width_px',
+  height_px: 'height_px',
+  file_size_kb: 'file_size_kb',
+  qr_type: 'qr_type',
+  generated_by: 'generated_by',
+  order_id: 'order_id',
+  is_active: 'is_active',
+  generated_at: 'generated_at'
+};
+
+exports.Prisma.CardOrderScalarFieldEnum = {
+  id: 'id',
+  school_id: 'school_id',
+  subscription_id: 'subscription_id',
+  order_number: 'order_number',
+  order_type: 'order_type',
+  order_mode: 'order_mode',
+  channel: 'channel',
+  card_count: 'card_count',
+  status: 'status',
+  payment_status: 'payment_status',
+  advance_amount: 'advance_amount',
+  advance_paid_at: 'advance_paid_at',
+  balance_amount: 'balance_amount',
+  balance_due_at: 'balance_due_at',
+  balance_paid_at: 'balance_paid_at',
+  advance_invoice_id: 'advance_invoice_id',
+  balance_invoice_id: 'balance_invoice_id',
+  delivery_name: 'delivery_name',
+  delivery_phone: 'delivery_phone',
+  delivery_address: 'delivery_address',
+  delivery_city: 'delivery_city',
+  delivery_state: 'delivery_state',
+  delivery_pincode: 'delivery_pincode',
+  delivery_notes: 'delivery_notes',
+  caller_name: 'caller_name',
+  caller_phone: 'caller_phone',
+  call_notes: 'call_notes',
+  notes: 'notes',
+  admin_notes: 'admin_notes',
+  confirmed_by: 'confirmed_by',
+  confirmed_at: 'confirmed_at',
+  tokens_generated_by: 'tokens_generated_by',
+  tokens_generated_at: 'tokens_generated_at',
+  card_design_files: 'card_design_files',
+  card_design_by: 'card_design_by',
+  card_design_at: 'card_design_at',
+  vendor_id: 'vendor_id',
+  vendor_notes: 'vendor_notes',
+  files_sent_to_vendor_at: 'files_sent_to_vendor_at',
+  files_sent_by: 'files_sent_by',
+  print_complete_at: 'print_complete_at',
+  print_complete_noted_by: 'print_complete_noted_by',
+  status_changed_by: 'status_changed_by',
+  status_changed_at: 'status_changed_at',
+  status_note: 'status_note',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
+};
+
+exports.Prisma.CardOrderItemScalarFieldEnum = {
+  id: 'id',
+  order_id: 'order_id',
+  student_id: 'student_id',
+  token_id: 'token_id',
+  student_name: 'student_name',
+  class: 'class',
+  section: 'section',
+  roll_number: 'roll_number',
+  photo_url: 'photo_url',
+  status: 'status',
+  qr_generated: 'qr_generated',
+  card_design_url: 'card_design_url',
+  card_printed: 'card_printed',
+  has_issue: 'has_issue',
+  issue_note: 'issue_note',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
+};
+
+exports.Prisma.OrderStatusLogScalarFieldEnum = {
+  id: 'id',
+  order_id: 'order_id',
+  from_status: 'from_status',
+  to_status: 'to_status',
+  changed_by: 'changed_by',
+  note: 'note',
+  metadata: 'metadata',
   created_at: 'created_at'
+};
+
+exports.Prisma.OrderShipmentScalarFieldEnum = {
+  id: 'id',
+  order_id: 'order_id',
+  shiprocket_order_id: 'shiprocket_order_id',
+  shiprocket_shipment_id: 'shiprocket_shipment_id',
+  awb_code: 'awb_code',
+  courier_name: 'courier_name',
+  courier_id: 'courier_id',
+  tracking_url: 'tracking_url',
+  label_url: 'label_url',
+  manifest_url: 'manifest_url',
+  pickup_vendor_id: 'pickup_vendor_id',
+  pickup_name: 'pickup_name',
+  pickup_contact: 'pickup_contact',
+  pickup_address: 'pickup_address',
+  pickup_city: 'pickup_city',
+  pickup_state: 'pickup_state',
+  pickup_pincode: 'pickup_pincode',
+  delivery_name: 'delivery_name',
+  delivery_phone: 'delivery_phone',
+  delivery_address: 'delivery_address',
+  delivery_city: 'delivery_city',
+  delivery_state: 'delivery_state',
+  delivery_pincode: 'delivery_pincode',
+  status: 'status',
+  shiprocket_status: 'shiprocket_status',
+  created_by: 'created_by',
+  tracking_shared_at: 'tracking_shared_at',
+  tracking_shared_by: 'tracking_shared_by',
+  pickup_scheduled_at: 'pickup_scheduled_at',
+  picked_up_at: 'picked_up_at',
+  estimated_delivery_at: 'estimated_delivery_at',
+  delivered_at: 'delivered_at',
+  delivery_confirmed_by: 'delivery_confirmed_by',
+  notes: 'notes',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
+};
+
+exports.Prisma.VendorProfileScalarFieldEnum = {
+  id: 'id',
+  name: 'name',
+  contact_name: 'contact_name',
+  phone: 'phone',
+  email: 'email',
+  status: 'status',
+  address: 'address',
+  city: 'city',
+  state: 'state',
+  pincode: 'pincode',
+  gstin: 'gstin',
+  speciality: 'speciality',
+  avg_turnaround_days: 'avg_turnaround_days',
+  notes: 'notes',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
 };
 
 exports.Prisma.CardScalarFieldEnum = {
@@ -379,6 +541,7 @@ exports.Prisma.CardScalarFieldEnum = {
   school_id: 'school_id',
   student_id: 'student_id',
   token_id: 'token_id',
+  order_id: 'order_id',
   card_number: 'card_number',
   file_url: 'file_url',
   print_status: 'print_status',
@@ -403,89 +566,52 @@ exports.Prisma.CardRenewalScalarFieldEnum = {
   created_at: 'created_at'
 };
 
-exports.Prisma.QrAssetScalarFieldEnum = {
-  id: 'id',
-  token_id: 'token_id',
-  school_id: 'school_id',
-  storage_key: 'storage_key',
-  public_url: 'public_url',
-  format: 'format',
-  width_px: 'width_px',
-  height_px: 'height_px',
-  file_size_kb: 'file_size_kb',
-  qr_type: 'qr_type',
-  generated_by: 'generated_by',
-  order_id: 'order_id',
-  is_active: 'is_active',
-  generated_at: 'generated_at'
-};
-
-exports.Prisma.CardOrderScalarFieldEnum = {
+exports.Prisma.SubscriptionScalarFieldEnum = {
   id: 'id',
   school_id: 'school_id',
-  order_number: 'order_number',
-  order_type: 'order_type',
-  order_mode: 'order_mode',
-  channel: 'channel',
-  card_count: 'card_count',
-  unit_price: 'unit_price',
-  tax_rate: 'tax_rate',
-  tax_amount: 'tax_amount',
-  total_amount: 'total_amount',
+  plan: 'plan',
   status: 'status',
-  delivery_name: 'delivery_name',
-  delivery_phone: 'delivery_phone',
-  delivery_address: 'delivery_address',
-  delivery_city: 'delivery_city',
-  delivery_state: 'delivery_state',
-  delivery_pincode: 'delivery_pincode',
-  delivery_notes: 'delivery_notes',
-  notes: 'notes',
-  admin_notes: 'admin_notes',
-  processed_by: 'processed_by',
-  processed_at: 'processed_at',
-  payment_status: 'payment_status',
-  payment_id: 'payment_id',
-  invoice_id: 'invoice_id',
-  paid_at: 'paid_at',
-  advance_amount: 'advance_amount',
-  advance_paid_at: 'advance_paid_at',
-  balance_amount: 'balance_amount',
-  balance_due_at: 'balance_due_at',
-  balance_paid_at: 'balance_paid_at',
+  provider: 'provider',
+  provider_sub_id: 'provider_sub_id',
   school_type: 'school_type',
   pricing_tier: 'pricing_tier',
+  student_count: 'student_count',
+  unit_price: 'unit_price',
+  renewal_price: 'renewal_price',
+  total_amount: 'total_amount',
+  tax_amount: 'tax_amount',
+  grand_total: 'grand_total',
+  advance_paid: 'advance_paid',
+  balance_due: 'balance_due',
+  fully_paid_at: 'fully_paid_at',
+  current_period_start: 'current_period_start',
+  current_period_end: 'current_period_end',
+  trial_ends_at: 'trial_ends_at',
+  cancel_reason: 'cancel_reason',
+  cancelled_at: 'cancelled_at',
   created_at: 'created_at',
   updated_at: 'updated_at'
 };
 
-exports.Prisma.CardOrderItemScalarFieldEnum = {
+exports.Prisma.SchoolPaymentBatchScalarFieldEnum = {
   id: 'id',
-  order_id: 'order_id',
-  student_id: 'student_id',
-  token_id: 'token_id',
-  student_name: 'student_name',
-  class: 'class',
-  section: 'section',
-  roll_number: 'roll_number',
-  photo_url: 'photo_url',
+  school_id: 'school_id',
+  subscription_id: 'subscription_id',
+  batch_number: 'batch_number',
+  student_count: 'student_count',
+  unit_price: 'unit_price',
+  subtotal: 'subtotal',
+  tax_amount: 'tax_amount',
+  total_amount: 'total_amount',
+  amount_received: 'amount_received',
+  payment_ref: 'payment_ref',
+  payment_mode: 'payment_mode',
   status: 'status',
-  qr_generated: 'qr_generated',
-  card_printed: 'card_printed',
-  created_at: 'created_at'
-};
-
-exports.Prisma.OrderShipmentScalarFieldEnum = {
-  id: 'id',
-  order_id: 'order_id',
-  courier_name: 'courier_name',
-  tracking_number: 'tracking_number',
-  tracking_url: 'tracking_url',
-  shipped_at: 'shipped_at',
-  estimated_at: 'estimated_at',
-  delivered_at: 'delivered_at',
-  status: 'status',
+  is_advance: 'is_advance',
   notes: 'notes',
+  received_at: 'received_at',
+  verified_by: 'verified_by',
+  verified_at: 'verified_at',
   created_at: 'created_at',
   updated_at: 'updated_at'
 };
@@ -493,9 +619,7 @@ exports.Prisma.OrderShipmentScalarFieldEnum = {
 exports.Prisma.InvoiceScalarFieldEnum = {
   id: 'id',
   school_id: 'school_id',
-  order_id: 'order_id',
   subscription_id: 'subscription_id',
-  payment_id: 'payment_id',
   invoice_number: 'invoice_number',
   invoice_type: 'invoice_type',
   student_count: 'student_count',
@@ -509,6 +633,67 @@ exports.Prisma.InvoiceScalarFieldEnum = {
   paid_at: 'paid_at',
   pdf_url: 'pdf_url',
   notes: 'notes',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
+};
+
+exports.Prisma.PaymentScalarFieldEnum = {
+  id: 'id',
+  school_id: 'school_id',
+  subscription_id: 'subscription_id',
+  order_id: 'order_id',
+  invoice_id: 'invoice_id',
+  amount: 'amount',
+  tax_amount: 'tax_amount',
+  currency: 'currency',
+  status: 'status',
+  provider: 'provider',
+  provider_ref: 'provider_ref',
+  payment_mode: 'payment_mode',
+  is_advance: 'is_advance',
+  is_renewal: 'is_renewal',
+  failure_reason: 'failure_reason',
+  metadata: 'metadata',
+  created_at: 'created_at'
+};
+
+exports.Prisma.FeatureFlagScalarFieldEnum = {
+  id: 'id',
+  key: 'key',
+  enabled: 'enabled',
+  description: 'description',
+  metadata: 'metadata',
+  updated_at: 'updated_at'
+};
+
+exports.Prisma.SchoolFeatureFlagScalarFieldEnum = {
+  id: 'id',
+  school_id: 'school_id',
+  key: 'key',
+  enabled: 'enabled',
+  updated_at: 'updated_at'
+};
+
+exports.Prisma.CardTemplateScalarFieldEnum = {
+  id: 'id',
+  school_id: 'school_id',
+  logo_url: 'logo_url',
+  background_color: 'background_color',
+  primary_color: 'primary_color',
+  text_color: 'text_color',
+  qr_dark_color: 'qr_dark_color',
+  qr_light_color: 'qr_light_color',
+  cover_accent_color: 'cover_accent_color',
+  cover_tagline: 'cover_tagline',
+  cards_per_sheet: 'cards_per_sheet',
+  card_width: 'card_width',
+  card_height: 'card_height',
+  show_student_name: 'show_student_name',
+  show_class: 'show_class',
+  show_school_name: 'show_school_name',
+  show_photo: 'show_photo',
+  is_locked: 'is_locked',
+  updated_by: 'updated_by',
   created_at: 'created_at',
   updated_at: 'updated_at'
 };
@@ -557,6 +742,7 @@ exports.Prisma.DeviceLoginLogScalarFieldEnum = {
 exports.Prisma.ScanLogScalarFieldEnum = {
   id: 'id',
   token_id: 'token_id',
+  school_id: 'school_id',
   result: 'result',
   ip_address: 'ip_address',
   ip_city: 'ip_city',
@@ -612,6 +798,7 @@ exports.Prisma.LocationConsentScalarFieldEnum = {
 exports.Prisma.LocationEventScalarFieldEnum = {
   id: 'id',
   student_id: 'student_id',
+  school_id: 'school_id',
   token_id: 'token_id',
   latitude: 'latitude',
   longitude: 'longitude',
@@ -641,7 +828,10 @@ exports.Prisma.TrustedScanZoneScalarFieldEnum = {
   longitude: 'longitude',
   radius_m: 'radius_m',
   is_active: 'is_active',
-  created_at: 'created_at'
+  created_by: 'created_by',
+  updated_by: 'updated_by',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
 };
 
 exports.Prisma.NotificationScalarFieldEnum = {
@@ -721,112 +911,6 @@ exports.Prisma.WebhookEventScalarFieldEnum = {
   processed: 'processed',
   processed_at: 'processed_at',
   error: 'error'
-};
-
-exports.Prisma.SubscriptionScalarFieldEnum = {
-  id: 'id',
-  school_id: 'school_id',
-  plan: 'plan',
-  status: 'status',
-  provider: 'provider',
-  provider_sub_id: 'provider_sub_id',
-  school_type: 'school_type',
-  pricing_tier: 'pricing_tier',
-  student_count: 'student_count',
-  unit_price: 'unit_price',
-  renewal_price: 'renewal_price',
-  total_amount: 'total_amount',
-  advance_paid: 'advance_paid',
-  balance_due: 'balance_due',
-  current_period_start: 'current_period_start',
-  current_period_end: 'current_period_end',
-  trial_ends_at: 'trial_ends_at',
-  cancel_reason: 'cancel_reason',
-  cancelled_at: 'cancelled_at',
-  created_at: 'created_at',
-  updated_at: 'updated_at'
-};
-
-exports.Prisma.PaymentScalarFieldEnum = {
-  id: 'id',
-  school_id: 'school_id',
-  subscription_id: 'subscription_id',
-  order_id: 'order_id',
-  amount: 'amount',
-  tax_amount: 'tax_amount',
-  currency: 'currency',
-  status: 'status',
-  provider: 'provider',
-  provider_ref: 'provider_ref',
-  is_card_fee: 'is_card_fee',
-  is_renewal: 'is_renewal',
-  invoice_id: 'invoice_id',
-  failure_reason: 'failure_reason',
-  metadata: 'metadata',
-  created_at: 'created_at'
-};
-
-exports.Prisma.FeatureFlagScalarFieldEnum = {
-  id: 'id',
-  key: 'key',
-  enabled: 'enabled',
-  description: 'description',
-  metadata: 'metadata',
-  updated_at: 'updated_at'
-};
-
-exports.Prisma.SchoolFeatureFlagScalarFieldEnum = {
-  id: 'id',
-  school_id: 'school_id',
-  key: 'key',
-  enabled: 'enabled'
-};
-
-exports.Prisma.CardTemplateScalarFieldEnum = {
-  id: 'id',
-  school_id: 'school_id',
-  logo_url: 'logo_url',
-  background_color: 'background_color',
-  primary_color: 'primary_color',
-  text_color: 'text_color',
-  qr_dark_color: 'qr_dark_color',
-  qr_light_color: 'qr_light_color',
-  cover_accent_color: 'cover_accent_color',
-  cover_tagline: 'cover_tagline',
-  cards_per_sheet: 'cards_per_sheet',
-  card_width: 'card_width',
-  card_height: 'card_height',
-  show_student_name: 'show_student_name',
-  show_class: 'show_class',
-  show_school_name: 'show_school_name',
-  show_photo: 'show_photo',
-  is_locked: 'is_locked',
-  updated_by: 'updated_by',
-  created_at: 'created_at',
-  updated_at: 'updated_at'
-};
-
-exports.Prisma.SchoolPaymentBatchScalarFieldEnum = {
-  id: 'id',
-  school_id: 'school_id',
-  subscription_id: 'subscription_id',
-  batch_number: 'batch_number',
-  student_count: 'student_count',
-  unit_price: 'unit_price',
-  subtotal: 'subtotal',
-  tax_amount: 'tax_amount',
-  total_amount: 'total_amount',
-  amount_received: 'amount_received',
-  payment_ref: 'payment_ref',
-  payment_mode: 'payment_mode',
-  status: 'status',
-  is_advance: 'is_advance',
-  notes: 'notes',
-  received_at: 'received_at',
-  verified_by: 'verified_by',
-  verified_at: 'verified_at',
-  created_at: 'created_at',
-  updated_at: 'updated_at'
 };
 
 exports.Prisma.SortOrder = {
@@ -975,6 +1059,109 @@ exports.TokenStatus = exports.$Enums.TokenStatus = {
   EXPIRED: 'EXPIRED'
 };
 
+exports.TokenBatchStatus = exports.$Enums.TokenBatchStatus = {
+  PENDING: 'PENDING',
+  PROCESSING: 'PROCESSING',
+  COMPLETE: 'COMPLETE',
+  PARTIAL: 'PARTIAL',
+  FAILED: 'FAILED'
+};
+
+exports.QrFormat = exports.$Enums.QrFormat = {
+  PNG: 'PNG',
+  SVG: 'SVG',
+  PDF: 'PDF'
+};
+
+exports.QrType = exports.$Enums.QrType = {
+  BLANK: 'BLANK',
+  PRE_DETAILS: 'PRE_DETAILS'
+};
+
+exports.OrderType = exports.$Enums.OrderType = {
+  BLANK: 'BLANK',
+  PRE_DETAILS: 'PRE_DETAILS'
+};
+
+exports.OrderMode = exports.$Enums.OrderMode = {
+  BULK: 'BULK',
+  SINGLE: 'SINGLE'
+};
+
+exports.OrderChannel = exports.$Enums.OrderChannel = {
+  DASHBOARD: 'DASHBOARD',
+  CALL: 'CALL'
+};
+
+exports.OrderStatus = exports.$Enums.OrderStatus = {
+  PENDING: 'PENDING',
+  CONFIRMED: 'CONFIRMED',
+  PAYMENT_PENDING: 'PAYMENT_PENDING',
+  ADVANCE_RECEIVED: 'ADVANCE_RECEIVED',
+  TOKEN_GENERATION: 'TOKEN_GENERATION',
+  TOKEN_GENERATED: 'TOKEN_GENERATED',
+  CARD_DESIGN: 'CARD_DESIGN',
+  CARD_DESIGN_READY: 'CARD_DESIGN_READY',
+  CARD_DESIGN_REVISION: 'CARD_DESIGN_REVISION',
+  SENT_TO_VENDOR: 'SENT_TO_VENDOR',
+  PRINTING: 'PRINTING',
+  PRINT_COMPLETE: 'PRINT_COMPLETE',
+  READY_TO_SHIP: 'READY_TO_SHIP',
+  SHIPPED: 'SHIPPED',
+  OUT_FOR_DELIVERY: 'OUT_FOR_DELIVERY',
+  DELIVERED: 'DELIVERED',
+  BALANCE_PENDING: 'BALANCE_PENDING',
+  COMPLETED: 'COMPLETED',
+  CANCELLED: 'CANCELLED',
+  REFUNDED: 'REFUNDED'
+};
+
+exports.OrderPaymentStatus = exports.$Enums.OrderPaymentStatus = {
+  UNPAID: 'UNPAID',
+  PARTIALLY_PAID: 'PARTIALLY_PAID',
+  PAID: 'PAID',
+  REFUNDED: 'REFUNDED'
+};
+
+exports.OrderItemStatus = exports.$Enums.OrderItemStatus = {
+  PENDING: 'PENDING',
+  TOKEN_GENERATED: 'TOKEN_GENERATED',
+  CARD_DESIGNED: 'CARD_DESIGNED',
+  PRINTED: 'PRINTED',
+  SHIPPED: 'SHIPPED',
+  DELIVERED: 'DELIVERED'
+};
+
+exports.ShipmentStatus = exports.$Enums.ShipmentStatus = {
+  PENDING: 'PENDING',
+  PICKUP_SCHEDULED: 'PICKUP_SCHEDULED',
+  PICKED_UP: 'PICKED_UP',
+  IN_TRANSIT: 'IN_TRANSIT',
+  OUT_FOR_DELIVERY: 'OUT_FOR_DELIVERY',
+  DELIVERED: 'DELIVERED',
+  FAILED: 'FAILED',
+  RETURNED: 'RETURNED'
+};
+
+exports.ShiprocketStatus = exports.$Enums.ShiprocketStatus = {
+  PENDING: 'PENDING',
+  PICKUP_SCHEDULED: 'PICKUP_SCHEDULED',
+  PICKED_UP: 'PICKED_UP',
+  IN_TRANSIT: 'IN_TRANSIT',
+  OUT_FOR_DELIVERY: 'OUT_FOR_DELIVERY',
+  DELIVERED: 'DELIVERED',
+  UNDELIVERED: 'UNDELIVERED',
+  CANCELLED: 'CANCELLED',
+  RTO_INITIATED: 'RTO_INITIATED',
+  RTO_DELIVERED: 'RTO_DELIVERED'
+};
+
+exports.VendorStatus = exports.$Enums.VendorStatus = {
+  ACTIVE: 'ACTIVE',
+  INACTIVE: 'INACTIVE',
+  BLACKLISTED: 'BLACKLISTED'
+};
+
 exports.PrintStatus = exports.$Enums.PrintStatus = {
   PENDING: 'PENDING',
   PRINTED: 'PRINTED',
@@ -989,69 +1176,38 @@ exports.ActorType = exports.$Enums.ActorType = {
   SYSTEM: 'SYSTEM'
 };
 
-exports.QrFormat = exports.$Enums.QrFormat = {
-  PNG: 'PNG',
-  SVG: 'SVG',
-  PDF: 'PDF'
+exports.PlanType = exports.$Enums.PlanType = {
+  FREE_PILOT: 'FREE_PILOT',
+  GOVT_STANDARD: 'GOVT_STANDARD',
+  PRIVATE_STANDARD: 'PRIVATE_STANDARD',
+  ENTERPRISE: 'ENTERPRISE'
 };
 
-exports.QrType = exports.$Enums.QrType = {
-  SINGLE_BLANK: 'SINGLE_BLANK',
-  BULK_BLANK: 'BULK_BLANK',
-  SINGLE_PRE_DETAILS: 'SINGLE_PRE_DETAILS',
-  BULK_PRE_DETAILS: 'BULK_PRE_DETAILS'
+exports.SubscriptionStatus = exports.$Enums.SubscriptionStatus = {
+  TRIALING: 'TRIALING',
+  ACTIVE: 'ACTIVE',
+  PAST_DUE: 'PAST_DUE',
+  CANCELED: 'CANCELED',
+  EXPIRED: 'EXPIRED'
 };
 
-exports.OrderMode = exports.$Enums.OrderMode = {
-  SINGLE: 'SINGLE',
-  BULK: 'BULK'
+exports.PaymentMode = exports.$Enums.PaymentMode = {
+  BANK_TRANSFER: 'BANK_TRANSFER',
+  UPI: 'UPI',
+  CHEQUE: 'CHEQUE',
+  RAZORPAY: 'RAZORPAY',
+  CASH: 'CASH'
 };
 
-exports.OrderChannel = exports.$Enums.OrderChannel = {
-  DASHBOARD: 'DASHBOARD',
-  CALL: 'CALL'
-};
-
-exports.OrderStatus = exports.$Enums.OrderStatus = {
+exports.BatchPaymentStatus = exports.$Enums.BatchPaymentStatus = {
   PENDING: 'PENDING',
-  CONFIRMED: 'CONFIRMED',
-  PAYMENT_PENDING: 'PAYMENT_PENDING',
+  PARTIALLY_PAID: 'PARTIALLY_PAID',
   PAID: 'PAID',
-  PROCESSING: 'PROCESSING',
-  PRINTING: 'PRINTING',
-  SHIPPED: 'SHIPPED',
-  DELIVERED: 'DELIVERED',
-  CANCELLED: 'CANCELLED',
-  REFUNDED: 'REFUNDED'
-};
-
-exports.PaymentStatus = exports.$Enums.PaymentStatus = {
-  PENDING: 'PENDING',
-  SUCCESS: 'SUCCESS',
-  FAILED: 'FAILED',
-  REFUNDED: 'REFUNDED'
-};
-
-exports.OrderItemStatus = exports.$Enums.OrderItemStatus = {
-  PENDING: 'PENDING',
-  TOKEN_GENERATED: 'TOKEN_GENERATED',
-  PRINTED: 'PRINTED',
-  SHIPPED: 'SHIPPED',
-  DELIVERED: 'DELIVERED'
-};
-
-exports.ShipmentStatus = exports.$Enums.ShipmentStatus = {
-  PREPARING: 'PREPARING',
-  DISPATCHED: 'DISPATCHED',
-  IN_TRANSIT: 'IN_TRANSIT',
-  OUT_FOR_DELIVERY: 'OUT_FOR_DELIVERY',
-  DELIVERED: 'DELIVERED',
-  FAILED: 'FAILED',
-  RETURNED: 'RETURNED'
+  OVERDUE: 'OVERDUE',
+  CANCELLED: 'CANCELLED'
 };
 
 exports.InvoiceType = exports.$Enums.InvoiceType = {
-  ORDER: 'ORDER',
   ADVANCE: 'ADVANCE',
   BALANCE: 'BALANCE',
   RENEWAL: 'RENEWAL',
@@ -1064,6 +1220,13 @@ exports.InvoiceStatus = exports.$Enums.InvoiceStatus = {
   PAID: 'PAID',
   OVERDUE: 'OVERDUE',
   CANCELLED: 'CANCELLED'
+};
+
+exports.PaymentStatus = exports.$Enums.PaymentStatus = {
+  PENDING: 'PENDING',
+  SUCCESS: 'SUCCESS',
+  FAILED: 'FAILED',
+  REFUNDED: 'REFUNDED'
 };
 
 exports.SessionRevokeReason = exports.$Enums.SessionRevokeReason = {
@@ -1144,37 +1307,6 @@ exports.NotificationStatus = exports.$Enums.NotificationStatus = {
   SUPPRESSED: 'SUPPRESSED'
 };
 
-exports.PlanType = exports.$Enums.PlanType = {
-  FREE_PILOT: 'FREE_PILOT',
-  GOVT_STANDARD: 'GOVT_STANDARD',
-  PRIVATE_STANDARD: 'PRIVATE_STANDARD',
-  ENTERPRISE: 'ENTERPRISE'
-};
-
-exports.SubscriptionStatus = exports.$Enums.SubscriptionStatus = {
-  TRIALING: 'TRIALING',
-  ACTIVE: 'ACTIVE',
-  PAST_DUE: 'PAST_DUE',
-  CANCELED: 'CANCELED',
-  EXPIRED: 'EXPIRED'
-};
-
-exports.PaymentMode = exports.$Enums.PaymentMode = {
-  BANK_TRANSFER: 'BANK_TRANSFER',
-  UPI: 'UPI',
-  CHEQUE: 'CHEQUE',
-  RAZORPAY: 'RAZORPAY',
-  CASH: 'CASH'
-};
-
-exports.BatchPaymentStatus = exports.$Enums.BatchPaymentStatus = {
-  PENDING: 'PENDING',
-  PARTIALLY_PAID: 'PARTIALLY_PAID',
-  PAID: 'PAID',
-  OVERDUE: 'OVERDUE',
-  CANCELLED: 'CANCELLED'
-};
-
 exports.Prisma.ModelName = {
   School: 'School',
   SchoolSettings: 'SchoolSettings',
@@ -1192,13 +1324,21 @@ exports.Prisma.ModelName = {
   ParentEditLog: 'ParentEditLog',
   Token: 'Token',
   TokenBatch: 'TokenBatch',
-  Card: 'Card',
-  CardRenewal: 'CardRenewal',
   QrAsset: 'QrAsset',
   CardOrder: 'CardOrder',
   CardOrderItem: 'CardOrderItem',
+  OrderStatusLog: 'OrderStatusLog',
   OrderShipment: 'OrderShipment',
+  VendorProfile: 'VendorProfile',
+  Card: 'Card',
+  CardRenewal: 'CardRenewal',
+  Subscription: 'Subscription',
+  SchoolPaymentBatch: 'SchoolPaymentBatch',
   Invoice: 'Invoice',
+  Payment: 'Payment',
+  FeatureFlag: 'FeatureFlag',
+  SchoolFeatureFlag: 'SchoolFeatureFlag',
+  CardTemplate: 'CardTemplate',
   Session: 'Session',
   BlacklistToken: 'BlacklistToken',
   DeviceLoginLog: 'DeviceLoginLog',
@@ -1214,13 +1354,7 @@ exports.Prisma.ModelName = {
   ApiKey: 'ApiKey',
   Webhook: 'Webhook',
   WebhookDelivery: 'WebhookDelivery',
-  WebhookEvent: 'WebhookEvent',
-  Subscription: 'Subscription',
-  Payment: 'Payment',
-  FeatureFlag: 'FeatureFlag',
-  SchoolFeatureFlag: 'SchoolFeatureFlag',
-  CardTemplate: 'CardTemplate',
-  SchoolPaymentBatch: 'SchoolPaymentBatch'
+  WebhookEvent: 'WebhookEvent'
 };
 
 /**
