@@ -1,0 +1,2 @@
+[0mPOST /api/auth/super-admin [32m200[0m 409.514 ms - 677[0m
+POST /api/auth/logout 200 52 - 297.935 ms

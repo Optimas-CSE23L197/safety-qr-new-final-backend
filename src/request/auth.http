@@ -11,7 +11,7 @@
 ### =============================================================================
 
 @baseUrl      = http://localhost:3000/api
-@accessToken  = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3N2FlZmY0Zi1kM2I1LTQ5MGQtYTdjYS00ZWJiYmQ4ZGNjYTciLCJyb2xlIjoiU0NIT09MX1VTRVIiLCJzZXNzaW9uSWQiOiIwZGZlMDk3Mi05ZmZiLTQ0NDktYWE3My1kOTJmY2MyMWEzODAiLCJqdGkiOiIxMDM5ODI0Yi02YzFjLTQ3M2UtOTk1ZS0xNjQzOWY4OWQ1ODkiLCJzY2hvb2xJZCI6ImVlMjBiZDMyLWM1MzktNDQ4OS1hZTIyLWNlMzVjNGIyNGE3YiIsImlhdCI6MTc3NDEyMDU4MCwiZXhwIjoxNzc0MTI0MTgwLCJhdWQiOiJyZXNxaWQtYXBpIiwiaXNzIjoicmVzcWlkIn0.4U7bej-XYsVwVBagi6gy4HHb6fGIgZkZfY8CWa5rit4
+@accessToken  = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2NDdhNWYxNy0wOWNhLTRlOTYtYjFjYy0wZjgyNmRhNWVkODgiLCJyb2xlIjoiU1VQRVJfQURNSU4iLCJzZXNzaW9uSWQiOiI4NTFmY2U5NC03ZDU2LTRjNmQtYWI4Mi0zNmVmNmQzMjM2OWQiLCJqdGkiOiI2YmRiYmQ0Zi1mZmEyLTQ4ZWEtYThiMC0zYWI0MjZhZGFiMmYiLCJpYXQiOjE3NzQxNTMzMDMsImV4cCI6MTc3NDE1NTEwMywiYXVkIjoicmVzcWlkLWFwaSIsImlzcyI6InJlc3FpZCJ9.8A5nV99-4mg1yXusyrqsD5AoM-VuxX5lwqpHUyVXt0o
 @refreshToken = 8591c831935191fa820cffceff3bc4394544e501d6bb5b3f623d313f4f1bb716
 
 ### =============================================================================

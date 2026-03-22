@@ -112,6 +112,10 @@ import scanRoute from "./modules/scan/scan.routes.js";
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 import router from "./routes/index.js";
+import morgan from "morgan";
+import { accessLogger } from "./middleware/morgan.middleware.js";
+
+// morgan logger
 
 // =============================================================================
 // App Factory
@@ -145,6 +149,7 @@ export function createApp() {
   // ── [5] HTTP Logger ──────────────────────────────────────────────────────────
   // Before everything else so we log ALL requests including blocked ones.
   // Attaches req.log (child logger with requestId + ip context).
+  app.use(accessLogger);
   app.use(httpLogger);
 
   // ── [6] Security Headers (Helmet) ───────────────────────────────────────────

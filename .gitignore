@@ -4,5 +4,5 @@ node_modules
 /request
 /tests
 /node_modules
-
+logs/*.log*
 /src/generated/prisma
