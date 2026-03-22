@@ -1,14 +1,6 @@
 // =============================================================================
-// auth.routes.js — RESQID
-// Authentication routes — super admin, school user, parent OTP flow
-//
-// FIX [#13]: validate() takes a Zod schema as the first argument, not an
-// object. All routes were incorrectly calling validate({ body: schema })
-// which passed a plain object where a Zod schema was expected, causing:
-//   "TypeError: schema.safeParse is not a function"
-// Fixed to validate(schema) — "body" is the default target so it need not
-// be specified. Use validateAll({ body, params, query }) only when multiple
-// targets must be validated simultaneously.
+// src/modules/auth/routes.js — RESQID
+// Mounted at /api/auth
 // =============================================================================
 
 import { Router } from "express";
@@ -22,6 +14,8 @@ import {
   emailPasswordValidation,
   sendOtpValidation,
   verifyOtpValidation,
+  registerInitValidation,
+  registerVerifyValidation,
 } from "./auth.validation.js";
 
 import {
@@ -29,82 +23,68 @@ import {
   loginSchoolUserController,
   sendOtpController,
   verifyOtpController,
+  registerInitController,
+  registerVerifyController,
   refreshTokenController,
   logoutController,
 } from "./auth.controller.js";
 
 const router = Router();
 
-/**
- * ============================================================
- * SUPER ADMIN LOGIN
- * POST /api/auth/super-admin
- * ============================================================
- */
+// ── Super Admin Login ─────────────────────────────────────────────────────────
 router.post(
   "/super-admin",
   authSlowDown,
   authLimiter,
-  validate(emailPasswordValidation), // ✅ schema first, "body" is default
+  validate(emailPasswordValidation),
   loginSuperAdminController,
 );
 
-/**
- * ============================================================
- * SCHOOL USER LOGIN
- * POST /api/auth/school
- * ============================================================
- */
+// ── School User Login ─────────────────────────────────────────────────────────
 router.post(
   "/school",
   authSlowDown,
   authLimiter,
-  validate(emailPasswordValidation), // ✅
+  validate(emailPasswordValidation),
   loginSchoolUserController,
 );
 
-/**
- * ============================================================
- * PARENT AUTH (OTP FLOW)
- * ============================================================
- */
-
-/**
- * Step 1: Send OTP
- * POST /api/auth/send-otp
- */
+// ── Parent Login: Send OTP ────────────────────────────────────────────────────
 router.post(
   "/send-otp",
   authLimiter,
-  validate(sendOtpValidation), // ✅
+  validate(sendOtpValidation),
   sendOtpController,
 );
 
-/**
- * Step 2: Verify OTP
- * POST /api/auth/verify-otp
- */
+// ── Parent Login: Verify OTP ──────────────────────────────────────────────────
 router.post(
   "/verify-otp",
   authLimiter,
-  validate(verifyOtpValidation), // ✅
+  validate(verifyOtpValidation),
   verifyOtpController,
 );
 
-/**
- * ============================================================
- * REFRESH TOKEN
- * POST /api/auth/refresh
- * ============================================================
- */
+// ── Parent Registration: Step 1 — validate card + send OTP + issue nonce ─────
+router.post(
+  "/register/init",
+  authLimiter,
+  validate(registerInitValidation),
+  registerInitController,
+);
+
+// ── Parent Registration: Step 2 — verify nonce + OTP → issue tokens ──────────
+router.post(
+  "/register/verify",
+  authLimiter,
+  validate(registerVerifyValidation),
+  registerVerifyController,
+);
+
+// ── Refresh Token ─────────────────────────────────────────────────────────────
 router.post("/refresh", authLimiter, refreshTokenController);
 
-/**
- * ============================================================
- * LOGOUT
- * POST /api/auth/logout
- * ============================================================
- */
+// ── Logout ────────────────────────────────────────────────────────────────────
 router.post("/logout", authenticate, logoutController);
 
 export default router;

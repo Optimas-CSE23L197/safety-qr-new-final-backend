@@ -14,6 +14,9 @@ import { Router } from "express";
 import authRoute from "../modules/auth/auth.routes.js";
 import orderRoutes from "../modules/order/order.routes.js";
 
+// parent route
+import parentRoutes from "../modules/parents/parent.routes.js";
+
 // ── School admin sub-router ───────────────────────────────────────────────────
 import schoolAdminRouter from "./schoolAdmin.routes.js";
 
@@ -28,6 +31,7 @@ const router = Router();
 router.use("/auth", authRoute);
 router.use("/orders", orderRoutes);
 router.use("/school-admin", schoolAdminRouter);
+router.use("/parents", parentRoutes);
 // router.use("/super-admin",  superAdminRouter);
 // router.use("/parents",      parentRouter);
 

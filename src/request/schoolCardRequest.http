@@ -4,9 +4,9 @@
 ### =============================================================================
 
 @baseUrl   = http://localhost:3000/api/school-admin
-@token     = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3N2FlZmY0Zi1kM2I1LTQ5MGQtYTdjYS00ZWJiYmQ4ZGNjYTciLCJyb2xlIjoiU0NIT09MX1VTRVIiLCJzZXNzaW9uSWQiOiJiMTE3ODZmNy04MzZlLTRhY2EtYmM5Yi1lY2E4MGViNjkzMTkiLCJqdGkiOiIxOTg0NDVlZC1kMTg2LTQwNzQtYmUyOS0wZGM1ZGFhMDY2YWQiLCJzY2hvb2xJZCI6ImVlMjBiZDMyLWM1MzktNDQ4OS1hZTIyLWNlMzVjNGIyNGE3YiIsImlhdCI6MTc3NDE1Nzc5NywiZXhwIjoxNzc0MTYxMzk3LCJhdWQiOiJyZXNxaWQtYXBpIiwiaXNzIjoicmVzcWlkIn0.HEXYWKielRn9_cqagsYcStwPdxz1WgNLLO9NpbiWbwU
-@schoolId  = ee20bd32-c539-4489-ae22-ce35c4b24a7b
-@badUUID   = ee20bd32-c539-4489-ae22-ce35c4b24a8b
+@token     = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3YmY2NTU1MS1mNGFmLTRmZDctYWFiNy1kMTY3YTM5MjE5MjEiLCJyb2xlIjoiU0NIT09MX1VTRVIiLCJzZXNzaW9uSWQiOiIzYmUwYThlMC01ZmIyLTRlMjktYmJiOC0yM2Y3NjM1NzhmYjIiLCJqdGkiOiJkMWVhMTYyNy1hMjQ2LTRkY2YtYWI1MC00N2JiMGJkN2FmMDMiLCJzY2hvb2xJZCI6ImNjZTQ4NzE1LTI5MjctNGZmZS05NGM4LWNjZDIwMjRkMWMzMiIsImlhdCI6MTc3NDE5MDA4OSwiZXhwIjoxNzc0MTkzNjg5LCJhdWQiOiJyZXNxaWQtYXBpIiwiaXNzIjoicmVzcWlkIn0.XvPaXrzyGG1R_8wRmOaBVM_j5XlHP_j6iSNVgP_nxqY
+@schoolId  = cce48715-2927-4ffe-94c8-ccd2024d1c32	
+@badUUID   = cce48715-2927-4ffe-94c8-ccd2024d1c33	
 
 ### =============================================================================
 ### ✅ GET — List Card Requests

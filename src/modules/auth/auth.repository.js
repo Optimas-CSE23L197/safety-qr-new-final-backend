@@ -1,5 +1,5 @@
 // =============================================================================
-// auth.repository.js — RESQID
+// src/modules/auth/repository.js — RESQID
 // Pure DB access layer — NO business logic
 // =============================================================================
 
@@ -7,8 +7,8 @@ import { prisma } from "../../config/prisma.js";
 
 // ─── Super Admin ──────────────────────────────────────────────────────────────
 
-export const findSuperAdminByEmail = async (email) => {
-  return prisma.superAdmin.findUnique({
+export const findSuperAdminByEmail = (email) =>
+  prisma.superAdmin.findUnique({
     where: { email },
     select: {
       id: true,
@@ -18,26 +18,23 @@ export const findSuperAdminByEmail = async (email) => {
       is_active: true,
     },
   });
-};
 
-export const findSuperAdminById = async (id) => {
-  return prisma.superAdmin.findUnique({
+export const findSuperAdminById = (id) =>
+  prisma.superAdmin.findUnique({
     where: { id },
     select: { id: true, is_active: true },
   });
-};
 
-export const updateSuperAdminLastLogin = async (id) => {
-  return prisma.superAdmin.update({
+export const updateSuperAdminLastLogin = (id) =>
+  prisma.superAdmin.update({
     where: { id },
     data: { last_login_at: new Date() },
   });
-};
 
 // ─── School User ──────────────────────────────────────────────────────────────
 
-export const findSchoolUserByEmail = async (email) => {
-  return prisma.schoolUser.findUnique({
+export const findSchoolUserByEmail = (email) =>
+  prisma.schoolUser.findUnique({
     where: { email },
     select: {
       id: true,
@@ -49,26 +46,23 @@ export const findSchoolUserByEmail = async (email) => {
       is_active: true,
     },
   });
-};
 
-export const findSchoolUserById = async (id) => {
-  return prisma.schoolUser.findUnique({
+export const findSchoolUserById = (id) =>
+  prisma.schoolUser.findUnique({
     where: { id },
     select: { id: true, school_id: true, role: true, is_active: true },
   });
-};
 
-export const updateSchoolUserLastLogin = async (id) => {
-  return prisma.schoolUser.update({
+export const updateSchoolUserLastLogin = (id) =>
+  prisma.schoolUser.update({
     where: { id },
     data: { last_login_at: new Date() },
   });
-};
 
 // ─── Parent User ──────────────────────────────────────────────────────────────
 
-export const findParentByPhoneIndex = async (phoneIndex) => {
-  return prisma.parentUser.findUnique({
+export const findParentByPhoneIndex = (phoneIndex) =>
+  prisma.parentUser.findUnique({
     where: { phone_index: phoneIndex },
     select: {
       id: true,
@@ -78,17 +72,15 @@ export const findParentByPhoneIndex = async (phoneIndex) => {
       status: true,
     },
   });
-};
 
-export const findParentById = async (id) => {
-  return prisma.parentUser.findUnique({
+export const findParentById = (id) =>
+  prisma.parentUser.findUnique({
     where: { id },
     select: { id: true, status: true },
   });
-};
 
-export const createParentUser = async ({ encryptedPhone, phoneIndex }) => {
-  return prisma.parentUser.create({
+export const createParentUser = ({ encryptedPhone, phoneIndex }) =>
+  prisma.parentUser.create({
     data: {
       phone: encryptedPhone,
       phone_index: phoneIndex,
@@ -97,18 +89,61 @@ export const createParentUser = async ({ encryptedPhone, phoneIndex }) => {
     },
     select: { id: true, status: true },
   });
-};
 
-export const updateParentLastLogin = async (id) => {
-  return prisma.parentUser.update({
+export const updateParentLastLogin = (id) =>
+  prisma.parentUser.update({
     where: { id },
     data: { last_login_at: new Date() },
   });
-};
+
+// ─── Registration: Card lookup ────────────────────────────────────────────────
+
+/**
+ * findCardForRegistration(card_number)
+ * Fetches card + student + whether already claimed by a parent.
+ * Used only in registerInit — not for auth.
+ */
+export const findCardForRegistration = (card_number) =>
+  prisma.card.findUnique({
+    where: { card_number },
+    select: {
+      id: true,
+      student_id: true,
+      school_id: true,
+      student: {
+        select: {
+          id: true,
+          first_name: true,
+          setup_stage: true,
+          is_active: true,
+          parents: { select: { id: true }, take: 1 },
+        },
+      },
+    },
+  });
+
+/**
+ * linkParentToStudent(tx, parentId, studentId)
+ * Idempotent upsert — safe even if link already exists.
+ * Must be called inside a Prisma $transaction.
+ */
+export const linkParentToStudent = (tx, parentId, studentId) =>
+  tx.parentStudent.upsert({
+    where: {
+      parent_id_student_id: { parent_id: parentId, student_id: studentId },
+    },
+    update: {},
+    create: {
+      parent_id: parentId,
+      student_id: studentId,
+      relationship: "Parent",
+      is_primary: true,
+    },
+  });
 
 // ─── Session ──────────────────────────────────────────────────────────────────
 
-export const createSession = async ({
+export const createSession = ({
   id,
   superAdminId,
   schoolUserId,
@@ -117,8 +152,8 @@ export const createSession = async ({
   ipAddress,
   expiresAt,
   refreshHash,
-}) => {
-  return prisma.session.create({
+}) =>
+  prisma.session.create({
     data: {
       ...(id && { id }),
       admin_user_id: superAdminId ?? null,
@@ -132,17 +167,15 @@ export const createSession = async ({
     },
     select: { id: true },
   });
-};
 
-export const updateSessionRefreshHash = async (sessionId, refreshHash) => {
-  return prisma.session.update({
+export const updateSessionRefreshHash = (sessionId, refreshHash) =>
+  prisma.session.update({
     where: { id: sessionId },
     data: { refresh_token_hash: refreshHash },
   });
-};
 
-export const findSessionByRefreshHash = async (hash) => {
-  return prisma.session.findUnique({
+export const findSessionByRefreshHash = (hash) =>
+  prisma.session.findUnique({
     where: { refresh_token_hash: hash },
     select: {
       id: true,
@@ -154,27 +187,16 @@ export const findSessionByRefreshHash = async (hash) => {
       revoke_reason: true,
     },
   });
-};
 
-export const findSessionById = async (sessionId) => {
-  return prisma.session.findUnique({
-    where: { id: sessionId },
-  });
-};
+export const findSessionById = (sessionId) =>
+  prisma.session.findUnique({ where: { id: sessionId } });
 
-export const revokeSession = async (sessionId, reason = "MANUAL_LOGOUT") => {
-  return prisma.session.update({
+export const revokeSession = (sessionId, reason = "MANUAL_LOGOUT") =>
+  prisma.session.update({
     where: { id: sessionId },
     data: { is_active: false, revoked_at: new Date(), revoke_reason: reason },
   });
-};
 
-/**
- * revokeAllUserSessions
- * SECURITY: wipes every active session for a user across all devices.
- * Called on: refresh token reuse detection, password change, account suspend.
- * Returns count of revoked sessions.
- */
 export const revokeAllUserSessions = async (
   userId,
   role,
@@ -191,14 +213,9 @@ export const revokeAllUserSessions = async (
     where: { [field]: userId, is_active: true },
     data: { is_active: false, revoked_at: new Date(), revoke_reason: reason },
   });
-
   return result.count;
 };
 
-/**
- * findAllActiveSessionIds
- * Used after revokeAllUserSessions to bulk-invalidate Redis caches.
- */
 export const findAllActiveSessionIds = async (userId, role) => {
   const field =
     role === "SUPER_ADMIN"
@@ -211,33 +228,25 @@ export const findAllActiveSessionIds = async (userId, role) => {
     where: { [field]: userId, is_active: true },
     select: { id: true },
   });
-
   return sessions.map((s) => s.id);
 };
 
-export const deleteSession = async (sessionId) => {
-  return prisma.session.delete({ where: { id: sessionId } });
-};
+export const deleteSession = (sessionId) =>
+  prisma.session.delete({ where: { id: sessionId } });
 
-// ─── Failed Login Audit ───────────────────────────────────────────────────────
+// ─── Audit ────────────────────────────────────────────────────────────────────
 
-/**
- * logFailedLogin
- * SECURITY: records failed login attempts in AuditLog.
- * Enables: brute force detection, security alerts, forensic investigation.
- * Called on every credential mismatch in loginSuperAdmin / loginSchoolUser.
- */
-export const logFailedLogin = async ({
+export const logFailedLogin = ({
   actorType,
   identifier,
   ipAddress,
   userAgent,
   reason,
-}) => {
-  return prisma.auditLog.create({
+}) =>
+  prisma.auditLog.create({
     data: {
-      actor_id: identifier, // email used in attempt
-      actor_type: actorType, // SUPER_ADMIN | SCHOOL_USER
+      actor_id: identifier,
+      actor_type: actorType,
       action: "LOGIN_FAILED",
       entity: "Session",
       entity_id: identifier,
@@ -246,25 +255,17 @@ export const logFailedLogin = async ({
       user_agent: userAgent,
     },
   });
-};
 
 // ─── Blacklist ────────────────────────────────────────────────────────────────
 
-export const addToBlacklist = async (tokenHash, expiresAt) => {
-  return prisma.blacklistToken.create({
+export const addToBlacklist = (tokenHash, expiresAt) =>
+  prisma.blacklistToken.create({
     data: { token_hash: tokenHash, expires_at: expiresAt },
   });
-};
 
-/**
- * addRefreshToBlacklist
- * SECURITY: blacklists refresh token hash on logout so it can't be replayed.
- * Stored in BlacklistToken same as access tokens — same cleanup job applies.
- */
-export const addRefreshToBlacklist = async (refreshHash, expiresAt) => {
-  return prisma.blacklistToken.upsert({
+export const addRefreshToBlacklist = (refreshHash, expiresAt) =>
+  prisma.blacklistToken.upsert({
     where: { token_hash: refreshHash },
-    update: {}, // already blacklisted — no-op
+    update: {},
     create: { token_hash: refreshHash, expires_at: expiresAt },
   });
-};

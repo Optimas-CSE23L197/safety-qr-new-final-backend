@@ -11,8 +11,8 @@
 ### =============================================================================
 
 @baseUrl      = http://localhost:3000/api
-@accessToken  = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2NDdhNWYxNy0wOWNhLTRlOTYtYjFjYy0wZjgyNmRhNWVkODgiLCJyb2xlIjoiU1VQRVJfQURNSU4iLCJzZXNzaW9uSWQiOiI4NTFmY2U5NC03ZDU2LTRjNmQtYWI4Mi0zNmVmNmQzMjM2OWQiLCJqdGkiOiI2YmRiYmQ0Zi1mZmEyLTQ4ZWEtYThiMC0zYWI0MjZhZGFiMmYiLCJpYXQiOjE3NzQxNTMzMDMsImV4cCI6MTc3NDE1NTEwMywiYXVkIjoicmVzcWlkLWFwaSIsImlzcyI6InJlc3FpZCJ9.8A5nV99-4mg1yXusyrqsD5AoM-VuxX5lwqpHUyVXt0o
-@refreshToken = 8591c831935191fa820cffceff3bc4394544e501d6bb5b3f623d313f4f1bb716
+@accessToken  = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyY2QyNDI5NC01NjdhLTQ4MDUtODNmZS1lM2JiZWI2NTQ5MmMiLCJyb2xlIjoiU1VQRVJfQURNSU4iLCJzZXNzaW9uSWQiOiIwYjZkMjZjZS1lYzJiLTQ4OGItOWQxYS1lMjVmYzdmMTcxNWYiLCJqdGkiOiJkYzhmNGFmYS04OThhLTQ5OGQtYmI4Yy04ZTkyNjcwZmMyYzUiLCJpYXQiOjE3NzQxOTI3MTEsImV4cCI6MTc3NDE5NDUxMSwiYXVkIjoicmVzcWlkLWFwaSIsImlzcyI6InJlc3FpZCJ9.8CzjRik3sW54qZ1Y0-yUO5dDo70fYSYiSw_BEgkojE8
+@refreshToken = d128a9650f5bb0c539e899e040f8637ab07527d21a909e274d9d85665c12262e
 
 ### =============================================================================
 ### ✅ SUPER ADMIN LOGIN
@@ -83,7 +83,7 @@ Content-Type: application/json
 ### =============================================================================
 
 ### [6] Send OTP — expect 200, same message regardless of phone registered or not
-POST {{baseUrl}}/auth/otp/send
+POST {{baseUrl}}/auth/send-otp
 Content-Type: application/json
 
 {
@@ -93,18 +93,18 @@ Content-Type: application/json
 ###
 
 ### [7] Verify OTP — expect 200 + tokens
-POST {{baseUrl}}/auth/otp/verify
+POST {{baseUrl}}/auth/verify-otp
 Content-Type: application/json
 
 {
   "phone": "+919876543210",
-  "otp": "123456"
+  "otp": "260693"
 }
 
 ###
 
 ### [8] Wrong OTP — expect 401
-POST {{baseUrl}}/auth/otp/verify
+POST {{baseUrl}}/auth/verify-otp
 Content-Type: application/json
 
 {
@@ -115,7 +115,7 @@ Content-Type: application/json
 ###
 
 ### [9] Exceed OTP attempts (run [8] 5 times then this) — expect 429
-POST {{baseUrl}}/auth/otp/verify
+POST {{baseUrl}}/auth/verify-otp
 Content-Type: application/json
 
 {

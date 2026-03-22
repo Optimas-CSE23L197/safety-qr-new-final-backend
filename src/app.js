@@ -273,7 +273,7 @@ export function createApp() {
   );
 
   // ── [22] Application Routes ───────────────────────────────────────────────────
-  app.use("/api", router);
+  app.use("/api/:version", router);
 
   // ── [23] 404 Handler ─────────────────────────────────────────────────────────
   app.use(notFoundHandler);

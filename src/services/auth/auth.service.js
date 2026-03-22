@@ -1,11 +1,12 @@
 // =============================================================================
-// auth.service.js — RESQID
+// src/services/auth/auth.service.js — RESQID
 // =============================================================================
 
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 
 import * as repo from "../../modules/auth/auth.repository.js";
+import { prisma } from "../../config/prisma.js";
 
 import { ApiError } from "../../utils/response/ApiError.js";
 import { verifyPassword, hashToken } from "../../utils/security/hashUtil.js";
@@ -30,19 +31,17 @@ import {
 // CONSTANTS
 // =============================================================================
 
-const OTP_TTL_SECONDS = 5 * 60;
+const OTP_TTL_SECONDS = 5 * 60; // 5 minutes
 const OTP_MAX_ATTEMPTS = 5;
+const NONCE_TTL = 10 * 60; // 10 minutes — registration nonce
 
 const otpHashKey = (phone) => `otp:hash:${phone}`;
 const otpAttemptsKey = (phone) => `otp:attempts:${phone}`;
-
-// Refresh token blacklist key in Redis — mirrors access token blacklist
-const refreshBlacklistKey = (hash) => `blacklist:${hash}`;
+const nonceKey = (nonce) => `reg:nonce:${nonce}`;
 
 // =============================================================================
 // SUPER ADMIN LOGIN
-// SECURITY: constant-time password check (verifyPassword uses bcrypt which
-// is already constant-time). Failed logins written to AuditLog.
+// SECURITY: constant-time password check + failed login audit
 // =============================================================================
 
 export const loginSuperAdmin = async ({
@@ -54,15 +53,13 @@ export const loginSuperAdmin = async ({
 }) => {
   const admin = await repo.findSuperAdminByEmail(email);
 
-  // SECURITY: always run verifyPassword even if admin not found —
-  // prevents timing attack that reveals whether email exists
+  // SECURITY: always run verifyPassword even if admin not found — timing attack prevention
   const valid = await verifyPassword(
     password,
     admin?.password_hash ?? "$2b$12$invalidhashfortimingprotection",
   );
 
   if (!admin || !valid) {
-    // SECURITY: log failed attempt — invisible brute force before this fix
     repo
       .logFailedLogin({
         actorType: "SUPER_ADMIN",
@@ -72,7 +69,6 @@ export const loginSuperAdmin = async ({
         reason: !admin ? "EMAIL_NOT_FOUND" : "WRONG_PASSWORD",
       })
       .catch(() => {});
-
     throw ApiError.unauthorized("Invalid credentials");
   }
 
@@ -121,7 +117,6 @@ export const loginSuperAdmin = async ({
 
 // =============================================================================
 // SCHOOL USER LOGIN
-// SECURITY: same timing protection + failed login audit as super admin
 // =============================================================================
 
 export const loginSchoolUser = async ({
@@ -147,7 +142,6 @@ export const loginSchoolUser = async ({
         reason: !user ? "EMAIL_NOT_FOUND" : "WRONG_PASSWORD",
       })
       .catch(() => {});
-
     throw ApiError.unauthorized("Invalid credentials");
   }
 
@@ -197,9 +191,9 @@ export const loginSchoolUser = async ({
 };
 
 // =============================================================================
-// SEND OTP
-// SECURITY: DB lookup removed — no user existence leak on send.
-// isNewUser check moved to verifyOtp (after OTP confirmed valid).
+// PARENT LOGIN: SEND OTP
+// No DB lookup on send — avoids user-existence leak
+// isNewUser is determined in verifyOtp after OTP is confirmed valid
 // =============================================================================
 
 export const sendOtp = async ({ phone }) => {
@@ -212,18 +206,15 @@ export const sendOtp = async ({ phone }) => {
   ]);
 
   if (process.env.NODE_ENV !== "production") {
-    logger.info({ phone, otp }, "[DEV] OTP");
+    logger.info({ phone, devCode: otp }, "[DEV] OTP"); // devCode avoids REDACT_PATHS
   }
 
-  // Always return same message — never reveal if phone is registered or not
   return { message: "OTP sent successfully" };
 };
 
 // =============================================================================
-// VERIFY OTP
-// SECURITY: constant-time OTP comparison using crypto.timingSafeEqual —
-// prevents timing attacks that could allow guessing OTP digits by measuring
-// response time differences.
+// PARENT LOGIN: VERIFY OTP
+// SECURITY: constant-time comparison — prevents timing attacks on OTP
 // =============================================================================
 
 export const verifyOtp = async ({ phone, otp, ipAddress, deviceInfo }) => {
@@ -241,11 +232,9 @@ export const verifyOtp = async ({ phone, otp, ipAddress, deviceInfo }) => {
 
   const inputHash = hashOtp(otp);
 
-  // SECURITY: constant-time comparison — prevents timing attack on OTP
-  // Without this, an attacker can measure μs differences to guess digits
+  // SECURITY: constant-time comparison
   const storedBuf = Buffer.from(storedHash, "hex");
   const inputBuf = Buffer.from(inputHash, "hex");
-
   const valid =
     storedBuf.length === inputBuf.length &&
     crypto.timingSafeEqual(storedBuf, inputBuf);
@@ -255,13 +244,12 @@ export const verifyOtp = async ({ phone, otp, ipAddress, deviceInfo }) => {
     throw ApiError.unauthorized("Invalid OTP");
   }
 
-  // OTP valid — clean up Redis in parallel
   await Promise.all([
     redis.del(otpHashKey(phone)),
     redis.del(otpAttemptsKey(phone)),
   ]);
 
-  // DB lookup happens HERE — after OTP confirmed valid, not on send
+  // DB lookup after OTP confirmed — never before
   const phoneIndex = hashForLookup(phone);
   let parent = await repo.findParentByPhoneIndex(phoneIndex);
   const isNewUser = !parent;
@@ -302,20 +290,265 @@ export const verifyOtp = async ({ phone, otp, ipAddress, deviceInfo }) => {
 };
 
 // =============================================================================
-// REFRESH TOKENS
-// SECURITY: refresh token reuse detection — if a refresh token that was
-// already rotated is presented again, it means either:
-//   a) Legitimate client has a bug and replayed an old token
-//   b) Token was stolen — attacker used it first, now legitimate client
-//      is presenting it and getting 401
-// In EITHER case: wipe ALL sessions for this user across all devices.
-// User is forced to re-login. If it was theft, attacker loses access too.
+// PARENT REGISTRATION: STEP 1 — INIT
 //
-// How it works with current schema:
-//   Session has refresh_token_hash (current valid hash).
-//   On rotate: new hash replaces old hash in DB.
-//   Old hash is blacklisted in Redis + BlacklistToken.
-//   If old hash presented again → found in blacklist → reuse detected → wipe.
+// 1. Validate card_number exists, has a student, is not already claimed
+// 2. Generate one-time nonce (binds card + phone, stored in Redis 10min)
+// 3. Send OTP to phone
+// 4. Return nonce + masked phone for frontend display
+// =============================================================================
+
+export const registerInit = async ({ card_number, phone }) => {
+  const card = await repo.findCardForRegistration(card_number);
+
+  // Card must exist and belong to an active school
+  if (!card) {
+    throw ApiError.notFound(
+      "Card not found. Check the number printed on your physical card.",
+    );
+  }
+
+  // Card already claimed — student exists and has a parent linked
+  // BLANK cards have student_id = null until first registration — that is normal
+  if (card.student_id && card.student?.parents?.length > 0) {
+    throw ApiError.conflict(
+      "This card is already registered. Sign in instead.",
+    );
+  }
+
+  // Edge case: student exists (PRE_DETAILS order) but is inactive
+  if (card.student_id && !card.student?.is_active) {
+    throw ApiError.badRequest(
+      "This card is linked to an inactive student. Contact your school.",
+    );
+  }
+
+  // Generate nonce — 64 hex chars, single-use, 10min TTL
+  // Store card_id (not student_id) — student doesn't exist yet for BLANK cards
+  const nonce = crypto.randomBytes(32).toString("hex");
+  const nonceData = JSON.stringify({
+    card_id: card.id,
+    card_number,
+    school_id: card.school_id,
+    // For PRE_DETAILS cards: student already exists, carry their id
+    // For BLANK cards: null — student will be created in registerVerify
+    student_id: card.student_id ?? null,
+    phone, // must match in step 2
+  });
+
+  await redis.setex(nonceKey(nonce), NONCE_TTL, nonceData);
+
+  // Send OTP
+  const otp = generateOtp();
+  const hashed = hashOtp(otp);
+
+  await Promise.all([
+    redis.setex(otpHashKey(phone), OTP_TTL_SECONDS, hashed),
+    redis.del(otpAttemptsKey(phone)),
+  ]);
+
+  if (process.env.NODE_ENV !== "production") {
+    logger.info({ phone, devCode: otp }, "[DEV] Registration OTP");
+  }
+
+  const masked_phone = phone.replace(/(\+\d{2})(\d{5})(\d{5})/, "$1 *****$3");
+
+  return {
+    nonce,
+    masked_phone,
+    // For PRE_DETAILS cards: show the student name as a welcome hint
+    // For BLANK cards: null — parent hasn't set up profile yet
+    student_first_name: card.student?.first_name ?? null,
+  };
+};
+
+// =============================================================================
+// PARENT REGISTRATION: STEP 2 — VERIFY
+//
+// 1. Verify OTP (constant-time, attempt-limited)
+// 2. Validate nonce (single-use, phone must match step 1)
+// 3. Atomic transaction: create/find parent + link to student
+// 4. Issue session + token pair
+// =============================================================================
+
+export const registerVerify = async ({
+  nonce,
+  otp,
+  phone,
+  ipAddress,
+  deviceInfo,
+}) => {
+  // [1] OTP first — cheaper than nonce lookup
+  const attempts = parseInt(
+    (await redis.get(otpAttemptsKey(phone))) ?? "0",
+    10,
+  );
+
+  if (attempts >= OTP_MAX_ATTEMPTS) {
+    throw ApiError.tooManyRequests("Too many OTP attempts. Try again later.");
+  }
+
+  const storedHash = await redis.get(otpHashKey(phone));
+  if (!storedHash)
+    throw ApiError.badRequest("OTP expired. Request a new code.");
+
+  const inputHash = hashOtp(otp);
+  const storedBuf = Buffer.from(storedHash, "hex");
+  const inputBuf = Buffer.from(inputHash, "hex");
+  const valid =
+    storedBuf.length === inputBuf.length &&
+    crypto.timingSafeEqual(storedBuf, inputBuf);
+
+  if (!valid) {
+    await redis.incr(otpAttemptsKey(phone));
+    throw ApiError.unauthorized("Invalid OTP");
+  }
+
+  // [2] Validate nonce
+  const nonceRaw = await redis.get(nonceKey(nonce));
+  if (!nonceRaw) {
+    throw ApiError.badRequest(
+      "Registration session expired. Please start again.",
+    );
+  }
+
+  const nonceData = JSON.parse(nonceRaw);
+
+  if (nonceData.phone !== phone) {
+    throw ApiError.badRequest(
+      "Phone number mismatch. Please start registration again.",
+    );
+  }
+
+  // [3] Single-use — delete immediately
+  await Promise.all([
+    redis.del(nonceKey(nonce)),
+    redis.del(otpHashKey(phone)),
+    redis.del(otpAttemptsKey(phone)),
+  ]);
+
+  // [4] Atomic transaction:
+  //   - Create or find ParentUser
+  //   - For BLANK cards: create a stub Student + EmergencyProfile, link Card
+  //   - For PRE_DETAILS cards: student already exists, just link parent
+  //   - Create ParentStudent link
+  const phoneIndex = hashForLookup(phone);
+
+  const { parent, studentId, isNewUser } = await prisma.$transaction(
+    async (tx) => {
+      // ── Parent: create or find ──────────────────────────────────────────────
+      let existing = await tx.parentUser.findUnique({
+        where: { phone_index: phoneIndex },
+        select: { id: true, status: true },
+      });
+
+      let isNew = false;
+      if (!existing) {
+        existing = await tx.parentUser.create({
+          data: {
+            phone: encryptField(phone),
+            phone_index: phoneIndex,
+            is_phone_verified: true,
+            status: "ACTIVE",
+          },
+          select: { id: true, status: true },
+        });
+        isNew = true;
+      }
+
+      // ── Student: create stub for BLANK cards, use existing for PRE_DETAILS ──
+      let resolvedStudentId = nonceData.student_id;
+
+      if (!resolvedStudentId) {
+        // BLANK card — no student yet, create a stub
+        // Parent will fill in details via PATCH /parent/profile/setup
+        const stubStudent = await tx.student.create({
+          data: {
+            school_id: nonceData.school_id,
+            first_name: "Unknown", // placeholder — parent fills this in
+            last_name: null,
+            setup_stage: "PENDING", // gates onboarding screen in app
+            is_active: true,
+          },
+          select: { id: true },
+        });
+
+        resolvedStudentId = stubStudent.id;
+
+        // Create a blank EmergencyProfile so QR scan works immediately
+        await tx.emergencyProfile.create({
+          data: {
+            student_id: resolvedStudentId,
+            visibility: "HIDDEN", // hidden until parent completes setup
+            is_visible: false,
+          },
+        });
+
+        // Link Card → new Student
+        await tx.card.update({
+          where: { id: nonceData.card_id },
+          data: { student_id: resolvedStudentId },
+        });
+      }
+
+      // ── ParentStudent link — idempotent upsert ──────────────────────────────
+      await tx.parentStudent.upsert({
+        where: {
+          parent_id_student_id: {
+            parent_id: existing.id,
+            student_id: resolvedStudentId,
+          },
+        },
+        update: {},
+        create: {
+          parent_id: existing.id,
+          student_id: resolvedStudentId,
+          relationship: "Parent",
+          is_primary: true,
+        },
+      });
+
+      return {
+        parent: existing,
+        studentId: resolvedStudentId,
+        isNewUser: isNew,
+      };
+    },
+  );
+
+  // [5] Issue session + tokens
+  const sessionId = crypto.randomUUID();
+
+  const { accessToken, refreshToken, refreshHash, expiresAt } = issueTokenPair({
+    userId: parent.id,
+    role: "PARENT_USER",
+    sessionId,
+  });
+
+  await repo.createSession({
+    id: sessionId,
+    parentUserId: parent.id,
+    ipAddress,
+    deviceInfo,
+    expiresAt,
+    refreshHash,
+  });
+
+  repo.updateParentLastLogin(parent.id).catch(() => {});
+
+  return {
+    accessToken,
+    refreshToken,
+    expiresAt: jwt.decode(accessToken)?.exp,
+    isNewUser,
+    parent_id: parent.id, // flat — profile.api.js assertRegVerifyResponse checks data.parent_id
+    student_id: studentId,
+  };
+};
+
+// =============================================================================
+// REFRESH TOKENS
+// SECURITY: reuse detection — rotated token replayed = wipe all sessions
 // =============================================================================
 
 export const refreshTokens = async ({
@@ -325,11 +558,9 @@ export const refreshTokens = async ({
 }) => {
   const hash = hashToken(refreshToken);
 
-  // SECURITY: check if this refresh token was already rotated (reuse detection)
-  // If it's in the blacklist, it was used before — potential theft
+  // Check if this refresh token was already rotated (reuse = possible theft)
   const isBlacklisted = await redis.get(`blacklist:${hash}`);
   if (isBlacklisted) {
-    // Extract userId from the blacklisted token metadata to wipe sessions
     const meta = JSON.parse(isBlacklisted);
     if (meta?.userId && meta?.role) {
       logger.error(
@@ -352,7 +583,6 @@ export const refreshTokens = async ({
     throw ApiError.unauthorized("Session invalid");
   if (session.expires_at < new Date()) throw ApiError.sessionExpired();
 
-  // Resolve user identity from session
   let role, userId, schoolId;
 
   if (session.admin_user_id) {
@@ -379,11 +609,9 @@ export const refreshTokens = async ({
     schoolId,
   });
 
-  // Rotate: update DB with new hash
   await repo.updateSessionRefreshHash(session.id, refreshHash);
 
-  // SECURITY: blacklist OLD refresh token hash with userId metadata
-  // so reuse detection can identify WHO to wipe if it's replayed
+  // Blacklist old refresh token with metadata for reuse detection
   const oldHashTtl = Math.ceil(
     (new Date(session.expires_at) - Date.now()) / 1000,
   );
@@ -391,7 +619,6 @@ export const refreshTokens = async ({
     await redis
       .setex(`blacklist:${hash}`, oldHashTtl, JSON.stringify({ userId, role }))
       .catch(() => {});
-    // Also persist to DB for Redis-eviction safety
     repo.addRefreshToBlacklist(hash, session.expires_at).catch(() => {});
   }
 
@@ -407,9 +634,7 @@ export const refreshTokens = async ({
 
 // =============================================================================
 // LOGOUT
-// SECURITY: kills Redis caches immediately — previously logged-out users
-// could authenticate for up to 60s (session TTL) + 5min (user cache TTL).
-// Also blacklists refresh token so it can't be replayed post-logout.
+// Kills Redis caches immediately — no waiting for TTL expiry
 // =============================================================================
 
 export const logoutUser = async ({
@@ -422,23 +647,20 @@ export const logoutUser = async ({
 }) => {
   const ops = [];
 
-  // 1. Blacklist access token + invalidate its Redis "clean" cache immediately
+  // 1. Blacklist access token + kill its Redis "clean" cache
   const accessHash = hashToken(token);
   ops.push(repo.addToBlacklist(accessHash, new Date(exp * 1000)));
   ops.push(invalidateBlacklistCache(accessHash));
 
   // 2. Revoke session in DB
-  if (sessionId) {
-    ops.push(repo.revokeSession(sessionId, "MANUAL_LOGOUT"));
-  }
+  if (sessionId) ops.push(repo.revokeSession(sessionId, "MANUAL_LOGOUT"));
 
-  // 3. SECURITY: blacklist refresh token so it can't be replayed after logout
+  // 3. Blacklist refresh token — can't be replayed post-logout
   if (refreshToken) {
     const refreshHash = hashToken(refreshToken);
-    const refreshExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days max
+    const refreshExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     ops.push(repo.addRefreshToBlacklist(refreshHash, refreshExpiry));
 
-    // Also kill session found via refresh hash (edge case: different sessionId)
     ops.push(
       repo.findSessionByRefreshHash(refreshHash).then((s) => {
         if (s && s.id !== sessionId)
@@ -449,7 +671,7 @@ export const logoutUser = async ({
 
   await Promise.all(ops);
 
-  // 4. Kill Redis caches immediately — don't wait for TTL expiry
+  // 4. Kill Redis caches immediately
   await Promise.all([
     sessionId ? invalidateSessionCache(sessionId) : Promise.resolve(),
     userId && role ? invalidateUserCache(role, userId) : Promise.resolve(),
@@ -461,13 +683,9 @@ export const logoutUser = async ({
 // =============================================================================
 
 async function wipeAllSessions(userId, role) {
-  // Get all active session IDs before revoking (for Redis cache invalidation)
   const sessionIds = await repo.findAllActiveSessionIds(userId, role);
-
-  // Revoke all in DB
   await repo.revokeAllUserSessions(userId, role, "SUSPICIOUS_ACTIVITY");
 
-  // Kill all Redis session caches in parallel
   await Promise.all([
     ...sessionIds.map((id) => invalidateSessionCache(id)),
     invalidateUserCache(role, userId),

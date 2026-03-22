@@ -95,6 +95,7 @@ export const publicEmergencyLimiter = rateLimit({
  * Used by: auth.routes.js
  */
 export const authLimiter = rateLimit({
+  skip: () => process.env.NODE_ENV === "development",
   windowMs: 15 * 60 * 1000,
   max: 5,
   standardHeaders: true,

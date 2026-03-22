@@ -86,13 +86,12 @@ const runWithConcurrency = async (tasks, limit) => {
 
 /**
  * Generate a collision-safe card number for a school.
- * generateCardNumber(schoolCode) already builds the full formatted string —
- * "RESQID-{SCHOOLCODE}-{6 hex chars}". No wrapping needed.
- * Collision probability: 1 in 16.7M per school. Retry cap: 5.
+ * generateCardNumber(schoolSerial) builds "RQ-{4 digit serial}-{8 hex chars}".
+ * Always 16 characters. Collision probability: 1 in 4.3B per school. Retry cap: 5.
  */
-const safeCardNumber = async (schoolCode) => {
+const safeCardNumber = async (schoolSerial) => {
   for (let attempt = 1; attempt <= 5; attempt++) {
-    const cardNumber = generateCardNumber(schoolCode);
+    const cardNumber = generateCardNumber(schoolSerial);
     const exists = await tokenRepo.cardNumberExists(cardNumber);
     if (!exists) return cardNumber;
     logger.warn(
@@ -295,7 +294,7 @@ export const generateTokensStep = async ({ orderId, adminId, note, ip }) => {
 
     try {
       // Card number — collision-safe, includes school prefix
-      const cardNumber = await safeCardNumber(school.code);
+      const cardNumber = await safeCardNumber(school.serial_number);
 
       // QR PNG generation
       const pngBuffer = await generateQrPng(scanUrl);

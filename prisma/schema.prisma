@@ -471,6 +471,7 @@ model School {
   pincode          String?
   country          String    @default("IN")
   code             String    @unique   // short tenant identifier e.g. "RQ-WB-042"
+  serial_number    Int       @unique   @default(autoincrement())  // ← ADD THIS LINE
   email            String?
   phone            String?
   logo_url         String?
@@ -523,6 +524,7 @@ model School {
   @@index([code])
   @@index([is_active])
   @@index([school_type])
+  @@index([serial_number])    // ← ADD THIS LINE
   @@index([pricing_tier])
   @@index([state])
   @@index([school_type, is_active])

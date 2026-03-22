@@ -66,6 +66,7 @@ export const findOrderById = (orderId) => {
           id: true,
           name: true,
           code: true,
+          serial_number: true, // required by step4 → generateCardNumber(school.serial_number)
           school_type: true, // FIX: was `type`
           logo_url: true,
           is_active: true,

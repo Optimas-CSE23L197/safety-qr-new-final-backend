@@ -440,13 +440,11 @@ export const buildScanUrl = (tokenId) => {
  * @param {string} schoolCode — e.g. "DPS01"
  * @returns {string}
  */
-export const generateCardNumber = (schoolCode) => {
-  const code = schoolCode
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "")
-    .slice(0, 6);
-  const suffix = crypto.randomBytes(3).toString("hex").toUpperCase();
-  return `RESQID-${code}-${suffix}`;
+export const generateCardNumber = (schoolSerial) => {
+  const serial = String(schoolSerial).padStart(4, "0");
+  const hex = crypto.randomBytes(4).toString("hex").toUpperCase();
+  return `RQ-${serial}-${hex}`;
+  // → RQ-0042-C0C3B7F4  (16 chars, always fixed)
 };
 
 /**

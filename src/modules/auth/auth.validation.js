@@ -1,5 +1,8 @@
-import { z } from "zod";
+// =============================================================================
+// src/modules/auth/validation.js — RESQID
+// =============================================================================
 
+import { z } from "zod";
 import {
   isValidIndianPhone,
   isValidEmail,
@@ -7,61 +10,58 @@ import {
   zodRefine,
 } from "../../utils/helpers/validator.js";
 
-/**
- * =============================================================================
- * EMAIL + PASSWORD LOGIN
- * Used for:
- *   - Super Admin login
- *   - School User login
- * =============================================================================
- */
+// ─── Email + Password (Super Admin + School User login) ───────────────────────
 
 export const emailPasswordValidation = z.object({
   email: z.string().trim().toLowerCase().superRefine(zodRefine(isValidEmail)),
-
   password: z
     .string()
     .min(8, "Password must be at least 8 characters")
-    .max(100, "Password too long"),
+    .max(100),
 });
 
-/**
- * =============================================================================
- * SEND OTP
- * =============================================================================
- */
+// ─── Parent Login: Send OTP ───────────────────────────────────────────────────
 
 export const sendOtpValidation = z.object({
   phone: z.string().trim().superRefine(zodRefine(isValidIndianPhone)),
 });
 
-/**
- * =============================================================================
- * VERIFY OTP
- * =============================================================================
- */
+// ─── Parent Login: Verify OTP ─────────────────────────────────────────────────
 
 export const verifyOtpValidation = z.object({
   phone: z.string().trim().superRefine(zodRefine(isValidIndianPhone)),
-
   otp: z.string().trim().superRefine(zodRefine(isValidOtp)),
 });
 
-/**
- * =============================================================================
- * REFRESH TOKEN
- * =============================================================================
- */
+// ─── Parent Registration: Step 1 ─────────────────────────────────────────────
+// card_number: printed on physical card (e.g. RQ-TST-A1B2C3)
+
+export const registerInitValidation = z.object({
+  // auth_validation.js — registerInitValidation
+  card_number: z
+    .string()
+    .trim()
+    .length(16, "Card number must be 16 characters")
+    .transform((v) => v.toUpperCase().replace(/[^A-Z0-9-]/g, "")),
+  phone: z.string().trim().superRefine(zodRefine(isValidIndianPhone)),
+});
+
+// ─── Parent Registration: Step 2 ─────────────────────────────────────────────
+// nonce must match the phone used in step 1 — prevents nonce theft
+
+export const registerVerifyValidation = z.object({
+  nonce: z.string().trim().min(10, "Invalid registration session"),
+  otp: z.string().trim().superRefine(zodRefine(isValidOtp)),
+  phone: z.string().trim().superRefine(zodRefine(isValidIndianPhone)),
+});
+
+// ─── Refresh Token ────────────────────────────────────────────────────────────
 
 export const refreshTokenValidation = z.object({
   refreshToken: z.string().min(20, "Invalid refresh token"),
 });
 
-/**
- * =============================================================================
- * LOGOUT
- * =============================================================================
- */
+// ─── Logout ───────────────────────────────────────────────────────────────────
 
 export const logoutValidation = z.object({
   refreshToken: z.string().optional(),

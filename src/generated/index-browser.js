@@ -129,6 +129,7 @@ exports.Prisma.SchoolScalarFieldEnum = {
   pincode: 'pincode',
   country: 'country',
   code: 'code',
+  serial_number: 'serial_number',
   email: 'email',
   phone: 'phone',
   logo_url: 'logo_url',
