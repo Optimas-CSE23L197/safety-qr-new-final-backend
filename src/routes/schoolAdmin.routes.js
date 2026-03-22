@@ -13,6 +13,9 @@ import { Router } from "express";
 
 import dashboardRouter from "../modules/school_admin/overview/dashboard.route.js";
 import studentsRouter from "../modules/school_admin/students/students.routes.js";
+import cardRequestsRouter from "../modules/school_admin/card/card.routes.js";
+import tokensRouter from "../modules/school_admin/tokens/token.routes.js";
+import qrRouter from "../modules/school_admin/qr/qr.routes.js";
 
 // future school admin modules — uncomment as you build them:
 // import tokensRouter      from "../modules/school_admin/tokens/tokens.route.js";
@@ -25,6 +28,9 @@ const router = Router();
 
 router.use(dashboardRouter);
 router.use(studentsRouter);
+router.use(cardRequestsRouter);
+router.use(tokensRouter);
+router.use(qrRouter);
 
 // router.use(tokensRouter);
 // router.use(monitoringRouter);

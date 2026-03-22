@@ -1,0 +1,198 @@
+### =============================================================================
+### RESQID — QR Management API Tests
+### File: src/request/qr.http
+### =============================================================================
+
+@baseUrl    = http://localhost:3000/api/school-admin
+@token      = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3N2FlZmY0Zi1kM2I1LTQ5MGQtYTdjYS00ZWJiYmQ4ZGNjYTciLCJyb2xlIjoiU0NIT09MX1VTRVIiLCJzZXNzaW9uSWQiOiJiMTE3ODZmNy04MzZlLTRhY2EtYmM5Yi1lY2E4MGViNjkzMTkiLCJqdGkiOiIxOTg0NDVlZC1kMTg2LTQwNzQtYmUyOS0wZGM1ZGFhMDY2YWQiLCJzY2hvb2xJZCI6ImVlMjBiZDMyLWM1MzktNDQ4OS1hZTIyLWNlMzVjNGIyNGE3YiIsImlhdCI6MTc3NDE1Nzc5NywiZXhwIjoxNzc0MTYxMzk3LCJhdWQiOiJyZXNxaWQtYXBpIiwiaXNzIjoicmVzcWlkIn0.HEXYWKielRn9_cqagsYcStwPdxz1WgNLLO9NpbiWbwU
+@schoolId   = ee20bd32-c539-4489-ae22-ce35c4b24a7b
+
+@studentId  = cdc6ca0f-56d2-4fac-97e7-34406a671827	
+@tokenId    = 669c25b4-74ef-4572-9507-90226d8a9291	
+@badUUID    = ee20bd32-c539-4489-ae22-ce35c4b24a5b
+
+### =============================================================================
+### ✅ GET — Student List with QR Status (left panel)
+### =============================================================================
+
+### [1] All students — default page 1, limit 20
+GET {{baseUrl}}/{{schoolId}}/qr
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [2] Filter: QR Ready only (has active token + QR asset)
+GET {{baseUrl}}/{{schoolId}}/qr?filter=ready
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [3] Filter: No Token (needs token assignment)
+GET {{baseUrl}}/{{schoolId}}/qr?filter=no_token
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [4] Search by student name
+GET {{baseUrl}}/{{schoolId}}/qr?search=aarav
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [5] Search by class
+GET {{baseUrl}}/{{schoolId}}/qr?search=class+9
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [6] Search + filter combined
+GET {{baseUrl}}/{{schoolId}}/qr?search=sharma&filter=ready
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [7] Paginated — page 2, limit 10
+GET {{baseUrl}}/{{schoolId}}/qr?page=2&limit=10
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### =============================================================================
+### ✅ GET — Single Student QR Detail (right panel, on click)
+### =============================================================================
+
+### [8] Student WITH active token + QR asset
+###     Expect: token{}, qr_asset{ public_url, format, ... }
+GET {{baseUrl}}/{{schoolId}}/qr/{{studentId}}
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [9] Second hit — expect Redis cache hit (no DB queries in logs)
+GET {{baseUrl}}/{{schoolId}}/qr/{{studentId}}
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [10] Student with no token — expect: token: null, qr_asset: null
+GET {{baseUrl}}/{{schoolId}}/qr/PASTE_NO_TOKEN_STUDENT_UUID_HERE
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### =============================================================================
+### ✅ POST — Assign Token to Student
+### =============================================================================
+
+### [11] Valid assignment — unassigned token → student with no token
+###      Expect 200 + { token_id, student_id, status: "ISSUED", assigned_at }
+###      After this: run [9] again — cache should be busted, new token visible
+POST {{baseUrl}}/{{schoolId}}/qr/{{studentId}}/assign
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "token_id": "{{tokenId}}"
+}
+
+###
+
+### =============================================================================
+### ❌ BUSINESS RULE VIOLATIONS — rejected in DB transaction
+### =============================================================================
+
+### [12] Token already ACTIVE (not UNASSIGNED) — expect 409 TOKEN_NOT_AVAILABLE
+POST {{baseUrl}}/{{schoolId}}/qr/{{studentId}}/assign
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "token_id": "PASTE_ACTIVE_TOKEN_UUID_HERE"
+}
+
+###
+
+### [13] Student already has active token — expect 409 STUDENT_ALREADY_HAS_TOKEN
+POST {{baseUrl}}/{{schoolId}}/qr/PASTE_STUDENT_WITH_TOKEN_UUID_HERE/assign
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "token_id": "{{tokenId}}"
+}
+
+###
+
+### [14] Token belongs to different school — expect 403 TOKEN_NOT_OWNED
+POST {{baseUrl}}/{{schoolId}}/qr/{{studentId}}/assign
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "token_id": "PASTE_OTHER_SCHOOL_TOKEN_UUID_HERE"
+}
+
+###
+
+### =============================================================================
+### ❌ VALIDATION ERRORS — rejected at middleware, never hits DB
+### =============================================================================
+
+### [15] No auth — expect 401
+GET {{baseUrl}}/{{schoolId}}/qr
+Accept: application/json
+
+###
+
+### [16] Invalid schoolId — expect 400 VALIDATION_ERROR
+GET {{baseUrl}}/{{badUUID}}/qr
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [17] Wrong school (tenant mismatch) — expect 403 FORBIDDEN
+GET {{baseUrl}}/00000000-0000-4000-a000-000000000000/qr
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [18] Invalid studentId in assign — expect 400 VALIDATION_ERROR
+POST {{baseUrl}}/{{schoolId}}/qr/{{badUUID}}/assign
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "token_id": "{{tokenId}}"
+}
+
+###
+
+### [19] Invalid token_id format in body — expect 400 VALIDATION_ERROR
+POST {{baseUrl}}/{{schoolId}}/qr/{{studentId}}/assign
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "token_id": "not-a-uuid"
+}
+
+###
+
+### [20] Invalid filter value — expect 400 VALIDATION_ERROR
+GET {{baseUrl}}/{{schoolId}}/qr?filter=INVALID
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###

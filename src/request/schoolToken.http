@@ -1,0 +1,129 @@
+### =============================================================================
+### RESQID — Token Inventory API Tests
+### File: src/request/tokens.http
+### =============================================================================
+
+@baseUrl  = http://localhost:3000/api/school-admin
+@token    = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3N2FlZmY0Zi1kM2I1LTQ5MGQtYTdjYS00ZWJiYmQ4ZGNjYTciLCJyb2xlIjoiU0NIT09MX1VTRVIiLCJzZXNzaW9uSWQiOiJiMTE3ODZmNy04MzZlLTRhY2EtYmM5Yi1lY2E4MGViNjkzMTkiLCJqdGkiOiIxOTg0NDVlZC1kMTg2LTQwNzQtYmUyOS0wZGM1ZGFhMDY2YWQiLCJzY2hvb2xJZCI6ImVlMjBiZDMyLWM1MzktNDQ4OS1hZTIyLWNlMzVjNGIyNGE3YiIsImlhdCI6MTc3NDE1Nzc5NywiZXhwIjoxNzc0MTYxMzk3LCJhdWQiOiJyZXNxaWQtYXBpIiwiaXNzIjoicmVzcWlkIn0.HEXYWKielRn9_cqagsYcStwPdxz1WgNLLO9NpbiWbwU
+@schoolId = ee20bd32-c539-4489-ae22-ce35c4b24a7b
+@badUUID  = ee20bd32-c539-4489-ae22-ce35c4b24a8b
+
+### =============================================================================
+### ✅ HAPPY PATH
+### =============================================================================
+
+### [1] All tokens — page 1, limit 12 (default)
+### Response includes: tokens[], stats{}, meta{}
+GET {{baseUrl}}/{{schoolId}}/tokens
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [2] Filter ACTIVE only
+GET {{baseUrl}}/{{schoolId}}/tokens?status=ACTIVE
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [3] Filter UNASSIGNED — no student linked
+GET {{baseUrl}}/{{schoolId}}/tokens?status=UNASSIGNED
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [4] Filter EXPIRED
+GET {{baseUrl}}/{{schoolId}}/tokens?status=EXPIRED
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [5] Filter REVOKED
+GET {{baseUrl}}/{{schoolId}}/tokens?status=REVOKED
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [6] Search by token hash prefix
+GET {{baseUrl}}/{{schoolId}}/tokens?search=a3f
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [7] Search by student name
+GET {{baseUrl}}/{{schoolId}}/tokens?search=aarav
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [8] Status filter + search combined
+GET {{baseUrl}}/{{schoolId}}/tokens?status=ACTIVE&search=sharma
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [9] Page 2, limit 12
+GET {{baseUrl}}/{{schoolId}}/tokens?page=2&limit=12
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [10] Large page size (max 100)
+GET {{baseUrl}}/{{schoolId}}/tokens?limit=100
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [11] Second request — stats should be Redis cached (check logs: no groupBy query)
+GET {{baseUrl}}/{{schoolId}}/tokens
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### =============================================================================
+### ❌ VALIDATION ERRORS — rejected at middleware, never hits DB
+### =============================================================================
+
+### [12] No auth — expect 401
+GET {{baseUrl}}/{{schoolId}}/tokens
+Accept: application/json
+
+###
+
+### [13] Invalid schoolId — expect 400 VALIDATION_ERROR
+GET {{baseUrl}}/{{badUUID}}/tokens
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [14] Wrong school (tenant mismatch) — expect 403 FORBIDDEN
+GET {{baseUrl}}/00000000-0000-4000-a000-000000000000/tokens
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [15] Invalid status value — expect 400 VALIDATION_ERROR
+GET {{baseUrl}}/{{schoolId}}/tokens?status=INVALID
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [16] limit over 100 — expect 400 VALIDATION_ERROR
+GET {{baseUrl}}/{{schoolId}}/tokens?limit=500
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
