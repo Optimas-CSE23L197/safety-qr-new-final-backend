@@ -374,7 +374,7 @@ export const registerVerify = async ({
   ipAddress,
   deviceInfo,
 }) => {
-  // [1] OTP first — cheaper than nonce lookup
+  // [1] OTP validation (unchanged)
   const attempts = parseInt(
     (await redis.get(otpAttemptsKey(phone))) ?? "0",
     10,
@@ -391,6 +391,7 @@ export const registerVerify = async ({
   const inputHash = hashOtp(otp);
   const storedBuf = Buffer.from(storedHash, "hex");
   const inputBuf = Buffer.from(inputHash, "hex");
+
   const valid =
     storedBuf.length === inputBuf.length &&
     crypto.timingSafeEqual(storedBuf, inputBuf);
@@ -400,7 +401,7 @@ export const registerVerify = async ({
     throw ApiError.unauthorized("Invalid OTP");
   }
 
-  // [2] Validate nonce
+  // [2] Nonce validation (unchanged)
   const nonceRaw = await redis.get(nonceKey(nonce));
   if (!nonceRaw) {
     throw ApiError.badRequest(
@@ -416,16 +417,11 @@ export const registerVerify = async ({
     );
   }
 
-  // [4] Atomic transaction:
-  //   - Create or find ParentUser
-  //   - For BLANK cards: create a stub Student + EmergencyProfile, link Card
-  //   - For PRE_DETAILS cards: student already exists, just link parent
-  //   - Create ParentStudent link
   const phoneIndex = hashForLookup(phone);
 
   const { parent, studentId, isNewUser } = await prisma.$transaction(
     async (tx) => {
-      // ── Parent: create or find ──────────────────────────────────────────────
+      // ── Parent ──────────────────────────────────────────────
       let existing = await tx.parentUser.findUnique({
         where: { phone_index: phoneIndex },
         select: { id: true, status: true },
@@ -445,18 +441,17 @@ export const registerVerify = async ({
         isNew = true;
       }
 
-      // ── Student: create stub for BLANK cards, use existing for PRE_DETAILS ──
+      // ── Student handling ────────────────────────────────────
       let resolvedStudentId = nonceData.student_id;
 
       if (!resolvedStudentId) {
-        // BLANK card — no student yet, create a stub
-        // Parent will fill in details via PATCH /parent/profile/setup
+        // BLANK card → create student
         const stubStudent = await tx.student.create({
           data: {
             school_id: nonceData.school_id,
             first_name: null,
             last_name: null,
-            setup_stage: "PENDING", // gates onboarding screen in app
+            setup_stage: "PENDING",
             is_active: true,
           },
           select: { id: true },
@@ -464,23 +459,37 @@ export const registerVerify = async ({
 
         resolvedStudentId = stubStudent.id;
 
-        // Create a blank EmergencyProfile so QR scan works immediately
         await tx.emergencyProfile.create({
           data: {
             student_id: resolvedStudentId,
-            visibility: "HIDDEN", // hidden until parent completes setup
+            visibility: "HIDDEN",
             is_visible: false,
           },
         });
 
-        // Link Card → new Student
         await tx.card.update({
           where: { id: nonceData.card_id },
           data: { student_id: resolvedStudentId },
         });
       }
 
-      // ── ParentStudent link — idempotent upsert ──────────────────────────────
+      // 🔥 FIX: ALWAYS LINK TOKEN → STUDENT (for BOTH flows)
+      const cardWithToken = await tx.card.findUnique({
+        where: { id: nonceData.card_id },
+        select: { token_id: true },
+      });
+
+      if (cardWithToken?.token_id) {
+        await tx.token.update({
+          where: { id: cardWithToken.token_id },
+          data: {
+            student_id: resolvedStudentId,
+            status: "ACTIVE",
+          },
+        });
+      }
+
+      // ── ParentStudent link ─────────────────────────────────
       await tx.parentStudent.upsert({
         where: {
           parent_id_student_id: {
@@ -497,7 +506,6 @@ export const registerVerify = async ({
         },
       });
 
-      // ✅ Ensure notification prefs exist
       await tx.parentNotificationPref.upsert({
         where: { parent_id: existing.id },
         update: {},
@@ -512,14 +520,13 @@ export const registerVerify = async ({
     },
   );
 
-  // [3] Single-use — delete immediately
+  // cleanup (unchanged)
   await Promise.all([
     redis.del(nonceKey(nonce)),
     redis.del(otpHashKey(phone)),
     redis.del(otpAttemptsKey(phone)),
   ]);
 
-  // [5] Issue session + tokens
   const sessionId = crypto.randomUUID();
 
   const { accessToken, refreshToken, refreshHash, expiresAt } = issueTokenPair({
