@@ -3,9 +3,9 @@
 ### File: src/request/parents.http
 ### =============================================================================
 
-@baseUrl    = http://localhost:3000/api/parents
-@token      = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyMzkxNzQ1OC1kNmU2LTRjOTgtYjg0Ny0xYmYxOGUyZTk3YzMiLCJyb2xlIjoiUEFSRU5UX1VTRVIiLCJzZXNzaW9uSWQiOiI1NGMwMTFhOS00NWFjLTRmMDUtYWNkZC1jMzMzNmVkYmE1MzUiLCJqdGkiOiJlM2UwZjE5Mi03NWQ0LTQ5MzQtYjFiNi04YjZkYjcyMzBkMmUiLCJpYXQiOjE3NzQxNzY1OTMsImV4cCI6MTc3NDE3NzQ5MywiYXVkIjoicmVzcWlkLWFwaSIsImlzcyI6InJlc3FpZCJ9.ap-lKSPutoduK7golZV6zAy3TPJudk6fxqVU7zACqpM
-@studentId  =  34cf22d1-ae0d-49b3-8057-cbe7f2c31d6c
+@baseUrl    = http://localhost:3000/api/v1/parents
+@token      = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1ZDY3YTFhYS03YzlmLTRiNGEtYWY2OC1lYWM0N2JjMTM2OTgiLCJyb2xlIjoiUEFSRU5UX1VTRVIiLCJzZXNzaW9uSWQiOiJhYThmODFkZS05YzdiLTQ3NTYtYjU2Mi1lODcxMzYwZDM0MzUiLCJqdGkiOiJmZTRjMTI2My1hOGVkLTRlMzQtYjliYS0xYjM1OTYyNjViNzEiLCJpYXQiOjE3NzQyNDE3MjQsImV4cCI6MTc3NDI0MjYyNCwiYXVkIjoicmVzcWlkLWFwaSIsImlzcyI6InJlc3FpZCJ9.ICZfjru0tyvuEUr7TcHFXcaeDar6BBHjrCA2pMPNhzw
+@studentId  =  66fad02f-aaa6-49e2-abbc-69b237b972d9	
 
 ### =============================================================================
 ### GET /me — Home screen (login + pull-to-refresh)
@@ -71,19 +71,19 @@ Content-Type: application/json
 {
   "student_id": "{{studentId}}",
   "student": {
-    "first_name": "Aarav",
-    "last_name": "Sharma",
-    "class": "Class 9",
-    "section": "A"
+    "first_name": "Animesh",
+    "last_name": "Karan",
+    "class": "4th Year",
+    "section": "C"
   },
   "emergency": {
-    "blood_group": "B_POS",
-    "allergies": "Penicillin, Peanuts",
+    "blood_group": "O_POS",
+    "allergies": "None",
     "conditions": "Mild asthma",
-    "medications": "Salbutamol inhaler",
-    "doctor_name": "Dr. Rajesh Mehta",
-    "doctor_phone": "+919876543210",
-    "notes": "Carry inhaler at all times"
+    "medications": "None",
+    "doctor_name": "",
+    "doctor_phone": "",
+    "notes": "None"
   },
   "contacts": [
     { "name": "Suresh Sharma", "phone": "+919876543210", "relationship": "Father", "priority": 1 },

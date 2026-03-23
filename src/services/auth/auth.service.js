@@ -232,9 +232,9 @@ export const verifyOtp = async ({ phone, otp, ipAddress, deviceInfo }) => {
 
   const inputHash = hashOtp(otp);
 
-  // SECURITY: constant-time comparison
   const storedBuf = Buffer.from(storedHash, "hex");
   const inputBuf = Buffer.from(inputHash, "hex");
+
   const valid =
     storedBuf.length === inputBuf.length &&
     crypto.timingSafeEqual(storedBuf, inputBuf);
@@ -249,16 +249,12 @@ export const verifyOtp = async ({ phone, otp, ipAddress, deviceInfo }) => {
     redis.del(otpAttemptsKey(phone)),
   ]);
 
-  // DB lookup after OTP confirmed — never before
   const phoneIndex = hashForLookup(phone);
   let parent = await repo.findParentByPhoneIndex(phoneIndex);
-  const isNewUser = !parent;
 
+  // 🚨 FIX: do NOT create parent in login flow
   if (!parent) {
-    parent = await repo.createParentUser({
-      encryptedPhone: encryptField(phone),
-      phoneIndex,
-    });
+    throw ApiError.badRequest("Account not found. Please register first.");
   }
 
   const sessionId = crypto.randomUUID();
@@ -281,11 +277,11 @@ export const verifyOtp = async ({ phone, otp, ipAddress, deviceInfo }) => {
   repo.updateParentLastLogin(parent.id).catch(() => {});
 
   return {
-    accessToken,
-    refreshToken,
-    expiresAt: jwt.decode(accessToken)?.exp,
-    isNewUser,
-    parent: { id: parent.id },
+    access_token: accessToken,
+    refresh_token: refreshToken,
+    expires_at: expiresAt,
+    is_new_user: false,
+    parent_id: parent.id,
   };
 };
 
@@ -420,13 +416,6 @@ export const registerVerify = async ({
     );
   }
 
-  // [3] Single-use — delete immediately
-  await Promise.all([
-    redis.del(nonceKey(nonce)),
-    redis.del(otpHashKey(phone)),
-    redis.del(otpAttemptsKey(phone)),
-  ]);
-
   // [4] Atomic transaction:
   //   - Create or find ParentUser
   //   - For BLANK cards: create a stub Student + EmergencyProfile, link Card
@@ -465,7 +454,7 @@ export const registerVerify = async ({
         const stubStudent = await tx.student.create({
           data: {
             school_id: nonceData.school_id,
-            first_name: "Unknown", // placeholder — parent fills this in
+            first_name: null,
             last_name: null,
             setup_stage: "PENDING", // gates onboarding screen in app
             is_active: true,
@@ -508,6 +497,13 @@ export const registerVerify = async ({
         },
       });
 
+      // ✅ Ensure notification prefs exist
+      await tx.parentNotificationPref.upsert({
+        where: { parent_id: existing.id },
+        update: {},
+        create: { parent_id: existing.id },
+      });
+
       return {
         parent: existing,
         studentId: resolvedStudentId,
@@ -515,6 +511,13 @@ export const registerVerify = async ({
       };
     },
   );
+
+  // [3] Single-use — delete immediately
+  await Promise.all([
+    redis.del(nonceKey(nonce)),
+    redis.del(otpHashKey(phone)),
+    redis.del(otpAttemptsKey(phone)),
+  ]);
 
   // [5] Issue session + tokens
   const sessionId = crypto.randomUUID();
@@ -537,11 +540,11 @@ export const registerVerify = async ({
   repo.updateParentLastLogin(parent.id).catch(() => {});
 
   return {
-    accessToken,
-    refreshToken,
-    expiresAt: jwt.decode(accessToken)?.exp,
-    isNewUser,
-    parent_id: parent.id, // flat — profile.api.js assertRegVerifyResponse checks data.parent_id
+    access_token: accessToken,
+    refresh_token: refreshToken,
+    expires_at: expiresAt,
+    is_new_user: isNewUser,
+    parent_id: parent.id,
     student_id: studentId,
   };
 };
@@ -628,7 +631,7 @@ export const refreshTokens = async ({
   return {
     access_token: accessToken,
     refresh_token: newRefresh,
-    expiresAt: jwt.decode(accessToken)?.exp,
+    expires_at: expiresAt,
   };
 };
 

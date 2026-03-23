@@ -1,208 +1,166 @@
 ### =============================================================================
-### RESQID — Auth API Tests
-### File: src/request/auth.http
-### Use with: VS Code REST Client
-### =============================================================================
-### FLOW:
-###   1. Run Super Admin Login or School Login
-###   2. Copy access_token from response → paste into @accessToken
-###   3. Copy refresh_token from response → paste into @refreshToken
-###   4. Run any protected endpoint
+### RESQID — Auth + Parent API Tests
+### Mounted at: /api/:version → use /api/v1/...
 ### =============================================================================
 
-@baseUrl      = http://localhost:3000/api
-@accessToken  = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyY2QyNDI5NC01NjdhLTQ4MDUtODNmZS1lM2JiZWI2NTQ5MmMiLCJyb2xlIjoiU1VQRVJfQURNSU4iLCJzZXNzaW9uSWQiOiIwYjZkMjZjZS1lYzJiLTQ4OGItOWQxYS1lMjVmYzdmMTcxNWYiLCJqdGkiOiJkYzhmNGFmYS04OThhLTQ5OGQtYmI4Yy04ZTkyNjcwZmMyYzUiLCJpYXQiOjE3NzQxOTI3MTEsImV4cCI6MTc3NDE5NDUxMSwiYXVkIjoicmVzcWlkLWFwaSIsImlzcyI6InJlc3FpZCJ9.8CzjRik3sW54qZ1Y0-yUO5dDo70fYSYiSw_BEgkojE8
-@refreshToken = d128a9650f5bb0c539e899e040f8637ab07527d21a909e274d9d85665c12262e
+@baseUrl      = http://localhost:3000/api/v1
+@accessToken  = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxNDA0M2YzMC00MTkyLTRkOTItYTQ4OS1kOTBkMDY0YzBiZDEiLCJyb2xlIjoiU1VQRVJfQURNSU4iLCJzZXNzaW9uSWQiOiIxZDVjMjlkMi02MTg0LTQ5YmYtYTViNy0zMTJhMDZkOWM0ODkiLCJqdGkiOiI5ZDEyM2IyMi05MzYxLTQyYjUtYWE5YS03ZTc2ZjgyZDI3NmIiLCJpYXQiOjE3NzQyNzMyMzEsImV4cCI6MTc3NDI3NTAzMSwiYXVkIjoicmVzcWlkLWFwaSIsImlzcyI6InJlc3FpZCJ9.4GfNshwiYKNduPI8P19n5nZl0PMIa1flRTbfABz0ADU
+@refreshToken = 19307ae22c751a557153cffae5292a16186e822f172a8f25a152c1b753631303
+@studentId    = PASTE_STUDENT_UUID_HERE
 
-### =============================================================================
-### ✅ SUPER ADMIN LOGIN
-### =============================================================================
+### ═══════════════════════════════════════════════════
+### AUTH
+### ═══════════════════════════════════════════════════
 
-### [1] Valid credentials — expect 200 + tokens
+### [1] Super Admin login
 POST {{baseUrl}}/auth/super-admin
 Content-Type: application/json
 
-{
-  "email": "karananimesh144@gmail.com",
-  "password": "Karan@144#"
-}
+{ "email": "karananimesh144@gmail.com", "password": "Karan@144#" }
 
 ###
 
-### [2] Wrong password — expect 401 + AuditLog row with WRONG_PASSWORD
-POST {{baseUrl}}/auth/super-admin
-Content-Type: application/json
-
-{
-  "email": "karananimesh144@gmail.com",
-  "password": "wrongpassword"
-}
-
-###
-
-### [3] Email not found — expect 401 + AuditLog row with EMAIL_NOT_FOUND
-### Response time should be same as [2] — timing attack protection
-POST {{baseUrl}}/auth/super-admin
-Content-Type: application/json
-
-{
-  "email": "doesnotexist@test.com",
-  "password": "wrongpassword"
-}
-
-###
-
-### =============================================================================
-### ✅ SCHOOL USER LOGIN
-### =============================================================================
-
-### [4] Valid credentials — expect 200 + tokens
+### [2] School user login
 POST {{baseUrl}}/auth/school
 Content-Type: application/json
 
-{
-  "email": "schooladmin@test.com",
-  "password": "Admin@123#"
-}
+{ "email": "schooladmin@test.com", "password": "Admin@123#" }
 
 ###
 
-### [5] Wrong password — expect 401
-POST {{baseUrl}}/auth/school
-Content-Type: application/json
-
-{
-  "email": "schooladmin@test.com",
-  "password": "wrongpassword"
-}
-
-###
-
-### =============================================================================
-### ✅ OTP FLOW (Parent)
-### =============================================================================
-
-### [6] Send OTP — expect 200, same message regardless of phone registered or not
+### [3] Send OTP — check server logs for devCode
 POST {{baseUrl}}/auth/send-otp
 Content-Type: application/json
 
-{
-  "phone": "+919876543210"
-}
+{ "phone": "+916294690079" }
 
 ###
 
-### [7] Verify OTP — expect 200 + tokens
+### [4] Verify OTP
 POST {{baseUrl}}/auth/verify-otp
 Content-Type: application/json
 
-{
-  "phone": "+919876543210",
-  "otp": "260693"
-}
+{ "phone": "+916294690079", "otp": "465474" }
 
 ###
 
-### [8] Wrong OTP — expect 401
-POST {{baseUrl}}/auth/verify-otp
+### [5] Registration — step 1
+POST {{baseUrl}}/auth/register/init
 Content-Type: application/json
 
-{
-  "phone": "+919876543210",
-  "otp": "000000"
-}
+{ "card_number": "PASTE_CARD_NUMBER", "phone": "+919999999999" }
 
 ###
 
-### [9] Exceed OTP attempts (run [8] 5 times then this) — expect 429
-POST {{baseUrl}}/auth/verify-otp
+### [6] Registration — step 2
+POST {{baseUrl}}/auth/register/verify
 Content-Type: application/json
 
-{
-  "phone": "+919876543210",
-  "otp": "000000"
-}
+{ "nonce": "PASTE_NONCE", "otp": "PASTE_FROM_LOGS", "phone": "+919999999999" }
 
 ###
 
-### =============================================================================
-### ✅ REFRESH TOKEN
-### =============================================================================
-
-### [10] Valid refresh — expect 200 + new token pair
+### [7] Refresh token
 POST {{baseUrl}}/auth/refresh
 Content-Type: application/json
 
-{
-  "refreshToken": "{{refreshToken}}"
-}
+{ "refreshToken": "{{refreshToken}}" }
 
 ###
 
-### [11] Replay old refresh token after rotation (reuse detection)
-###      Run [10] first, then paste the OLD refreshToken below
-###      Expect 401 "Security alert" + ALL sessions wiped for that user
-POST {{baseUrl}}/auth/refresh
-Content-Type: application/json
-
-{
-  "refreshToken": "PASTE_OLD_REFRESH_TOKEN_HERE"
-}
-
-###
-
-### [12] Invalid refresh token — expect 401
-POST {{baseUrl}}/auth/refresh
-Content-Type: application/json
-
-{
-  "refreshToken": "thisisnotavalidtoken"
-}
-
-###
-
-### =============================================================================
-### ✅ LOGOUT
-### =============================================================================
-
-### [13] Valid logout — expect 200
-###      Check server logs: session cache + user cache should be invalidated
+### [8] Logout
 POST {{baseUrl}}/auth/logout
+Authorization: Bearer {{accessToken}}
 Content-Type: application/json
+
+{ "refreshToken": "{{refreshToken}}" }
+
+###
+
+### ═══════════════════════════════════════════════════
+### PARENT — home screen data
+### ═══════════════════════════════════════════════════
+
+### [9] GET /me — full home data
+GET {{baseUrl}}/parents/me
 Authorization: Bearer {{accessToken}}
 
+###
+
+### ═══════════════════════════════════════════════════
+### PARENT — profile update (debug version)
+### ═══════════════════════════════════════════════════
+
+### [10] Profile update — minimal (no doctor phone, no contacts)
+PATCH {{baseUrl}}/parents/me/profile
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
 {
-  "refreshToken": "{{refreshToken}}"
+  "student_id": "{{studentId}}",
+  "student": {
+    "first_name": "Aarav",
+    "last_name": "Sharma",
+    "class": "4th Year",
+    "section": "CS"
+  },
+  "emergency": {
+    "blood_group": "B_POS",
+    "allergies": "None"
+  }
 }
 
 ###
 
-### [14] Use same access token after logout — expect 401 (blacklisted)
-POST {{baseUrl}}/auth/refresh
+### [11] Profile update — with doctor phone (plain Indian number)
+PATCH {{baseUrl}}/parents/me/profile
+Authorization: Bearer {{accessToken}}
 Content-Type: application/json
+
+{
+  "student_id": "{{studentId}}",
+  "emergency": {
+    "doctor_name": "Dr. Suresh Kumar",
+    "doctor_phone": "9876543210"
+  }
+}
+
+###
+
+### [12] Profile update — with contacts
+PATCH {{baseUrl}}/parents/me/profile
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "student_id": "{{studentId}}",
+  "contacts": [
+    {
+      "name": "Ramesh Sharma",
+      "phone": "9876543210",
+      "relationship": "Father",
+      "priority": 1
+    }
+  ]
+}
+
+###
+
+### ═══════════════════════════════════════════════════
+### PARENT — other endpoints
+### ═══════════════════════════════════════════════════
+
+### [13] Scan history
+GET {{baseUrl}}/parents/me/scans
 Authorization: Bearer {{accessToken}}
 
-{
-  "refreshToken": "{{refreshToken}}"
-}
-
 ###
 
-### [15] Logout with no refresh token — expect 200 (still valid, just no refresh cleanup)
-POST {{baseUrl}}/auth/logout
-Content-Type: application/json
+### [14] Visibility update
+PATCH {{baseUrl}}/parents/me/visibility
 Authorization: Bearer {{accessToken}}
-
-{}
-
-###
-
-### [16] Logout with no auth token — expect 401
-POST {{baseUrl}}/auth/logout
 Content-Type: application/json
 
-{
-  "refreshToken": "{{refreshToken}}"
-}
+{ "student_id": "{{studentId}}", "visibility": "PUBLIC", "hidden_fields": [] }
 
 ###

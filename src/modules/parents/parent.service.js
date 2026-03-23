@@ -41,8 +41,28 @@ async function fetchAndShape(parentId) {
 
   if (!parent) return null;
 
+  // Token status priority: ACTIVE is best, then ISSUED, INACTIVE, EXPIRED, REVOKED
+  // This ensures replacement cards (ACTIVE) win over old revoked cards
+  const TOKEN_PRIORITY = {
+    ACTIVE: 0,
+    ISSUED: 1,
+    INACTIVE: 2,
+    EXPIRED: 3,
+    REVOKED: 4,
+    UNASSIGNED: 5,
+  };
+  const pickBestToken = (tokens) => {
+    if (!tokens?.length) return null;
+    return tokens
+      .slice()
+      .sort(
+        (a, b) =>
+          (TOKEN_PRIORITY[a.status] ?? 9) - (TOKEN_PRIORITY[b.status] ?? 9),
+      )[0];
+  };
+
   const students = studentLinks.map(({ student, relationship, is_primary }) => {
-    const token = student.tokens[0] ?? null;
+    const token = pickBestToken(student.tokens);
     const card = token?.cards[0] ?? null;
     const qr = token?.qrAsset ?? null;
 
@@ -63,7 +83,8 @@ async function fetchAndShape(parentId) {
             status: token.status,
             expires_at: token.expires_at,
             card_number: card?.card_number ?? null,
-            qr_url: qr?.is_active ? qr.public_url : null,
+            qr_url: qr?.public_url ?? null,
+            is_qr_active: qr?.is_active ?? false,
           }
         : null,
       emergency: student.emergency ? shapeEmergency(student.emergency) : null,
@@ -83,7 +104,7 @@ async function fetchAndShape(parentId) {
       id: parent.id,
       name: parent.name,
       is_phone_verified: parent.is_phone_verified,
-      notification_prefs: parent.notificationPrefs ?? null,
+      notification_prefs: parent.notificationPrefs || {},
     },
     students,
     last_scan: lastScan ?? null,
@@ -167,7 +188,7 @@ export async function updateProfile(parentId, body) {
   writeAuditLog({
     actorId: parentId,
     actorType: "PARENT_USER",
-    action: AuditAction.UPDATE,
+    action: "PROFILE_UPDATE",
     entity: "Student",
     entityId: student_id,
   });

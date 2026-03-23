@@ -52,12 +52,12 @@ export async function getParentHomeData(parentId) {
                 select: { id: true, name: true, code: true, city: true },
               },
               tokens: {
-                where: { status: { not: "REVOKED" } },
+                where: {},
                 orderBy: [
-                  { activated_at: { sort: "desc", nulls: "last" } },
+                  // Fetch most recently created tokens — service picks best status
                   { created_at: "desc" },
                 ],
-                take: 1,
+                take: 5, // fetch up to 5 so service can pick best status (ACTIVE > ISSUED > INACTIVE > REVOKED/EXPIRED)
                 select: {
                   id: true,
                   status: true,
@@ -305,7 +305,9 @@ export async function updateStudentProfile({
       }
     }
 
-    await Promise.all(ops);
+    for (const op of ops) {
+      await op;
+    }
     return { success: true };
   });
 }
@@ -317,7 +319,14 @@ function buildEmergencyData(e) {
   if (e.conditions !== undefined) data.conditions = e.conditions;
   if (e.medications !== undefined) data.medications = e.medications;
   if (e.doctor_name !== undefined) data.doctor_name = e.doctor_name;
+
+  // ✅ FIXED FIELD NAME
+  if (e.doctor_phone !== undefined) {
+    data.doctor_phone_encrypted = e.doctor_phone;
+  }
+
   if (e.notes !== undefined) data.notes = e.notes;
+
   return data;
 }
 
@@ -358,9 +367,13 @@ export async function updateCardVisibility({
 // ─── /me/notifications ────────────────────────────────────────────────────────
 
 export async function updateNotificationPrefs(parentId, prefs) {
-  return prisma.parentNotificationPref.update({
+  return prisma.parentNotificationPref.upsert({
     where: { parent_id: parentId },
-    data: prefs,
+    update: prefs,
+    create: {
+      parent_id: parentId,
+      ...prefs,
+    },
   });
 }
 

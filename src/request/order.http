@@ -29,15 +29,15 @@
 
 # ── Variables — fill these in ─────────────────────────────────────────────────
 
-@baseUrl    = http://localhost:3000/api
-@token      = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyY2QyNDI5NC01NjdhLTQ4MDUtODNmZS1lM2JiZWI2NTQ5MmMiLCJyb2xlIjoiU1VQRVJfQURNSU4iLCJzZXNzaW9uSWQiOiIwYjZkMjZjZS1lYzJiLTQ4OGItOWQxYS1lMjVmYzdmMTcxNWYiLCJqdGkiOiJkYzhmNGFmYS04OThhLTQ5OGQtYmI4Yy04ZTkyNjcwZmMyYzUiLCJpYXQiOjE3NzQxOTI3MTEsImV4cCI6MTc3NDE5NDUxMSwiYXVkIjoicmVzcWlkLWFwaSIsImlzcyI6InJlc3FpZCJ9.8CzjRik3sW54qZ1Y0-yUO5dDo70fYSYiSw_BEgkojE8
-@schoolId   = 730a4bf1-0e13-4685-9b6c-6d1aacf3ec91	
-@vendorId   = 11007a78-2e5d-4831-9372-cb1a09e98280	
+@baseUrl    = http://localhost:3000/api/v1
+@token      = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxNDA0M2YzMC00MTkyLTRkOTItYTQ4OS1kOTBkMDY0YzBiZDEiLCJyb2xlIjoiU1VQRVJfQURNSU4iLCJzZXNzaW9uSWQiOiIxZDVjMjlkMi02MTg0LTQ5YmYtYTViNy0zMTJhMDZkOWM0ODkiLCJqdGkiOiI5ZDEyM2IyMi05MzYxLTQyYjUtYWE5YS03ZTc2ZjgyZDI3NmIiLCJpYXQiOjE3NzQyNzMyMzEsImV4cCI6MTc3NDI3NTAzMSwiYXVkIjoicmVzcWlkLWFwaSIsImlzcyI6InJlc3FpZCJ9.4GfNshwiYKNduPI8P19n5nZl0PMIa1flRTbfABz0ADU
+@schoolId   = 4b37cafd-d57d-470b-89f5-03429711e0a7	
+@vendorId   = 9d13c68f-ecd9-4d9c-a0aa-8fa76fd6b945		
 
 # ── Copy from responses as you go ─────────────────────────────────────────────
 
-@orderId    = b1af97ed-5733-4fbf-8f83-13e8750575e9	
-@invoiceId  = f0acbfbd-b1ea-4846-a94e-5bf4b6d37b2e
+@orderId    = 5664f1e5-906e-4e9d-b7b0-98dcc2d176ac		
+@invoiceId  = 6109537b-f518-4a97-93b9-99bf77ddcebc
 
 
 ###############################################################################
