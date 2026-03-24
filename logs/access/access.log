@@ -7,3 +7,13 @@ POST /api/v1/auth/super-admin 400 - - 1646.790 ms
 POST /api/v1/auth/super-admin 400 - - 2746.341 ms
 POST /api/v1/auth/super-admin 429 136 - 3551.110 ms
 POST /api/v1/auth/super-admin 400 - - 775.324 ms
+POST /api/v1/auth/super-admin 200 187 - 933.179 ms
+OPTIONS /api/v1/auth/school 204 0 - 1.251 ms
+POST /api/v1/auth/school 200 219 - 326.484 ms
+GET /api/v1/school-admin/83aae053-e9dd-483e-ad78-e3ec50aa41c4/dashboard 200 682 - 480.191 ms
+GET /api/v1/school-admin/83aae053-e9dd-483e-ad78-e3ec50aa41c4/dashboard 200 682 - 185.748 ms
+GET /api/v1/school-admin/83aae053-e9dd-483e-ad78-e3ec50aa41c4/dashboard 200 682 - 184.460 ms
+GET /api/v1/school-admin/83aae053-e9dd-483e-ad78-e3ec50aa41c4/dashboard 200 682 - 182.471 ms
+GET /api/v1/school-admin/83aae053-e9dd-483e-ad78-e3ec50aa41c4/dashboard 200 682 - 184.399 ms
+OPTIONS /api/v1/auth/logout 204 0 - 1.357 ms
+POST /api/v1/auth/logout 200 52 - 278.900 ms
