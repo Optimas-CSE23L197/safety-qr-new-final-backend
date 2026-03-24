@@ -383,7 +383,7 @@ enum NotificationStatus {
 
 enum ActorType {
   SUPER_ADMIN
-  SCHOOL_USER
+  ADMIN
   PARENT_USER
   SYSTEM
 }
@@ -1826,4 +1826,93 @@ model WebhookEvent {
   @@index([provider, event_type])
   @@index([processed])
   @@index([received_at])
+}
+
+// =============================================================================
+// OPERATIONS & RESILIENCE
+// =============================================================================
+
+// Dead letter queue for failed jobs
+model DeadLetterQueue {
+  id            String    @id @default(uuid())
+  job_type      String
+  payload       Json
+  error_message String
+  retry_count   Int       @default(0)
+  last_attempt  DateTime  @default(now())
+  resolved      Boolean   @default(false)
+  resolved_at   DateTime?
+  created_at    DateTime  @default(now())
+
+  @@index([job_type])
+  @@index([job_type, resolved])
+  @@index([created_at])
+}
+
+// Idempotency store for all write operations
+model IdempotencyKey {
+  id            String   @id @default(uuid())
+  key           String   @unique
+  resource_type String
+  resource_id   String
+  status        String
+  response      Json?
+  expires_at    DateTime
+  created_at    DateTime @default(now())
+
+  @@index([key])
+  @@index([resource_type, resource_id])
+  @@index([expires_at])
+}
+
+// Feature flags with gradual rollout
+model FeatureFlagOverride {
+  id          String    @id @default(uuid())
+  flag_key    String
+  target_type String
+  target_id   String
+  enabled     Boolean
+  percentage  Int?
+  expires_at  DateTime?
+  created_by  String
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+
+  @@unique([flag_key, target_type, target_id])
+  @@index([flag_key])
+  @@index([expires_at])
+}
+
+// =============================================================================
+// SECURITY & ABUSE PREVENTION
+// =============================================================================
+
+// Track failed auth attempts
+model AuthAttempt {
+  id              String   @id @default(uuid())
+  identifier      String
+  identifier_type String
+  success         Boolean  @default(false)
+  failure_reason  String?
+  ip_address      String?
+  user_agent      String?
+  created_at      DateTime @default(now())
+
+  @@index([identifier, created_at])
+  @@index([ip_address, created_at])
+}
+
+// IP blocklist for persistent abusers
+model IpBlocklist {
+  id         String    @id @default(uuid())
+  ip_address String    @unique
+  reason     String
+  blocked_by String
+  blocked_at DateTime  @default(now())
+  expires_at DateTime?
+  is_active  Boolean   @default(true)
+
+  @@index([ip_address])
+  @@index([ip_address, is_active])
+  @@index([expires_at])
 }

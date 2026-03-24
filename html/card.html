@@ -1,0 +1,1324 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <title>RESQID Card Design</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800;900&family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap");
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        background: #111;
+        min-height: 100vh;
+        font-family: "DM Sans", sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 40px 20px 60px;
+        gap: 48px;
+        color: #eee;
+      }
+
+      .section-label {
+        font-family: "Sora", sans-serif;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 3px;
+        text-transform: uppercase;
+        color: #ff6a00;
+        text-align: center;
+        margin-bottom: 6px;
+      }
+
+      .section-desc {
+        font-size: 13px;
+        color: #777;
+        text-align: center;
+        margin-bottom: 28px;
+        letter-spacing: 0.3px;
+      }
+
+      /* ── CARD WRAPPER ── */
+      .card-scene {
+        perspective: 1200px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 32px;
+        width: 100%;
+        max-width: 900px;
+      }
+
+      .cards-row {
+        display: flex;
+        gap: 32px;
+        justify-content: center;
+        flex-wrap: wrap;
+        align-items: flex-start;
+      }
+
+      .card-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .card-mini-label {
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        color: #555;
+      }
+
+      /* ── CARD BASE ── */
+      .card {
+        width: 340px;
+        height: 214px;
+        border-radius: 14px;
+        position: relative;
+        overflow: hidden;
+        box-shadow:
+          0 24px 60px rgba(0, 0, 0, 0.7),
+          0 0 0 1px rgba(255, 255, 255, 0.04);
+      }
+
+      /* ── FRONT CARD ── */
+      .card-front {
+        background: #1a1a1a;
+      }
+
+      .card-front::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(
+            ellipse 200px 140px at 10% 110%,
+            rgba(255, 106, 0, 0.22) 0%,
+            transparent 70%
+          ),
+          radial-gradient(
+            ellipse 180px 120px at 95% -10%,
+            rgba(255, 80, 0, 0.12) 0%,
+            transparent 60%
+          );
+        z-index: 0;
+      }
+
+      /* Texture overlay */
+      .card-front::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image: repeating-linear-gradient(
+          90deg,
+          transparent,
+          transparent 3px,
+          rgba(255, 255, 255, 0.012) 3px,
+          rgba(255, 255, 255, 0.012) 4px
+        );
+        z-index: 1;
+      }
+
+      /* Orange accent bar (bottom) */
+      .accent-bar {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, #ff4500, #ff6a00, #ff8c00);
+        z-index: 10;
+      }
+
+      /* Left edge accent */
+      .accent-edge {
+        position: absolute;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        width: 3px;
+        background: linear-gradient(180deg, #ff6a00, #ff4500 60%, transparent);
+        z-index: 10;
+      }
+
+      .card-content {
+        position: relative;
+        z-index: 5;
+        width: 100%;
+        height: 100%;
+        padding: 18px 20px 22px 22px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+
+      /* Top row */
+      .card-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+      }
+
+      .logo-block {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .logo-shield {
+        width: 28px;
+        height: 32px;
+        flex-shrink: 0;
+      }
+
+      .logo-texts {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+      }
+
+      .logo-name {
+        font-family: "Sora", sans-serif;
+        font-size: 18px;
+        font-weight: 900;
+        letter-spacing: 3px;
+        color: #fff;
+        line-height: 1;
+      }
+
+      .logo-name span {
+        color: #ff6a00;
+      }
+
+      .logo-sub {
+        font-family: "DM Sans", sans-serif;
+        font-size: 7.5px;
+        font-weight: 300;
+        letter-spacing: 1.8px;
+        color: #888;
+        text-transform: uppercase;
+      }
+
+      /* Card number */
+      .card-number {
+        font-family: "Space Mono", monospace;
+        font-size: 9.5px;
+        font-weight: 400;
+        color: #ff6a00;
+        letter-spacing: 2px;
+        text-align: right;
+        line-height: 1.5;
+      }
+
+      .card-number .num-label {
+        font-size: 7px;
+        color: #555;
+        letter-spacing: 1.5px;
+        display: block;
+        margin-bottom: 2px;
+      }
+
+      /* Middle - student info */
+      .card-mid {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+
+      .student-name {
+        font-family: "Sora", sans-serif;
+        font-size: 15px;
+        font-weight: 700;
+        color: #fff;
+        letter-spacing: 0.5px;
+      }
+
+      .student-meta {
+        font-size: 10px;
+        color: #888;
+        letter-spacing: 0.5px;
+        display: flex;
+        gap: 10px;
+      }
+
+      .student-meta span {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .meta-dot {
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: #ff6a00;
+        display: inline-block;
+      }
+
+      /* Bottom row */
+      .card-bottom {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+      }
+
+      .qr-placeholder {
+        width: 52px;
+        height: 52px;
+        background: #fff;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        padding: 3px;
+      }
+
+      .qr-placeholder svg {
+        width: 100%;
+        height: 100%;
+      }
+
+      .card-bottom-left {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        flex: 1;
+        margin-right: 12px;
+      }
+
+      .blood-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: rgba(255, 68, 0, 0.18);
+        border: 0.5px solid rgba(255, 106, 0, 0.4);
+        border-radius: 4px;
+        padding: 3px 8px;
+        width: fit-content;
+      }
+
+      .blood-badge .blood-icon {
+        width: 10px;
+        height: 10px;
+        background: #ff4400;
+        border-radius: 50% 0 50% 50%;
+        transform: rotate(-45deg);
+        flex-shrink: 0;
+      }
+
+      .blood-badge span {
+        font-family: "Space Mono", monospace;
+        font-size: 10px;
+        font-weight: 700;
+        color: #ff6a00;
+        letter-spacing: 1px;
+      }
+
+      .emergency-num {
+        font-size: 8px;
+        color: #555;
+        letter-spacing: 0.8px;
+      }
+
+      .emergency-num span {
+        color: #ff6a00;
+        font-family: "Space Mono", monospace;
+      }
+
+      .scan-hint {
+        font-size: 7.5px;
+        color: #444;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        text-align: right;
+        line-height: 1.6;
+      }
+
+      .scan-hint strong {
+        color: #ff6a00;
+        font-weight: 700;
+        display: block;
+        font-size: 8.5px;
+      }
+
+      /* ── BACK CARD ── */
+      .card-back {
+        background: #141414;
+      }
+
+      .card-back::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(
+            ellipse 220px 160px at 100% 100%,
+            rgba(255, 106, 0, 0.14) 0%,
+            transparent 60%
+          ),
+          radial-gradient(
+            ellipse 160px 100px at 0% 0%,
+            rgba(255, 50, 0, 0.07) 0%,
+            transparent 60%
+          );
+        z-index: 0;
+      }
+
+      .back-content {
+        position: relative;
+        z-index: 5;
+        width: 100%;
+        height: 100%;
+        display: flex;
+      }
+
+      /* Magnetic stripe */
+      .mag-stripe {
+        position: absolute;
+        top: 20px;
+        left: 0;
+        right: 0;
+        height: 30px;
+        background: linear-gradient(180deg, #1f1f1f, #292929, #1f1f1f);
+        border-top: 0.5px solid #333;
+        border-bottom: 0.5px solid #333;
+      }
+
+      .back-body {
+        position: absolute;
+        top: 65px;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        padding: 0 18px 14px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+
+      .back-info-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+      }
+
+      .back-left {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .back-field {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+      }
+
+      .field-label {
+        font-size: 7px;
+        color: #555;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        font-weight: 500;
+      }
+
+      .field-value {
+        font-family: "Space Mono", monospace;
+        font-size: 9px;
+        color: #bbb;
+        letter-spacing: 0.5px;
+      }
+
+      .back-right {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 6px;
+      }
+
+      .back-qr-large {
+        width: 64px;
+        height: 64px;
+        background: #fff;
+        border-radius: 5px;
+        padding: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .back-qr-large svg {
+        width: 100%;
+        height: 100%;
+      }
+
+      .qr-scan-label {
+        font-size: 7px;
+        color: #555;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        text-align: right;
+      }
+
+      .back-bottom {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+      }
+
+      .company-line {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .company-name {
+        font-family: "Sora", sans-serif;
+        font-size: 8px;
+        font-weight: 700;
+        color: #ff6a00;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+      }
+
+      .company-reg {
+        font-size: 7px;
+        color: #444;
+        letter-spacing: 0.5px;
+      }
+
+      .card-validity {
+        text-align: right;
+      }
+
+      .validity-label {
+        font-size: 7px;
+        color: #555;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        display: block;
+      }
+
+      .validity-value {
+        font-family: "Space Mono", monospace;
+        font-size: 10px;
+        color: #aaa;
+      }
+
+      /* ── PROTECTIVE COVER ── */
+      .cover-card {
+        width: 340px;
+        border-radius: 14px;
+        background: #1c1308;
+        position: relative;
+        overflow: hidden;
+        box-shadow:
+          0 24px 60px rgba(0, 0, 0, 0.7),
+          0 0 0 1px rgba(255, 106, 0, 0.15);
+      }
+
+      .cover-card::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(
+            ellipse 240px 160px at 50% 0%,
+            rgba(255, 106, 0, 0.25) 0%,
+            transparent 70%
+          ),
+          radial-gradient(
+            ellipse 180px 120px at 100% 100%,
+            rgba(255, 60, 0, 0.12) 0%,
+            transparent 60%
+          );
+        z-index: 0;
+      }
+
+      .cover-top {
+        position: relative;
+        z-index: 2;
+        height: 214px;
+        padding: 18px 22px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        border-bottom: 0.5px solid rgba(255, 106, 0, 0.2);
+      }
+
+      .cover-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .cover-logo {
+        font-family: "Sora", sans-serif;
+        font-size: 18px;
+        font-weight: 900;
+        letter-spacing: 3px;
+        color: #fff;
+      }
+
+      .cover-logo span {
+        color: #ff6a00;
+      }
+
+      .cover-badge {
+        background: rgba(255, 106, 0, 0.15);
+        border: 0.5px solid rgba(255, 106, 0, 0.4);
+        border-radius: 20px;
+        padding: 4px 10px;
+        font-size: 9px;
+        font-weight: 600;
+        letter-spacing: 1.5px;
+        color: #ff8c00;
+        text-transform: uppercase;
+      }
+
+      .cover-main {
+        text-align: center;
+      }
+
+      .cover-title {
+        font-family: "Sora", sans-serif;
+        font-size: 13px;
+        font-weight: 700;
+        color: #fff;
+        letter-spacing: 1px;
+        margin-bottom: 6px;
+      }
+
+      .cover-desc {
+        font-size: 10px;
+        color: #888;
+        line-height: 1.6;
+        letter-spacing: 0.3px;
+      }
+
+      .cover-shield-big {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 10px;
+      }
+
+      /* Cover bottom - instructions */
+      .cover-bottom {
+        position: relative;
+        z-index: 2;
+        padding: 18px 22px;
+      }
+
+      .cover-bottom-title {
+        font-family: "Sora", sans-serif;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 2px;
+        color: #ff6a00;
+        text-transform: uppercase;
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .cover-bottom-title::after {
+        content: "";
+        flex: 1;
+        height: 0.5px;
+        background: rgba(255, 106, 0, 0.3);
+      }
+
+      .instruction-list {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .instruction-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+      }
+
+      .inst-num {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: rgba(255, 106, 0, 0.2);
+        border: 0.5px solid rgba(255, 106, 0, 0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 8px;
+        font-weight: 700;
+        color: #ff6a00;
+        flex-shrink: 0;
+        margin-top: 1px;
+        font-family: "Sora", sans-serif;
+      }
+
+      .inst-text {
+        font-size: 10.5px;
+        color: #bbb;
+        line-height: 1.55;
+      }
+
+      .inst-text strong {
+        color: #fff;
+        font-weight: 500;
+      }
+
+      .cover-footer {
+        position: relative;
+        z-index: 2;
+        padding: 12px 22px 16px;
+        border-top: 0.5px solid rgba(255, 255, 255, 0.05);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .cover-footer-logo {
+        font-family: "Sora", sans-serif;
+        font-size: 8.5px;
+        font-weight: 700;
+        color: #ff6a00;
+        letter-spacing: 2px;
+      }
+
+      .cover-footer-company {
+        font-size: 8px;
+        color: #444;
+        text-align: right;
+        letter-spacing: 0.5px;
+        line-height: 1.7;
+      }
+
+      /* ── QR code SVG (generated pattern) ── */
+      .qr-svg {
+        width: 100%;
+        height: 100%;
+      }
+
+      /* Dimensions note */
+      .dim-note {
+        font-size: 10px;
+        color: #3a3a3a;
+        letter-spacing: 1px;
+        text-align: center;
+        margin-top: 6px;
+      }
+
+      /* Section divider */
+      .divider-line {
+        width: 100%;
+        max-width: 900px;
+        border: none;
+        border-top: 0.5px solid #222;
+      }
+
+      /* Emergency tips card */
+      .tips-card {
+        width: 340px;
+        background: #151515;
+        border-radius: 14px;
+        overflow: hidden;
+        box-shadow:
+          0 20px 50px rgba(0, 0, 0, 0.6),
+          0 0 0 1px rgba(255, 255, 255, 0.04);
+      }
+
+      .tips-header {
+        background: linear-gradient(135deg, #ff4500, #ff6a00);
+        padding: 14px 18px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .tips-header-icon {
+        width: 28px;
+        height: 28px;
+        background: rgba(0, 0, 0, 0.25);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+
+      .tips-header-text {
+        font-family: "Sora", sans-serif;
+        font-size: 12px;
+        font-weight: 700;
+        color: #fff;
+        letter-spacing: 1px;
+      }
+
+      .tips-header-sub {
+        font-size: 9px;
+        color: rgba(255, 255, 255, 0.7);
+        letter-spacing: 0.5px;
+      }
+
+      .tips-body {
+        padding: 16px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .tip-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+      }
+
+      .tip-icon-circle {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        margin-top: 1px;
+      }
+
+      .tip-icon-circle.red {
+        background: rgba(255, 68, 0, 0.18);
+      }
+      .tip-icon-circle.orange {
+        background: rgba(255, 106, 0, 0.18);
+      }
+      .tip-icon-circle.amber {
+        background: rgba(255, 180, 0, 0.15);
+      }
+
+      .tip-text strong {
+        display: block;
+        font-size: 11px;
+        font-weight: 600;
+        color: #ddd;
+        margin-bottom: 2px;
+        font-family: "Sora", sans-serif;
+      }
+
+      .tip-text p {
+        font-size: 10px;
+        color: #666;
+        line-height: 1.55;
+      }
+
+      .tips-footer {
+        padding: 10px 18px 14px;
+        border-top: 0.5px solid #222;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .tips-helpline {
+        font-size: 9px;
+        color: #555;
+        letter-spacing: 0.5px;
+      }
+
+      .tips-helpline span {
+        font-family: "Space Mono", monospace;
+        color: #ff6a00;
+        font-size: 11px;
+      }
+
+      .tips-brand {
+        font-family: "Sora", sans-serif;
+        font-size: 8.5px;
+        font-weight: 700;
+        color: #333;
+        letter-spacing: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ===== FRONT CARD ===== -->
+    <div class="section-label">Front Card — Student Face</div>
+    <p class="section-desc">
+      85.6 × 54mm · CR80 Standard · Matt Black PVC · Orange UV Spot Print
+    </p>
+
+    <div class="card-scene">
+      <div class="cards-row">
+        <div class="card-container">
+          <div class="card-mini-label">Front</div>
+          <div class="card card-front">
+            <div class="accent-bar"></div>
+            <div class="accent-edge"></div>
+            <div class="card-content">
+              <!-- TOP ROW -->
+              <div class="card-top">
+                <div class="logo-block">
+                  <!-- Shield SVG -->
+                  <svg
+                    class="logo-shield"
+                    viewBox="0 0 28 32"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M14 1L2 6V16C2 22.6 7.4 28.8 14 31C20.6 28.8 26 22.6 26 16V6L14 1Z"
+                      fill="#FF6A00"
+                      opacity="0.25"
+                    />
+                    <path
+                      d="M14 1L2 6V16C2 22.6 7.4 28.8 14 31C20.6 28.8 26 22.6 26 16V6L14 1Z"
+                      stroke="#FF6A00"
+                      stroke-width="1.2"
+                      stroke-linejoin="round"
+                    />
+                    <path
+                      d="M9 16L12.5 19.5L19 13"
+                      stroke="#FF6A00"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                  <div class="logo-texts">
+                    <div class="logo-name">RESQ<span>ID</span></div>
+                    <div class="logo-sub">Emergency Identity</div>
+                  </div>
+                </div>
+
+                <div class="card-number">
+                  <span class="num-label">CARD NO.</span>
+                  RSQ-2025-<br />08472-A
+                </div>
+              </div>
+
+              <!-- MIDDLE -->
+              <div class="card-mid">
+                <div class="student-name">ARJUN SHARMA</div>
+                <div class="student-meta">
+                  <span><span class="meta-dot"></span>CLASS 8-B · ROLL 24</span>
+                  <span>AGE 13</span>
+                </div>
+              </div>
+
+              <!-- BOTTOM ROW -->
+              <div class="card-bottom">
+                <div class="card-bottom-left">
+                  <div class="blood-badge">
+                    <div class="blood-icon"></div>
+                    <span>B+ve</span>
+                  </div>
+                  <div class="emergency-num">
+                    EMERGENCY · <span>112 / 108</span>
+                  </div>
+                </div>
+
+                <!-- QR Code placeholder -->
+                <div
+                  style="
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 3px;
+                  "
+                >
+                  <div class="qr-placeholder">
+                    <svg
+                      class="qr-svg"
+                      viewBox="0 0 21 21"
+                      fill="none"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <!-- QR code pattern (representative) -->
+                      <rect x="0" y="0" width="21" height="21" fill="white" />
+                      <!-- TL finder -->
+                      <rect x="1" y="1" width="7" height="7" fill="#111" />
+                      <rect x="2" y="2" width="5" height="5" fill="white" />
+                      <rect x="3" y="3" width="3" height="3" fill="#111" />
+                      <!-- TR finder -->
+                      <rect x="13" y="1" width="7" height="7" fill="#111" />
+                      <rect x="14" y="2" width="5" height="5" fill="white" />
+                      <rect x="15" y="3" width="3" height="3" fill="#111" />
+                      <!-- BL finder -->
+                      <rect x="1" y="13" width="7" height="7" fill="#111" />
+                      <rect x="2" y="14" width="5" height="5" fill="white" />
+                      <rect x="3" y="15" width="3" height="3" fill="#111" />
+                      <!-- Data modules -->
+                      <rect x="9" y="1" width="1" height="1" fill="#111" />
+                      <rect x="11" y="1" width="1" height="1" fill="#111" />
+                      <rect x="9" y="3" width="2" height="1" fill="#111" />
+                      <rect x="10" y="5" width="1" height="1" fill="#111" />
+                      <rect x="9" y="7" width="1" height="2" fill="#111" />
+                      <rect x="11" y="7" width="1" height="1" fill="#111" />
+                      <rect x="1" y="9" width="2" height="1" fill="#111" />
+                      <rect x="4" y="9" width="1" height="1" fill="#111" />
+                      <rect x="6" y="9" width="1" height="2" fill="#111" />
+                      <rect x="9" y="9" width="1" height="1" fill="#111" />
+                      <rect x="11" y="9" width="1" height="1" fill="#111" />
+                      <rect x="13" y="9" width="2" height="1" fill="#111" />
+                      <rect x="16" y="9" width="2" height="1" fill="#111" />
+                      <rect x="9" y="11" width="2" height="1" fill="#111" />
+                      <rect x="13" y="11" width="1" height="2" fill="#111" />
+                      <rect x="15" y="11" width="2" height="1" fill="#111" />
+                      <rect x="1" y="11" width="3" height="1" fill="#111" />
+                      <rect x="5" y="11" width="2" height="1" fill="#111" />
+                      <rect x="9" y="13" width="1" height="1" fill="#111" />
+                      <rect x="11" y="13" width="2" height="1" fill="#111" />
+                      <rect x="9" y="15" width="3" height="1" fill="#111" />
+                      <rect x="13" y="15" width="1" height="1" fill="#111" />
+                      <rect x="15" y="15" width="1" height="2" fill="#111" />
+                      <rect x="9" y="17" width="1" height="2" fill="#111" />
+                      <rect x="11" y="17" width="2" height="1" fill="#111" />
+                      <rect x="14" y="17" width="1" height="1" fill="#111" />
+                      <rect x="9" y="19" width="3" height="1" fill="#111" />
+                      <rect x="13" y="19" width="2" height="1" fill="#111" />
+                      <rect x="17" y="13" width="2" height="1" fill="#111" />
+                      <rect x="19" y="15" width="1" height="2" fill="#111" />
+                      <rect x="17" y="17" width="2" height="1" fill="#111" />
+                    </svg>
+                  </div>
+                  <div class="scan-hint">
+                    <strong>SCAN ME</strong>in emergency
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="dim-note">85.6 × 54mm</div>
+        </div>
+
+        <!-- ===== BACK CARD ===== -->
+        <div class="card-container">
+          <div class="card-mini-label">Back</div>
+          <div class="card card-back">
+            <div class="accent-bar"></div>
+            <div class="back-content">
+              <div class="mag-stripe"></div>
+              <div class="back-body">
+                <!-- Info row -->
+                <div class="back-info-row">
+                  <div class="back-left">
+                    <div class="back-field">
+                      <span class="field-label">School</span>
+                      <span class="field-value">ST. MARY'S H.S.</span>
+                    </div>
+                    <div class="back-field">
+                      <span class="field-label">Guardian Contact</span>
+                      <span class="field-value">+91 98765 43210</span>
+                    </div>
+                    <div class="back-field">
+                      <span class="field-label">Allergy / Medical</span>
+                      <span class="field-value" style="color: #ff6a00"
+                        >PENICILLIN ALLERGY</span
+                      >
+                    </div>
+                    <div class="back-field">
+                      <span class="field-label">Address</span>
+                      <span class="field-value" style="font-size: 8px"
+                        >12, MG ROAD, KOLKATA - 700001</span
+                      >
+                    </div>
+                  </div>
+                  <div class="back-right">
+                    <div class="back-qr-large">
+                      <svg
+                        viewBox="0 0 21 21"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                        style="width: 100%; height: 100%"
+                      >
+                        <rect x="0" y="0" width="21" height="21" fill="white" />
+                        <rect x="1" y="1" width="7" height="7" fill="#111" />
+                        <rect x="2" y="2" width="5" height="5" fill="white" />
+                        <rect x="3" y="3" width="3" height="3" fill="#111" />
+                        <rect x="13" y="1" width="7" height="7" fill="#111" />
+                        <rect x="14" y="2" width="5" height="5" fill="white" />
+                        <rect x="15" y="3" width="3" height="3" fill="#111" />
+                        <rect x="1" y="13" width="7" height="7" fill="#111" />
+                        <rect x="2" y="14" width="5" height="5" fill="white" />
+                        <rect x="3" y="15" width="3" height="3" fill="#111" />
+                        <rect x="9" y="1" width="1" height="1" fill="#111" />
+                        <rect x="11" y="1" width="1" height="1" fill="#111" />
+                        <rect x="9" y="3" width="2" height="1" fill="#111" />
+                        <rect x="11" y="5" width="1" height="1" fill="#111" />
+                        <rect x="1" y="9" width="2" height="1" fill="#111" />
+                        <rect x="4" y="9" width="3" height="1" fill="#111" />
+                        <rect x="9" y="9" width="3" height="1" fill="#111" />
+                        <rect x="13" y="9" width="2" height="1" fill="#111" />
+                        <rect x="17" y="9" width="2" height="1" fill="#111" />
+                        <rect x="9" y="11" width="1" height="3" fill="#111" />
+                        <rect x="11" y="11" width="2" height="1" fill="#111" />
+                        <rect x="15" y="11" width="3" height="1" fill="#111" />
+                        <rect x="1" y="11" width="4" height="1" fill="#111" />
+                        <rect x="9" y="14" width="3" height="1" fill="#111" />
+                        <rect x="13" y="14" width="1" height="3" fill="#111" />
+                        <rect x="15" y="14" width="1" height="1" fill="#111" />
+                        <rect x="17" y="14" width="1" height="2" fill="#111" />
+                        <rect x="9" y="17" width="2" height="1" fill="#111" />
+                        <rect x="12" y="17" width="1" height="2" fill="#111" />
+                        <rect x="15" y="17" width="1" height="1" fill="#111" />
+                        <rect x="9" y="19" width="1" height="1" fill="#111" />
+                        <rect x="11" y="19" width="3" height="1" fill="#111" />
+                        <rect x="16" y="19" width="2" height="1" fill="#111" />
+                      </svg>
+                    </div>
+                    <div class="qr-scan-label">Scan for<br />full profile</div>
+                  </div>
+                </div>
+
+                <!-- Bottom -->
+                <div class="back-bottom">
+                  <div class="company-line">
+                    <div class="company-name">RESQID</div>
+                    <div class="company-reg">
+                      by coreZ Technologies LLP<br />www.resqid.in
+                    </div>
+                  </div>
+                  <div class="card-validity">
+                    <span class="validity-label">Valid Till</span>
+                    <span class="validity-value">12/2027</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="accent-bar"></div>
+          </div>
+          <div class="dim-note">85.6 × 54mm</div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider-line" />
+
+    <!-- ===== PROTECTIVE COVER ===== -->
+    <div class="section-label">Protective Cover — QR Shield</div>
+    <p class="section-desc">
+      Opaque Matt Black PVC Sleeve · Fits over front card · Blocks unauthorized
+      scanning
+    </p>
+
+    <div class="card-scene">
+      <div class="cards-row">
+        <div class="card-container">
+          <div class="card-mini-label">Cover — Closed Side (Opaque)</div>
+          <div class="cover-card">
+            <!-- Top half: looks like a card -->
+            <div class="cover-top">
+              <div class="cover-header">
+                <div class="cover-logo">RESQ<span>ID</span></div>
+                <div class="cover-badge">Protected</div>
+              </div>
+
+              <div class="cover-shield-big">
+                <svg
+                  width="54"
+                  height="62"
+                  viewBox="0 0 54 62"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M27 2L3 12V30C3 44 13.5 56 27 60C40.5 56 51 44 51 30V12L27 2Z"
+                    fill="rgba(255,106,0,0.12)"
+                    stroke="#FF6A00"
+                    stroke-width="1.5"
+                    stroke-linejoin="round"
+                  />
+                  <!-- lock icon -->
+                  <rect
+                    x="18"
+                    y="28"
+                    width="18"
+                    height="14"
+                    rx="3"
+                    fill="rgba(255,106,0,0.3)"
+                    stroke="#FF6A00"
+                    stroke-width="1.2"
+                  />
+                  <path
+                    d="M21 28V23C21 19.7 33 19.7 33 23V28"
+                    stroke="#FF6A00"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    fill="none"
+                  />
+                  <circle cx="27" cy="34.5" r="2.5" fill="#FF6A00" />
+                  <line
+                    x1="27"
+                    y1="37"
+                    x2="27"
+                    y2="39.5"
+                    stroke="#FF6A00"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                  />
+                </svg>
+              </div>
+
+              <div class="cover-main">
+                <div class="cover-title">QR Scan Protection Active</div>
+                <div class="cover-desc">
+                  This opaque cover prevents unauthorized QR scanning.<br />Only
+                  remove in a genuine emergency situation.
+                </div>
+              </div>
+            </div>
+
+            <!-- Bottom: Emergency Instructions -->
+            <div class="cover-bottom">
+              <div class="cover-bottom-title">Emergency Protocol</div>
+              <ul class="instruction-list">
+                <li class="instruction-item">
+                  <div class="inst-num">1</div>
+                  <div class="inst-text">
+                    <strong>Call emergency services first</strong> — Dial 112
+                    (Police), 108 (Ambulance), or 101 (Fire).
+                  </div>
+                </li>
+                <li class="instruction-item">
+                  <div class="inst-num">2</div>
+                  <div class="inst-text">
+                    <strong>Remove this cover</strong> — Pull the sleeve upward
+                    to expose the student's RESQID card beneath.
+                  </div>
+                </li>
+                <li class="instruction-item">
+                  <div class="inst-num">3</div>
+                  <div class="inst-text">
+                    <strong>Scan the QR code</strong> — Use any smartphone
+                    camera. No app needed. Student's full profile loads
+                    instantly.
+                  </div>
+                </li>
+                <li class="instruction-item">
+                  <div class="inst-num">4</div>
+                  <div class="inst-text">
+                    <strong>Contact guardian</strong> — Guardian's number is on
+                    the card and in the scanned profile.
+                  </div>
+                </li>
+              </ul>
+            </div>
+
+            <div class="cover-footer">
+              <div class="cover-footer-logo">RESQID</div>
+              <div class="cover-footer-company">
+                coreZ Technologies LLP<br />www.resqid.in
+              </div>
+            </div>
+          </div>
+          <div class="dim-note">88 × 120mm (sleeve)</div>
+        </div>
+
+        <!-- Emergency Tips Card -->
+        <div class="card-container">
+          <div class="card-mini-label">
+            Backend Profile — Emergency Tips Panel
+          </div>
+          <div class="tips-card">
+            <div class="tips-header">
+              <div class="tips-header-icon">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path
+                    d="M8 1L9.8 5.5H15L10.9 8.7L12.7 13.2L8 10.3L3.3 13.2L5.1 8.7L1 5.5H6.2L8 1Z"
+                    fill="white"
+                    opacity="0.9"
+                  />
+                </svg>
+              </div>
+              <div>
+                <div class="tips-header-text">EMERGENCY RESPONSE GUIDE</div>
+                <div class="tips-header-sub">
+                  Displayed to first responder on QR scan
+                </div>
+              </div>
+            </div>
+            <div class="tips-body">
+              <div class="tip-row">
+                <div class="tip-icon-circle red">🩸</div>
+                <div class="tip-text">
+                  <strong>Bleeding / Injury</strong>
+                  <p>
+                    Apply firm pressure with clean cloth. Do not remove embedded
+                    objects. Keep the student still and calm.
+                  </p>
+                </div>
+              </div>
+              <div class="tip-row">
+                <div class="tip-icon-circle orange">💊</div>
+                <div class="tip-text">
+                  <strong>Allergic Reaction / Medical</strong>
+                  <p>
+                    Check allergy info above. If anaphylaxis suspected —
+                    administer epinephrine if available and call 108
+                    immediately.
+                  </p>
+                </div>
+              </div>
+              <div class="tip-row">
+                <div class="tip-icon-circle amber">🫀</div>
+                <div class="tip-text">
+                  <strong>Unconscious / Not Breathing</strong>
+                  <p>
+                    Begin CPR: 30 chest compressions + 2 rescue breaths.
+                    Continue until ambulance arrives. Do not leave the student
+                    alone.
+                  </p>
+                </div>
+              </div>
+              <div class="tip-row">
+                <div class="tip-icon-circle red">🔥</div>
+                <div class="tip-text">
+                  <strong>Burns / Chemical Exposure</strong>
+                  <p>
+                    Flush with cool running water for 10+ mins. Do not apply
+                    ice, butter, or creams. Remove contaminated clothing
+                    carefully.
+                  </p>
+                </div>
+              </div>
+              <div class="tip-row">
+                <div class="tip-icon-circle orange">🧠</div>
+                <div class="tip-text">
+                  <strong>Seizure / Convulsion</strong>
+                  <p>
+                    Do not restrain. Protect head, clear area. Time the seizure.
+                    Roll to recovery position after it stops. Call 108.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div class="tips-footer">
+              <div class="tips-helpline">
+                Emergency Helpline: <span>112</span> &nbsp;|&nbsp; Ambulance:
+                <span>108</span>
+              </div>
+              <div class="tips-brand">RESQID</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

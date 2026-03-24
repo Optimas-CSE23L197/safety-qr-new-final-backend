@@ -24,7 +24,7 @@ Content-Type: application/json
 POST {{baseUrl}}/auth/school
 Content-Type: application/json
 
-{ "email": "schooladmin@test.com", "password": "Admin@123#" }
+{ "email": "admin@dps.edu", "password": "Admin@123" }
 
 ###
 
@@ -40,7 +40,7 @@ Content-Type: application/json
 POST {{baseUrl}}/auth/verify-otp
 Content-Type: application/json
 
-{ "phone": "+916294690079", "otp": "465474" }
+{ "phone": "+916294690079", "otp": "683939" }
 
 ###
 

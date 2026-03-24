@@ -16,13 +16,9 @@ import studentsRouter from "../modules/school_admin/students/students.routes.js"
 import cardRequestsRouter from "../modules/school_admin/card/card.routes.js";
 import tokensRouter from "../modules/school_admin/tokens/token.routes.js";
 import qrRouter from "../modules/school_admin/qr/qr.routes.js";
-
-// future school admin modules — uncomment as you build them:
-// import tokensRouter      from "../modules/school_admin/tokens/tokens.route.js";
-// import monitoringRouter  from "../modules/school_admin/monitoring/monitoring.route.js";
-// import parentReqRouter   from "../modules/school_admin/parents/parentRequests.route.js";
-// import anomaliesRouter   from "../modules/school_admin/anomalies/anomalies.route.js";
-// import settingsRouter    from "../modules/school_admin/settings/settings.route.js";
+import scanLogRouter from "../modules/school_admin/scanLogs/scanLog.routes.js";
+import scanAnomalyRouter from "../modules/school_admin/scanAnomaly/scanAnomaly.routes.js";
+import notificationRouter from "../modules/school_admin/notification/notification.routes.js";
 
 const router = Router();
 
@@ -31,11 +27,8 @@ router.use(studentsRouter);
 router.use(cardRequestsRouter);
 router.use(tokensRouter);
 router.use(qrRouter);
-
-// router.use(tokensRouter);
-// router.use(monitoringRouter);
-// router.use(parentReqRouter);
-// router.use(anomaliesRouter);
-// router.use(settingsRouter);
+router.use(scanLogRouter);
+router.use(scanAnomalyRouter);
+router.use(notificationRouter);
 
 export default router;

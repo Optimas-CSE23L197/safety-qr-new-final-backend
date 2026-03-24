@@ -370,3 +370,126 @@ export function validateRequestReplace(req, res, next) {
   req.validatedBody = result.data;
   next();
 }
+
+// =============================================================================
+// modules/parents/parent.validation.js — RESQID (ENHANCED)
+// Add these new schemas
+// =============================================================================
+
+// ─── GET /me/location-history ─────────────────────────────────────────────────
+
+const locationHistorySchema = z.object({
+  student_id: z.string().regex(UUID_REGEX, "student_id must be a valid UUID"),
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  from_date: z.string().datetime().optional(),
+  to_date: z.string().datetime().optional(),
+});
+
+export function validateLocationHistoryQuery(req, res, next) {
+  const result = locationHistorySchema.safeParse(req.query);
+  if (!result.success) {
+    return res.status(400).json({
+      success: false,
+      code: "VALIDATION_ERROR",
+      errors: result.error.flatten().fieldErrors,
+    });
+  }
+  req.validatedQuery = result.data;
+  next();
+}
+
+// ─── GET /me/anomalies ───────────────────────────────────────────────────────
+
+const anomaliesSchema = z.object({
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  severity: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional(),
+  resolved: z.enum(["true", "false"]).optional(),
+});
+
+export function validateAnomaliesQuery(req, res, next) {
+  const result = anomaliesSchema.safeParse(req.query);
+  if (!result.success) {
+    return res.status(400).json({
+      success: false,
+      code: "VALIDATION_ERROR",
+      errors: result.error.flatten().fieldErrors,
+    });
+  }
+  req.validatedQuery = result.data;
+  next();
+}
+
+// ─── POST /me/request-renewal ─────────────────────────────────────────────────
+
+const requestRenewalSchema = z.object({
+  card_id: z.string().regex(UUID_REGEX),
+  payment_method: z.enum(["UPI", "CARD", "NETBANKING", "WALLET"]),
+});
+
+export function validateRequestRenewal(req, res, next) {
+  const result = requestRenewalSchema.safeParse(req.body);
+  if (!result.success) {
+    return res.status(400).json({
+      success: false,
+      code: "VALIDATION_ERROR",
+      errors: result.error.flatten().fieldErrors,
+    });
+  }
+  req.validatedBody = result.data;
+  next();
+}
+
+// ─── POST /me/change-phone ───────────────────────────────────────────────────
+
+const changePhoneSchema = z.object({
+  new_phone: z
+    .string()
+    .transform(normalisePhone)
+    .pipe(
+      z
+        .string()
+        .regex(PHONE_REGEX, "Phone must be a valid number e.g. +919876543210"),
+    ),
+  otp: z.string().length(6, "OTP must be 6 digits"),
+});
+
+export function validateChangePhone(req, res, next) {
+  const result = changePhoneSchema.safeParse(req.body);
+  if (!result.success) {
+    return res.status(400).json({
+      success: false,
+      code: "VALIDATION_ERROR",
+      errors: result.error.flatten().fieldErrors,
+    });
+  }
+  req.validatedBody = result.data;
+  next();
+}
+
+// ─── POST /me/send-phone-otp ─────────────────────────────────────────────────
+
+const sendPhoneOtpSchema = z.object({
+  new_phone: z
+    .string()
+    .transform(normalisePhone)
+    .pipe(
+      z
+        .string()
+        .regex(PHONE_REGEX, "Phone must be a valid number e.g. +919876543210"),
+    ),
+});
+
+export function validateSendPhoneOtp(req, res, next) {
+  const result = sendPhoneOtpSchema.safeParse(req.body);
+  if (!result.success) {
+    return res.status(400).json({
+      success: false,
+      code: "VALIDATION_ERROR",
+      errors: result.error.flatten().fieldErrors,
+    });
+  }
+  req.validatedBody = result.data;
+  next();
+}

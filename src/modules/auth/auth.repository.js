@@ -1,15 +1,17 @@
 // =============================================================================
-// src/modules/auth/repository.js — RESQID
-// Pure DB access layer — NO business logic
+// src/modules/auth/auth.repository.js — RESQID
+// PURE DATABASE ACCESS LAYER — NO BUSINESS LOGIC
 // =============================================================================
 
 import { prisma } from "../../config/prisma.js";
 
-// ─── Super Admin ──────────────────────────────────────────────────────────────
+// =============================================================================
+// SUPER ADMIN
+// =============================================================================
 
 export const findSuperAdminByEmail = (email) =>
   prisma.superAdmin.findUnique({
-    where: { email },
+    where: { email: email.toLowerCase() },
     select: {
       id: true,
       email: true,
@@ -22,7 +24,7 @@ export const findSuperAdminByEmail = (email) =>
 export const findSuperAdminById = (id) =>
   prisma.superAdmin.findUnique({
     where: { id },
-    select: { id: true, is_active: true },
+    select: { id: true, name: true, email: true, is_active: true },
   });
 
 export const updateSuperAdminLastLogin = (id) =>
@@ -31,11 +33,19 @@ export const updateSuperAdminLastLogin = (id) =>
     data: { last_login_at: new Date() },
   });
 
-// ─── School User ──────────────────────────────────────────────────────────────
+export const updateSuperAdminPassword = (id, hashedPassword) =>
+  prisma.superAdmin.update({
+    where: { id },
+    data: { password_hash: hashedPassword },
+  });
+
+// =============================================================================
+// SCHOOL ADMIN
+// =============================================================================
 
 export const findSchoolUserByEmail = (email) =>
   prisma.schoolUser.findUnique({
-    where: { email },
+    where: { email: email.toLowerCase() },
     select: {
       id: true,
       school_id: true,
@@ -50,7 +60,13 @@ export const findSchoolUserByEmail = (email) =>
 export const findSchoolUserById = (id) =>
   prisma.schoolUser.findUnique({
     where: { id },
-    select: { id: true, school_id: true, role: true, is_active: true },
+    select: {
+      id: true,
+      school_id: true,
+      role: true,
+      is_active: true,
+      name: true,
+    },
   });
 
 export const updateSchoolUserLastLogin = (id) =>
@@ -59,7 +75,15 @@ export const updateSchoolUserLastLogin = (id) =>
     data: { last_login_at: new Date() },
   });
 
-// ─── Parent User ──────────────────────────────────────────────────────────────
+export const updateSchoolUserPassword = (id, hashedPassword) =>
+  prisma.schoolUser.update({
+    where: { id },
+    data: { password_hash: hashedPassword },
+  });
+
+// =============================================================================
+// PARENT USER
+// =============================================================================
 
 export const findParentByPhoneIndex = (phoneIndex) =>
   prisma.parentUser.findUnique({
@@ -70,24 +94,32 @@ export const findParentByPhoneIndex = (phoneIndex) =>
       phone_index: true,
       is_phone_verified: true,
       status: true,
+      preferred_language: true,
+      last_login_at: true,
     },
   });
 
 export const findParentById = (id) =>
   prisma.parentUser.findUnique({
     where: { id },
-    select: { id: true, status: true },
+    select: {
+      id: true,
+      status: true,
+      phone: true,
+      preferred_language: true,
+    },
   });
 
-export const createParentUser = ({ encryptedPhone, phoneIndex }) =>
+export const createParentUser = ({ encryptedPhone, phoneIndex, language }) =>
   prisma.parentUser.create({
     data: {
       phone: encryptedPhone,
       phone_index: phoneIndex,
       is_phone_verified: true,
       status: "ACTIVE",
+      preferred_language: language || "en",
     },
-    select: { id: true, status: true },
+    select: { id: true, status: true, preferred_language: true },
   });
 
 export const updateParentLastLogin = (id) =>
@@ -96,16 +128,19 @@ export const updateParentLastLogin = (id) =>
     data: { last_login_at: new Date() },
   });
 
-// ─── Registration: Card lookup ────────────────────────────────────────────────
+export const updateParentPassword = (id, hashedPassword) =>
+  prisma.parentUser.update({
+    where: { id },
+    data: { password_hash: hashedPassword },
+  });
 
-/**
- * findCardForRegistration(card_number)
- * Fetches card + student + whether already claimed by a parent.
- * Used only in registerInit — not for auth.
- */
-export const findCardForRegistration = (card_number) =>
+// =============================================================================
+// CARD REGISTRATION
+// =============================================================================
+
+export const findCardForRegistration = (cardNumber) =>
   prisma.card.findUnique({
-    where: { card_number },
+    where: { card_number: cardNumber },
     select: {
       id: true,
       student_id: true,
@@ -122,15 +157,63 @@ export const findCardForRegistration = (card_number) =>
     },
   });
 
-/**
- * linkParentToStudent(tx, parentId, studentId)
- * Idempotent upsert — safe even if link already exists.
- * Must be called inside a Prisma $transaction.
- */
-export const linkParentToStudent = (tx, parentId, studentId) =>
-  tx.parentStudent.upsert({
+export const findCardWithToken = (cardId) =>
+  prisma.card.findUnique({
+    where: { id: cardId },
+    select: { token_id: true },
+  });
+
+export const updateCardStudent = (cardId, studentId) =>
+  prisma.card.update({
+    where: { id: cardId },
+    data: { student_id: studentId },
+  });
+
+export const updateTokenStudent = (tokenId, studentId) =>
+  prisma.token.update({
+    where: { id: tokenId },
+    data: {
+      student_id: studentId,
+      status: "ACTIVE",
+    },
+  });
+
+// =============================================================================
+// STUDENT
+// =============================================================================
+
+export const createStubStudent = (schoolId) =>
+  prisma.student.create({
+    data: {
+      school_id: schoolId,
+      first_name: null,
+      last_name: null,
+      setup_stage: "PENDING",
+      is_active: true,
+    },
+    select: { id: true },
+  });
+
+export const createEmergencyProfile = (studentId) =>
+  prisma.emergencyProfile.create({
+    data: {
+      student_id: studentId,
+      visibility: "HIDDEN",
+      is_visible: false,
+    },
+  });
+
+// =============================================================================
+// PARENT-STUDENT LINK
+// =============================================================================
+
+export const linkParentToStudent = (parentId, studentId) =>
+  prisma.parentStudent.upsert({
     where: {
-      parent_id_student_id: { parent_id: parentId, student_id: studentId },
+      parent_id_student_id: {
+        parent_id: parentId,
+        student_id: studentId,
+      },
     },
     update: {},
     create: {
@@ -141,8 +224,21 @@ export const linkParentToStudent = (tx, parentId, studentId) =>
     },
   });
 
-// ─── Session ──────────────────────────────────────────────────────────────────
+export const createParentNotificationPref = (parentId) =>
+  prisma.parentNotificationPref.upsert({
+    where: { parent_id: parentId },
+    update: {},
+    create: { parent_id: parentId },
+  });
 
+// =============================================================================
+// SESSION MANAGEMENT
+// =============================================================================
+
+// FIX: Use Prisma relation connect syntax instead of raw scalar FK fields.
+// The generated runtime client only accepts relation objects for FK fields
+// on create — direct scalar assignment (admin_user_id: "...") is rejected
+// unless the client was generated with relationMode = "prisma" or newer drivers.
 export const createSession = ({
   id,
   superAdminId,
@@ -152,13 +248,24 @@ export const createSession = ({
   ipAddress,
   expiresAt,
   refreshHash,
+  deviceFingerprint,
+  deviceId,
 }) =>
   prisma.session.create({
     data: {
       ...(id && { id }),
-      admin_user_id: superAdminId ?? null,
-      school_user_id: schoolUserId ?? null,
-      parent_user_id: parentUserId ?? null,
+      // ── Connect exactly one user FK via relation object ──────────────────
+      ...(superAdminId && {
+        superAdmin: { connect: { id: superAdminId } },
+      }),
+      ...(schoolUserId && {
+        schoolUser: { connect: { id: schoolUserId } },
+      }),
+      ...(parentUserId && {
+        parentUser: { connect: { id: parentUserId } },
+      }),
+      // ── Remaining scalar fields ──────────────────────────────────────────
+      device_id: deviceId ?? null,
       device_info: deviceInfo ? JSON.stringify(deviceInfo) : null,
       ip_address: ipAddress ?? null,
       expires_at: expiresAt,
@@ -166,12 +273,6 @@ export const createSession = ({
       refresh_token_hash: refreshHash,
     },
     select: { id: true },
-  });
-
-export const updateSessionRefreshHash = (sessionId, refreshHash) =>
-  prisma.session.update({
-    where: { id: sessionId },
-    data: { refresh_token_hash: refreshHash },
   });
 
 export const findSessionByRefreshHash = (hash) =>
@@ -184,12 +285,27 @@ export const findSessionByRefreshHash = (hash) =>
       parent_user_id: true,
       expires_at: true,
       is_active: true,
-      revoke_reason: true,
+      device_id: true,
     },
   });
 
 export const findSessionById = (sessionId) =>
-  prisma.session.findUnique({ where: { id: sessionId } });
+  prisma.session.findUnique({
+    where: { id: sessionId },
+    select: {
+      id: true,
+      is_active: true,
+      parent_user_id: true,
+      school_user_id: true,
+      admin_user_id: true,
+    },
+  });
+
+export const updateSessionRefreshHash = (sessionId, refreshHash) =>
+  prisma.session.update({
+    where: { id: sessionId },
+    data: { refresh_token_hash: refreshHash },
+  });
 
 export const revokeSession = (sessionId, reason = "MANUAL_LOGOUT") =>
   prisma.session.update({
@@ -205,22 +321,21 @@ export const revokeAllUserSessions = async (
   const field =
     role === "SUPER_ADMIN"
       ? "admin_user_id"
-      : role === "SCHOOL_USER"
+      : role === "ADMIN"
         ? "school_user_id"
         : "parent_user_id";
 
-  const result = await prisma.session.updateMany({
+  return prisma.session.updateMany({
     where: { [field]: userId, is_active: true },
     data: { is_active: false, revoked_at: new Date(), revoke_reason: reason },
   });
-  return result.count;
 };
 
 export const findAllActiveSessionIds = async (userId, role) => {
   const field =
     role === "SUPER_ADMIN"
       ? "admin_user_id"
-      : role === "SCHOOL_USER"
+      : role === "ADMIN"
         ? "school_user_id"
         : "parent_user_id";
 
@@ -231,10 +346,26 @@ export const findAllActiveSessionIds = async (userId, role) => {
   return sessions.map((s) => s.id);
 };
 
-export const deleteSession = (sessionId) =>
-  prisma.session.delete({ where: { id: sessionId } });
+// =============================================================================
+// BLACKLIST TOKEN
+// =============================================================================
 
-// ─── Audit ────────────────────────────────────────────────────────────────────
+export const addToBlacklist = (tokenHash, expiresAt) =>
+  prisma.blacklistToken.upsert({
+    where: { token_hash: tokenHash },
+    update: {},
+    create: { token_hash: tokenHash, expires_at: expiresAt },
+  });
+
+export const findBlacklistedToken = (tokenHash) =>
+  prisma.blacklistToken.findUnique({
+    where: { token_hash: tokenHash },
+    select: { token_hash: true, expires_at: true },
+  });
+
+// =============================================================================
+// AUDIT LOG
+// =============================================================================
 
 export const logFailedLogin = ({
   actorType,
@@ -256,16 +387,25 @@ export const logFailedLogin = ({
     },
   });
 
-// ─── Blacklist ────────────────────────────────────────────────────────────────
-
-export const addToBlacklist = (tokenHash, expiresAt) =>
-  prisma.blacklistToken.create({
-    data: { token_hash: tokenHash, expires_at: expiresAt },
-  });
-
-export const addRefreshToBlacklist = (refreshHash, expiresAt) =>
-  prisma.blacklistToken.upsert({
-    where: { token_hash: refreshHash },
-    update: {},
-    create: { token_hash: refreshHash, expires_at: expiresAt },
+export const createAuditLog = ({
+  actorId,
+  actorType,
+  action,
+  entity,
+  entityId,
+  metadata,
+  ip,
+  ua,
+}) =>
+  prisma.auditLog.create({
+    data: {
+      actor_id: actorId,
+      actor_type: actorType,
+      action,
+      entity,
+      entity_id: entityId,
+      metadata,
+      ip_address: ip,
+      user_agent: ua,
+    },
   });

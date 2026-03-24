@@ -1,5 +1,5 @@
 // =============================================================================
-// modules/parents/parent.route.js — RESQID
+// modules/parents/parent.route.js — RESQID (FIXED)
 // Mounted at: /api/parents
 // ALL parent app endpoints — one file, complete picture
 // =============================================================================
@@ -20,6 +20,12 @@ import {
   lockCard,
   requestReplace,
   deleteAccount,
+  getLocationHistory,
+  getAnomalies,
+  getCards,
+  requestRenewal,
+  changePhone,
+  sendPhoneChangeOtp,
 } from "./parent.controller.js";
 
 import {
@@ -30,6 +36,12 @@ import {
   validateUpdateLocationConsent,
   validateLockCard,
   validateRequestReplace,
+  // ✅ ADD THESE MISSING IMPORTS
+  validateLocationHistoryQuery,
+  validateAnomaliesQuery,
+  validateRequestRenewal,
+  validateChangePhone,
+  validateSendPhoneOtp,
 } from "./parent.validation.js";
 
 const router = Router();
@@ -73,6 +85,28 @@ router.patch(
 // ── Card actions (settings screen) ────────────────────────────────────────────
 router.post("/me/lock-card", validateLockCard, lockCard);
 router.post("/me/request-replace", validateRequestReplace, requestReplace);
+
+// ── NEW: Location history ─────────────────────────────────────────────────────
+router.get(
+  "/me/location-history",
+  validateLocationHistoryQuery,
+  getLocationHistory,
+);
+
+// ── NEW: Anomalies list ──────────────────────────────────────────────────────
+router.get("/me/anomalies", validateAnomaliesQuery, getAnomalies);
+
+// ── NEW: Cards list ──────────────────────────────────────────────────────────
+router.get("/me/cards", getCards);
+
+// ── NEW: Request renewal ─────────────────────────────────────────────────────
+router.post("/me/request-renewal", validateRequestRenewal, requestRenewal);
+
+// ── NEW: Change phone number ─────────────────────────────────────────────────
+router.post("/me/change-phone", validateChangePhone, changePhone);
+
+// ── NEW: Send OTP for phone change ───────────────────────────────────────────
+router.post("/me/send-phone-otp", validateSendPhoneOtp, sendPhoneChangeOtp);
 
 // ── Account deletion (settings — danger zone) ─────────────────────────────────
 router.delete("/me", deleteAccount);

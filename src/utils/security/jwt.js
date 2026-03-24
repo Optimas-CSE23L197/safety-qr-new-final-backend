@@ -1,7 +1,7 @@
 // =============================================================================
 // jwt.js — RESQID
 // JWT access + refresh token management for all 3 user types:
-//   PARENT_USER, SCHOOL_USER, SUPER_ADMIN
+//   PARENT_USER, ADMIN, SUPER_ADMIN
 //
 // Access token  — short-lived (15min), stateless verification
 // Refresh token — long-lived (30d), stored as hash in Session table
@@ -20,7 +20,7 @@ const TOKEN_CONFIG = {
     refreshTTL: "30d",
     refreshTTLms: 30 * 24 * 60 * 60 * 1000,
   },
-  SCHOOL_USER: {
+  ADMIN: {
     accessTTL: "1h",
     refreshTTL: "7d",
     refreshTTLms: 7 * 24 * 60 * 60 * 1000,

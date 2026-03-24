@@ -8,7 +8,7 @@
 // - Connection health check export for /health endpoint
 // =============================================================================
 
-import { PrismaClient } from "../generated/client.js";
+import { PrismaClient } from "../generated/index.js";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { ENV } from "./env.js";
 import { logger } from "./logger.js";

@@ -9,7 +9,7 @@
 // - Graceful disconnect on shutdown
 // =============================================================================
 
-import Redis from "ioredis";
+import Redis, { Cluster } from "ioredis";
 import { ENV } from "./env.js";
 import { logger } from "./logger.js";
 
@@ -18,15 +18,13 @@ import { logger } from "./logger.js";
 function buildRedisOptions() {
   const options = {
     // Reconnect strategy — exponential backoff capped at 30 seconds
-    // Prevents hammering a restarting Redis instance
     retryStrategy(times) {
       if (times > 20) {
-        // After 20 attempts (~5 min), stop retrying and alert
         logger.fatal(
           { type: "redis_reconnect_failed", attempts: times },
           "Redis: gave up reconnecting after 20 attempts",
         );
-        return null; // stop retrying
+        return null;
       }
       const delay = Math.min(100 * Math.pow(2, times), 30_000);
       logger.warn(
@@ -40,33 +38,38 @@ function buildRedisOptions() {
     reconnectOnError(err) {
       const targetErrors = ["READONLY", "ECONNRESET", "ECONNREFUSED"];
       if (targetErrors.some((e) => err.message.includes(e))) {
-        return 2; // reconnect and resend the failed command
+        return 2;
       }
       return false;
     },
 
-    // Connection timeout — fail fast if Redis is unreachable at startup
-    connectTimeout: 10_000, // 10 seconds to establish initial connection
-    commandTimeout: 5_000, // 5 seconds max per command
-    keepAlive: 30_000, // TCP keepalive every 30 seconds
+    // Connection timeouts — using ENV variables
+    connectTimeout: ENV.REDIS_CONNECT_TIMEOUT || 10_000,
+    commandTimeout: ENV.REDIS_COMMAND_TIMEOUT || 5_000,
+    keepAlive: ENV.REDIS_KEEP_ALIVE || 30_000,
 
-    // Lazy connect — don't connect until first command
-    // Prevents startup failure if Redis is temporarily unavailable
-    lazyConnect: false, // Connect immediately so startup health check works
+    // Lazy connect — connect immediately so startup health check works
+    lazyConnect: false,
 
-    // Max retries per request — don't retry reads indefinitely
-    maxRetriesPerRequest: 3,
+    // Max retries per request — using ENV variable
+    maxRetriesPerRequest: ENV.REDIS_MAX_RETRIES_PER_REQUEST || 3,
 
     // Enable offline queue — commands issued during reconnect are queued
     enableOfflineQueue: true,
+    enableReadyCheck: true,
+    autoResubscribe: true,
+    autoResendUnfulfilledCommands: true,
+
+    // Key prefix for multi-tenancy
+    keyPrefix: ENV.REDIS_KEY_PREFIX || "resqid:",
 
     // Password
     ...(ENV.REDIS_PASSWORD && { password: ENV.REDIS_PASSWORD }),
 
-    // TLS — required in production with TLS-enabled Redis (Redis Cloud, ElastiCache)
+    // TLS — required in production with TLS-enabled Redis
     ...(ENV.REDIS_TLS && {
       tls: {
-        rejectUnauthorized: ENV.IS_PROD, // strict in prod, lenient in dev
+        rejectUnauthorized: ENV.IS_PROD,
       },
     }),
   };
@@ -77,26 +80,53 @@ function buildRedisOptions() {
 // ─── Client Factory ───────────────────────────────────────────────────────────
 
 function createRedisClient(name = "main") {
-  const client = new Redis(ENV.REDIS_URL, buildRedisOptions());
+  let client;
+
+  // Redis Sentinel (High Availability)
+  if (ENV.REDIS_SENTINEL === true && ENV.REDIS_SENTINEL_NODES) {
+    client = new Redis({
+      sentinels: ENV.REDIS_SENTINEL_NODES,
+      name: ENV.REDIS_SENTINEL_NAME || "mymaster",
+      ...buildRedisOptions(),
+    });
+    logger.info(
+      { type: "redis_sentinel", client: name, nodes: ENV.REDIS_SENTINEL_NODES.length },
+      `Redis [${name}]: using Sentinel mode`,
+    );
+  }
+  // Redis Cluster (Sharding)
+  else if (ENV.REDIS_CLUSTER === true && ENV.REDIS_CLUSTER_NODES) {
+    client = new Cluster(ENV.REDIS_CLUSTER_NODES, {
+      redisOptions: buildRedisOptions(),
+      clusterRetryStrategy: (times) => {
+        if (times > 10) return null;
+        return Math.min(100 * Math.pow(2, times), 30_000);
+      },
+      scaleReads: "slave",
+      maxRedirections: 16,
+    });
+    logger.info(
+      { type: "redis_cluster", client: name, nodes: ENV.REDIS_CLUSTER_NODES.length },
+      `Redis [${name}]: using Cluster mode`,
+    );
+  }
+  // Single Node (Default)
+  else {
+    client = new Redis(ENV.REDIS_URL, buildRedisOptions());
+    logger.info({ type: "redis_single", client: name }, `Redis [${name}]: using single node mode`);
+  }
 
   // ── Event Handlers ─────────────────────────────────────────────────────────
 
   client.on("connect", () => {
-    logger.info(
-      { type: "redis_connect", client: name },
-      `Redis [${name}]: connected`,
-    );
+    logger.info({ type: "redis_connect", client: name }, `Redis [${name}]: connected`);
   });
 
   client.on("ready", () => {
-    logger.info(
-      { type: "redis_ready", client: name },
-      `Redis [${name}]: ready`,
-    );
+    logger.info({ type: "redis_ready", client: name }, `Redis [${name}]: ready`);
   });
 
   client.on("error", (err) => {
-    // Log but don't crash — ioredis handles reconnection automatically
     logger.error(
       { type: "redis_error", client: name, err: err.message },
       `Redis [${name}]: error — ${err.message}`,
@@ -104,10 +134,7 @@ function createRedisClient(name = "main") {
   });
 
   client.on("close", () => {
-    logger.warn(
-      { type: "redis_close", client: name },
-      `Redis [${name}]: connection closed`,
-    );
+    logger.warn({ type: "redis_close", client: name }, `Redis [${name}]: connection closed`);
   });
 
   client.on("reconnecting", (delay) => {
@@ -118,17 +145,13 @@ function createRedisClient(name = "main") {
   });
 
   client.on("end", () => {
-    logger.warn(
-      { type: "redis_end", client: name },
-      `Redis [${name}]: connection permanently closed`,
-    );
+    logger.warn({ type: "redis_end", client: name }, `Redis [${name}]: connection permanently closed`);
   });
 
   return client;
 }
 
 // ─── Singleton Client ─────────────────────────────────────────────────────────
-// Shared across all middleware — rate limiting, sessions, blacklist, device cache
 
 const globalForRedis = globalThis;
 
@@ -137,29 +160,21 @@ export const redis =
   (globalForRedis.__redis = createRedisClient("main"));
 
 // ─── Pub/Sub Client Factory ───────────────────────────────────────────────────
-// ioredis cannot use subscribe() and normal commands on the same connection
-// Create dedicated clients for pub/sub when needed (notifications, cache invalidation)
 
-/**
- * createPubSubClient
- * Creates a dedicated ioredis client for subscribe/publish operations
- * Caller is responsible for disconnecting when done
- */
 export function createPubSubClient(name = "pubsub") {
   return createRedisClient(name);
 }
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
 
-/**
- * checkRedisHealth
- * Sends a PING and measures latency
- * Used by /health endpoint
- */
 export async function checkRedisHealth() {
   const start = Date.now();
   try {
-    const result = await redis.ping();
+    const result = await Promise.race([
+      redis.ping(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 2000)),
+    ]);
+
     const latencyMs = Date.now() - start;
 
     if (result !== "PONG") {
@@ -168,11 +183,35 @@ export async function checkRedisHealth() {
 
     return { status: "ok", latencyMs };
   } catch (err) {
-    logger.error(
-      { err: err.message, type: "redis_health_check" },
-      "Redis health check failed",
-    );
+    logger.error({ err: err.message, type: "redis_health_check" }, "Redis health check failed");
     return { status: "error", error: err.message };
+  }
+}
+
+// ─── Connection Pool Stats ────────────────────────────────────────────────────
+
+export async function getRedisStats() {
+  try {
+    const info = await redis.info("stats");
+    const clients = await redis.client("list");
+
+    const extractValue = (info, key) => {
+      const match = info.match(new RegExp(`${key}:(\\S+)`));
+      return match ? match[1] : null;
+    };
+
+    return {
+      status: redis.status,
+      connected: redis.status === "ready",
+      mode: ENV.REDIS_SENTINEL ? "sentinel" : ENV.REDIS_CLUSTER ? "cluster" : "single",
+      total_commands_processed: extractValue(info, "total_commands_processed"),
+      connected_clients: extractValue(info, "connected_clients"),
+      rejected_connections: extractValue(info, "rejected_connections"),
+      used_memory: extractValue(info, "used_memory_human"),
+      uptime_seconds: extractValue(info, "uptime_in_seconds"),
+    };
+  } catch (err) {
+    return { error: err.message };
   }
 }
 
@@ -180,10 +219,9 @@ export async function checkRedisHealth() {
 
 export async function disconnectRedis() {
   try {
-    await redis.quit(); // QUIT command — waits for pending commands
+    await redis.quit();
     logger.info("Redis disconnected gracefully");
   } catch (err) {
-    // Force disconnect if QUIT fails
     redis.disconnect();
     logger.error({ err: err.message }, "Redis disconnect error — forced");
   }

@@ -1,106 +1,191 @@
 // =============================================================================
 // services/storage/storage.service.js — RESQID
 //
-// CURRENT STATE: Local filesystem stub — production-ready interface.
-// Files saved to /tmp/resqid-files/ locally.
+// STORAGE BACKEND — controlled by STORAGE_DRIVER env var:
 //
-// PRODUCTION SWAP:
-//   1. Set S3_BUCKET + AWS_REGION + AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY in .env
-//   2. Uncomment S3 section below, comment out local section
-//   3. Zero changes needed in any pipeline step
+//   STORAGE_DRIVER=local  → local filesystem (/tmp/resqid-files)   [default]
+//   STORAGE_DRIVER=s3     → AWS S3 + CloudFront CDN  (via config/s3.js)
 //
-// The URL format is the same either way — only the host changes:
-//   local:  http://localhost:3000/files/{key}
-//   S3:     https://{bucket}.s3.{region}.amazonaws.com/{key}
-//   CDN:    https://{cloudfront-id}.cloudfront.net/{key}
+// ─── Required .env keys for S3 ───────────────────────────────────────────────
+//   STORAGE_DRIVER=s3
+//   AWS_REGION=ap-south-1
+//   AWS_ACCESS_KEY_ID=AKIAxxxxxxxxxxxxxxxx
+//   AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+//   AWS_S3_BUCKET=your-bucket-name
+//   CDN_URL=https://xxxx.cloudfront.net      ← required for public card/QR URLs
+//   AWS_S3_ENDPOINT=http://localhost:9000    ← optional, MinIO local dev only
+//
+// ─── URL strategy ────────────────────────────────────────────────────────────
+//   uploadFile()   → public CDN URL via buildCdnUrl()   (stored in DB)
+//   getAccessUrl() → presigned S3 URL                   (temporary download)
+//   deleteFile()   → permanent S3 delete
+//
+// ─── Caller interface (unchanged from local stub) ────────────────────────────
+//   uploadFile({ key, body, contentType })  → Promise<string>  publicUrl
+//   uploadBuffer({ key, body, contentType}) → alias of uploadFile
+//   deleteFile({ key })                     → Promise<void>
+//   getAccessUrl({ key, expiresIn? })       → Promise<string>  presignedUrl
+//
+// Zero changes needed in step5_design.js, qr_service.js, or any pipeline step.
 // =============================================================================
 
 import fs from "fs/promises";
 import path from "path";
 import { ENV } from "../../config/env.js";
 
-const LOCAL_BASE = "/tmp/resqid-files";
-const LOCAL_HOST = ENV.APP_URL ?? "http://localhost:3000";
+// s3.js exports — only used when STORAGE_DRIVER=s3
+import {
+  uploadFile as s3Upload,
+  deleteFile as s3Delete,
+  getPresignedDownloadUrl,
+  buildCdnUrl,
+} from "../../config/s3.js";
+
+const driver = () => (ENV.STORAGE_DRIVER ?? "local").trim().toLowerCase();
 
 // =============================================================================
-// LOCAL FILESYSTEM (current — development + pre-S3 production)
+// LOCAL DRIVER — development / pre-S3
+// =============================================================================
+
+const LOCAL_BASE = "/tmp/resqid-files";
+const LOCAL_HOST = (ENV.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
+
+const localDriver = {
+  async uploadFile({ key, body, contentType }) {
+    const filePath = path.join(LOCAL_BASE, key);
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, body);
+    return `${LOCAL_HOST}/files/${key}`;
+  },
+
+  async deleteFile({ key }) {
+    try {
+      await fs.unlink(path.join(LOCAL_BASE, key));
+    } catch {
+      // ignore — file may not exist
+    }
+  },
+
+  async getAccessUrl({ key }) {
+    // No expiry concept locally — same URL always
+    return `${LOCAL_HOST}/files/${key}`;
+  },
+};
+
+// =============================================================================
+// S3 DRIVER — production (AWS S3 + CloudFront)
+// =============================================================================
+//
+// s3.js uploadFile(key, body, { contentType, acl, metadata })
+//   → private by default (ACL: "private") + AES256 encryption
+//   → returns the S3 key (NOT the URL)
+//
+// We call buildCdnUrl(key) → ENV.CDN_URL + "/" + key for the public URL.
+//
+// CloudFront setup:
+//   - Bucket stays PRIVATE (no public-read ACL needed)
+//   - CloudFront serves files via OAC (Origin Access Control)
+//   - Only CloudFront can read from the bucket — secure by default
+//
+// If you're NOT using OAC (bucket is public-read), uncomment:
+//   acl: "public-read"   in the uploadFile call below
+//
+// =============================================================================
+
+const s3Driver = {
+  /**
+   * Upload a Buffer to S3, return the CloudFront CDN public URL.
+   * Stored in: QrAsset.public_url, Card.file_url
+   *
+   * @param {{ key: string, body: Buffer, contentType: string }} params
+   * @returns {Promise<string>} CloudFront URL
+   */
+  async uploadFile({ key, body, contentType }) {
+    // s3.js signature: uploadFile(key, body, options)
+    await s3Upload(key, body, {
+      contentType,
+      // acl: "public-read",  // uncomment ONLY if NOT using CloudFront OAC
+    });
+
+    // buildCdnUrl → ENV.CDN_URL + "/" + key
+    return buildCdnUrl(key);
+  },
+
+  /**
+   * Delete an object from S3.
+   * Called on: token revoke, card void, order cancel.
+   */
+  async deleteFile({ key }) {
+    await s3Delete(key);
+  },
+
+  /**
+   * Presigned S3 GET URL for temporary private access.
+   * Use for: admin download links, invoice PDFs.
+   * Do NOT use for CDN-served card/QR images — just use uploadFile's URL for those.
+   *
+   * @param {{ key: string, expiresIn?: number }} params
+   * @returns {Promise<string>} presigned URL
+   */
+  async getAccessUrl({ key, expiresIn = 3600 }) {
+    return getPresignedDownloadUrl(key, expiresIn);
+  },
+};
+
+// =============================================================================
+// DRIVER SELECTOR
+// =============================================================================
+
+const getDriver = () => {
+  const d = driver();
+  if (d === "s3") return s3Driver;
+  if (d === "local") return localDriver;
+  console.warn(
+    `[storage.service] Unknown STORAGE_DRIVER="${d}", falling back to local`,
+  );
+  return localDriver;
+};
+
+// =============================================================================
+// PUBLIC API
+// Identical interface regardless of driver — callers never change.
 // =============================================================================
 
 /**
- * Upload a file buffer to local filesystem.
- * Returns a public URL (served by a static middleware or presigned in future).
+ * Upload a file buffer to storage.
+ * Returns a public URL (CloudFront for S3, localhost for local).
+ *
+ * Callers:
+ *   step4_generate.js  → QR PNG  → QrAsset.public_url
+ *   step5_design.js    → card PNG → Card.file_url
  *
  * @param {{ key: string, body: Buffer, contentType: string }} params
  * @returns {Promise<string>} publicUrl
  */
 export const uploadFile = async ({ key, body, contentType }) => {
-  const filePath = path.join(LOCAL_BASE, key);
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, body);
-  return `${LOCAL_HOST}/files/${key}`;
+  return getDriver().uploadFile({ key, body, contentType });
 };
 
-// Alias — must be declared AFTER uploadFile (const is not hoisted)
+// Alias for any callers using uploadBuffer
 export const uploadBuffer = uploadFile;
 
 /**
- * Delete a file from local filesystem.
+ * Delete a file from storage.
+ *
+ * @param {{ key: string }} params
  */
 export const deleteFile = async ({ key }) => {
-  try {
-    const filePath = path.join(LOCAL_BASE, key);
-    await fs.unlink(filePath);
-  } catch {
-    // Ignore if file doesn't exist
-  }
+  return getDriver().deleteFile({ key });
 };
 
 /**
- * Generate a temporary access URL.
- * Local: same as publicUrl (no expiry).
- * S3:    generate presigned URL with expiry.
+ * Get a temporary access URL.
+ * S3:    presigned GET URL (expires after expiresIn seconds)
+ * local: static URL (no expiry)
+ *
+ * @param {{ key: string, expiresIn?: number }} params
+ * @returns {Promise<string>}
  */
 export const getAccessUrl = async ({ key, expiresIn = 3600 }) => {
-  return `${LOCAL_HOST}/files/${key}`;
+  return getDriver().getAccessUrl({ key, expiresIn });
 };
-
-// =============================================================================
-// S3 (production) — uncomment and replace above when S3 is ready
-// =============================================================================
-
-/*
-import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-
-const s3 = new S3Client({
-  region:      ENV.AWS_REGION,
-  credentials: {
-    accessKeyId:     ENV.AWS_ACCESS_KEY_ID,
-    secretAccessKey: ENV.AWS_SECRET_ACCESS_KEY,
-  },
-});
-
-const BUCKET = ENV.S3_BUCKET;
-const CDN    = ENV.CLOUDFRONT_URL; // e.g. https://xxxx.cloudfront.net
-
-export const uploadFile = async ({ key, body, contentType }) => {
-  await s3.send(new PutObjectCommand({
-    Bucket:      BUCKET,
-    Key:         key,
-    Body:        body,
-    ContentType: contentType,
-  }));
-  return CDN ? `${CDN}/${key}` : `https://${BUCKET}.s3.${ENV.AWS_REGION}.amazonaws.com/${key}`;
-};
-
-export const uploadBuffer = uploadFile;
-
-export const deleteFile = async ({ key }) => {
-  await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
-};
-
-export const getAccessUrl = async ({ key, expiresIn = 3600 }) => {
-  const command = new GetObjectCommand({ Bucket: BUCKET, Key: key });
-  return getSignedUrl(s3, command, { expiresIn });
-};
-*/

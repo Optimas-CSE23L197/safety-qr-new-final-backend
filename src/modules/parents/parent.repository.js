@@ -452,3 +452,179 @@ async function verifyStudentOwnership(parentId, studentId) {
     });
   }
 }
+
+// ─── /me/location-history ─────────────────────────────────────────────────────
+// NEW: Get location history for a student
+
+export async function getLocationHistory({
+  parentId,
+  studentId,
+  cursor,
+  limit,
+  fromDate,
+  toDate,
+}) {
+  await verifyStudentOwnership(parentId, studentId);
+
+  const where = {
+    student_id: studentId,
+    ...(fromDate && { created_at: { gte: fromDate } }),
+    ...(toDate && { created_at: { lte: toDate } }),
+  };
+
+  const rows = await prisma.locationEvent.findMany({
+    where,
+    orderBy: { created_at: "desc" },
+    take: limit + 1,
+    ...(cursor && { cursor: { id: cursor }, skip: 1 }),
+    select: {
+      id: true,
+      latitude: true,
+      longitude: true,
+      accuracy: true,
+      source: true,
+      created_at: true,
+    },
+  });
+
+  const hasMore = rows.length > limit;
+  if (hasMore) rows.pop();
+  const nextCursor = hasMore ? (rows[rows.length - 1]?.id ?? null) : null;
+
+  return { locations: rows, hasMore, nextCursor };
+}
+
+// ─── /me/anomalies ───────────────────────────────────────────────────────────
+// NEW: Get anomalies for parent's students
+
+export async function getAnomalies(
+  parentId,
+  { cursor, limit, severity, resolved },
+) {
+  const where = {
+    token: {
+      student: {
+        parents: { some: { parent_id: parentId } },
+      },
+    },
+    ...(severity && { severity }),
+    ...(resolved !== undefined && { resolved }),
+  };
+
+  const rows = await prisma.scanAnomaly.findMany({
+    where,
+    orderBy: { created_at: "desc" },
+    take: limit + 1,
+    ...(cursor && { cursor: { id: cursor }, skip: 1 }),
+    include: {
+      token: {
+        select: {
+          student: {
+            select: {
+              id: true,
+              first_name: true,
+              last_name: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const hasMore = rows.length > limit;
+  if (hasMore) rows.pop();
+  const nextCursor = hasMore ? (rows[rows.length - 1]?.id ?? null) : null;
+
+  return { anomalies: rows, hasMore, nextCursor };
+}
+
+// ─── /me/cards ───────────────────────────────────────────────────────────────
+// NEW: Get all cards for parent's students
+
+export async function getCards(parentId) {
+  const cards = await prisma.card.findMany({
+    where: {
+      student: {
+        parents: { some: { parent_id: parentId } },
+      },
+    },
+    include: {
+      token: {
+        select: {
+          id: true,
+          status: true,
+          expires_at: true,
+        },
+      },
+      student: {
+        select: {
+          id: true,
+          first_name: true,
+          last_name: true,
+        },
+      },
+    },
+    orderBy: { created_at: "desc" },
+  });
+
+  return cards;
+}
+
+// ─── /me/request-renewal ─────────────────────────────────────────────────────
+// NEW: Request card renewal
+
+export async function requestRenewal(parentId, { cardId, paymentMethod }) {
+  await verifyCardOwnership(parentId, cardId);
+
+  const card = await prisma.card.findUnique({
+    where: { id: cardId },
+    include: {
+      token: true,
+      student: true,
+    },
+  });
+
+  if (!card) throw new Error("Card not found");
+
+  // Create renewal request in ParentEditLog
+  const log = await prisma.parentEditLog.create({
+    data: {
+      student_id: card.student_id,
+      parent_id: parentId,
+      field_group: "CARD_REPLACEMENT",
+      new_value: {
+        action: "RENEWAL_REQUEST",
+        card_id: cardId,
+        payment_method: paymentMethod,
+        current_expiry: card.token?.expires_at,
+      },
+    },
+  });
+
+  return { requestId: log.id, cardNumber: card.card_number };
+}
+
+// ─── Helper: verifyCardOwnership ────────────────────────────────────────────
+
+async function verifyCardOwnership(parentId, cardId) {
+  const card = await prisma.card.findFirst({
+    where: {
+      id: cardId,
+      student: {
+        parents: { some: { parent_id: parentId } },
+      },
+    },
+  });
+
+  if (!card) {
+    throw Object.assign(
+      new Error("Card not found or not linked to this parent"),
+      {
+        code: "FORBIDDEN",
+        statusCode: 403,
+      },
+    );
+  }
+
+  return card;
+}

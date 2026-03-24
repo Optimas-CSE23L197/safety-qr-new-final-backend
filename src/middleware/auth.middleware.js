@@ -35,15 +35,25 @@ const LAST_ACTIVE_TTL = 60; // 60s  — last_active_at write throttle window
 // ─── Core Auth ────────────────────────────────────────────────────────────────
 
 export const authenticate = asyncHandler(async (req, _res, next) => {
-  const authHeader = req.headers.authorization;
+  let token = null;
 
-  // [1] Header format check
-  if (!authHeader || !BEARER_REGEX.test(authHeader)) {
-    throw ApiError.unauthorized("Missing or malformed authorization header");
+  // ✅ 1. Try cookie first (for browser)
+  if (req.cookies?.accessToken) {
+    token = req.cookies.accessToken;
   }
 
-  const token = authHeader.split(" ")[1];
+  // ✅ 2. Fallback to Authorization header (for APIs/mobile)
+  else if (
+    req.headers.authorization &&
+    BEARER_REGEX.test(req.headers.authorization)
+  ) {
+    token = req.headers.authorization.split(" ")[1];
+  }
 
+  // ❌ No token at all
+  if (!token) {
+    throw ApiError.unauthorized("Missing authentication token");
+  }
   // [2] Verify JWT signature + expiry
   let payload;
   try {
@@ -148,6 +158,8 @@ export const authenticate = asyncHandler(async (req, _res, next) => {
 
   // [7] Attach to request
   req.user = user;
+  req.user.school_id = user.school_id;
+  req.user.schoolId = user.school_id; // normalize both
   req.userId = payload.sub;
   req.role = payload.role;
   req.sessionId = payload.sessionId;
@@ -177,9 +189,9 @@ export const requireRole = (...roles) =>
   });
 
 export const requireSuperAdmin = requireRole("SUPER_ADMIN");
-export const requireSchoolUser = requireRole("SCHOOL_USER");
+export const requireSchoolUser = requireRole("ADMIN");
 export const requireParent = requireRole("PARENT_USER");
-export const requireDashboard = requireRole("SUPER_ADMIN", "SCHOOL_USER");
+export const requireDashboard = requireRole("SUPER_ADMIN", "ADMIN");
 
 // ─── Optional Auth ────────────────────────────────────────────────────────────
 
@@ -231,7 +243,7 @@ async function loadUserFromDb(role, userId) {
         where: { id: userId },
         select: { id: true, status: true, deleted_at: true },
       });
-    case "SCHOOL_USER":
+    case "ADMIN":
       return prisma.schoolUser.findUnique({
         where: { id: userId },
         select: { id: true, is_active: true, school_id: true, role: true },

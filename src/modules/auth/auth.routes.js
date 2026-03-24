@@ -27,6 +27,7 @@ import {
   registerVerifyController,
   refreshTokenController,
   logoutController,
+  changePasswordController, // ✅ ADD THIS IMPORT
 } from "./auth.controller.js";
 
 const router = Router();
@@ -79,6 +80,14 @@ router.post(
   authLimiter,
   validate(registerVerifyValidation),
   registerVerifyController,
+);
+
+// ── Change Password ───────────────────────────────────────────────────────────
+router.post(
+  "/change-password",
+  authenticate,
+  // validate(changePasswordValidation), // TODO: Add validation when ready
+  changePasswordController,
 );
 
 // ── Refresh Token ─────────────────────────────────────────────────────────────

@@ -82,6 +82,17 @@ function optionalBool(key, defaultValue = false) {
   return raw.trim().toLowerCase() === "true";
 }
 
+function optionalJson(key, defaultValue = null) {
+  const raw = process.env[key];
+  if (!raw) return defaultValue;
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    errors.push(`  ✗ ${key} — must be valid JSON, got '${raw}'`);
+    return defaultValue;
+  }
+}
+
 // ─── Parse All Variables ──────────────────────────────────────────────────────
 
 const _env = {
@@ -95,10 +106,29 @@ const _env = {
   DATABASE_URL: required("DATABASE_URL", { minLength: 20 }),
   SHADOW_DATABASE_URL: optional("SHADOW_DATABASE_URL"),
 
-  // ── Redis ──────────────────────────────────────────────────────────────────
+  // ── Redis (Core) ───────────────────────────────────────────────────────────
   REDIS_URL: required("REDIS_URL", { minLength: 10 }),
   REDIS_PASSWORD: optional("REDIS_PASSWORD"),
   REDIS_TLS: optionalBool("REDIS_TLS", false),
+  REDIS_KEY_PREFIX: optional("REDIS_KEY_PREFIX", "resqid:"),
+
+  // ── Redis Sentinel (High Availability) ─────────────────────────────────────
+  REDIS_SENTINEL: optionalBool("REDIS_SENTINEL", false),
+  REDIS_SENTINEL_NAME: optional("REDIS_SENTINEL_NAME", "mymaster"),
+  REDIS_SENTINEL_NODES: optionalJson("REDIS_SENTINEL_NODES", null),
+
+  // ── Redis Cluster (Sharding) ───────────────────────────────────────────────
+  REDIS_CLUSTER: optionalBool("REDIS_CLUSTER", false),
+  REDIS_CLUSTER_NODES: optionalJson("REDIS_CLUSTER_NODES", null),
+
+  // ── Redis Connection Pool & Performance ────────────────────────────────────
+  REDIS_MAX_RETRIES_PER_REQUEST: optionalInt(
+    "REDIS_MAX_RETRIES_PER_REQUEST",
+    3,
+  ),
+  REDIS_CONNECT_TIMEOUT: optionalInt("REDIS_CONNECT_TIMEOUT", 10000),
+  REDIS_COMMAND_TIMEOUT: optionalInt("REDIS_COMMAND_TIMEOUT", 5000),
+  REDIS_KEEP_ALIVE: optionalInt("REDIS_KEEP_ALIVE", 30000),
 
   // ── JWT ────────────────────────────────────────────────────────────────────
   JWT_ACCESS_SECRET: required("JWT_ACCESS_SECRET", { minLength: 32 }),
@@ -119,6 +149,9 @@ const _env = {
   SCHOOL_ADMIN_URL: required("SCHOOL_ADMIN_URL"),
   MOBILE_APP_SCHEME: optional("MOBILE_APP_SCHEME", "capacitor://localhost"),
   CDN_URL: optional("CDN_URL", "http://localhost:3000/static"),
+
+  // ── Cookie Domain (for subdomain auth) ─────────────────────────────────────
+  COOKIE_DOMAIN: optional("COOKIE_DOMAIN"),
 
   // ── Public Scan URL ────────────────────────────────────────────────────────
   // Base URL encoded inside QR codes — points to public emergency page
@@ -216,7 +249,48 @@ const _env = {
   // ── Token / QR ─────────────────────────────────────────────────────────────
   TOKEN_VALIDITY_MONTHS: optionalInt("TOKEN_VALIDITY_MONTHS", 12),
   QR_DEFAULT_SIZE_PX: optionalInt("QR_DEFAULT_SIZE_PX", 512),
+
+  // ── Rate Limiting ──────────────────────────────────────────────────────────
+  RATE_LIMIT_WINDOW_MS: optionalInt("RATE_LIMIT_WINDOW_MS", 60000),
+  RATE_LIMIT_MAX_REQUESTS: optionalInt("RATE_LIMIT_MAX_REQUESTS", 100),
+  OTP_IP_LIMIT: optionalInt("OTP_IP_LIMIT", 20),
+  OTP_PHONE_LIMIT: optionalInt("OTP_PHONE_LIMIT", 5),
 };
+
+// ─── Redis Validation — Cross-Field Validation ────────────────────────────────
+
+// Validate Redis configuration consistency
+if (_env.REDIS_SENTINEL && !_env.REDIS_SENTINEL_NODES) {
+  errors.push(
+    "  ✗ REDIS_SENTINEL is true but REDIS_SENTINEL_NODES is missing or invalid JSON",
+  );
+}
+
+if (_env.REDIS_CLUSTER && !_env.REDIS_CLUSTER_NODES) {
+  errors.push(
+    "  ✗ REDIS_CLUSTER is true but REDIS_CLUSTER_NODES is missing or invalid JSON",
+  );
+}
+
+if (_env.REDIS_SENTINEL && _env.REDIS_CLUSTER) {
+  errors.push(
+    "  ✗ REDIS_SENTINEL and REDIS_CLUSTER cannot both be true — choose one mode",
+  );
+}
+
+// ── Redis Password Validation (Added) ─────────────────────────────────────
+if (_env.REDIS_PASSWORD && _env.REDIS_PASSWORD.length < 16 && IS_PROD) {
+  errors.push(
+    "  ✗ REDIS_PASSWORD — too weak (min 16 chars recommended for production)",
+  );
+}
+
+// Validate TLS in production with password
+if (IS_PROD && _env.REDIS_TLS && !_env.REDIS_PASSWORD) {
+  errors.push(
+    "  ✗ REDIS_TLS is true but REDIS_PASSWORD is missing — TLS requires authentication",
+  );
+}
 
 // ─── Cross-Field Validation ───────────────────────────────────────────────────
 

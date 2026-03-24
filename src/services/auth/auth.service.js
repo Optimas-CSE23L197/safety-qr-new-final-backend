@@ -1,13 +1,13 @@
 // =============================================================================
 // src/services/auth/auth.service.js — RESQID
+// BUSINESS LOGIC ONLY — calls repository for DB operations
+// UPDATED WITH BEHAVIORAL SECURITY INTEGRATION & OTP LOGGING
 // =============================================================================
 
 import crypto from "crypto";
-import jwt from "jsonwebtoken";
-
-import * as repo from "../../modules/auth/auth.repository.js";
+import bcrypt from "bcrypt";
+import { redis } from "../../config/redis.js";
 import { prisma } from "../../config/prisma.js";
-
 import { ApiError } from "../../utils/response/ApiError.js";
 import { verifyPassword, hashToken } from "../../utils/security/hashUtil.js";
 import {
@@ -15,33 +15,28 @@ import {
   hashForLookup,
 } from "../../utils/security/encryption.js";
 import { issueTokenPair } from "../../utils/security/jwt.js";
-import { generateOtp, hashOtp } from "../../services/otp/otp.service.js";
-
-import { redis } from "../../config/redis.js";
+import { generateOtp, hashOtp } from "../otp/otp.service.js";
+import { generateDeviceFingerprint } from "../../utils/security/deviceFingerprint.js";
 import { logger } from "../../config/logger.js";
-import { writeAuditLog, AuditAction } from "../../utils/helpers/auditLogger.js";
 
+// Behavioral security imports
 import {
-  invalidateSessionCache,
-  invalidateUserCache,
-  invalidateBlacklistCache,
-} from "../../middleware/auth.middleware.js";
+  recordFailedAuth,
+  recordSuccessfulAuth,
+} from "../../middleware/behavioralSecurity.middleware.js";
+
+import * as repo from "../../modules/auth/auth.repository.js";
 
 // =============================================================================
 // CONSTANTS
 // =============================================================================
 
-const OTP_TTL_SECONDS = 5 * 60; // 5 minutes
+const OTP_TTL_SECONDS = 5 * 60;
 const OTP_MAX_ATTEMPTS = 5;
-const NONCE_TTL = 10 * 60; // 10 minutes — registration nonce
-
-const otpHashKey = (phone) => `otp:hash:${phone}`;
-const otpAttemptsKey = (phone) => `otp:attempts:${phone}`;
-const nonceKey = (nonce) => `reg:nonce:${nonce}`;
+const NONCE_TTL = 10 * 60;
 
 // =============================================================================
 // SUPER ADMIN LOGIN
-// SECURITY: constant-time password check + failed login audit
 // =============================================================================
 
 export const loginSuperAdmin = async ({
@@ -51,31 +46,41 @@ export const loginSuperAdmin = async ({
   deviceInfo,
   userAgent,
 }) => {
+  console.log(`\n🔐 [SUPER ADMIN LOGIN] Email: ${email} from ${ipAddress}`);
+
   const admin = await repo.findSuperAdminByEmail(email);
 
-  // SECURITY: always run verifyPassword even if admin not found — timing attack prevention
   const valid = await verifyPassword(
     password,
     admin?.password_hash ?? "$2b$12$invalidhashfortimingprotection",
   );
 
   if (!admin || !valid) {
-    repo
-      .logFailedLogin({
-        actorType: "SUPER_ADMIN",
-        identifier: email,
-        ipAddress,
-        userAgent,
-        reason: !admin ? "EMAIL_NOT_FOUND" : "WRONG_PASSWORD",
-      })
-      .catch(() => {});
+    console.log(
+      `❌ [SUPER ADMIN LOGIN FAILED] Email: ${email} - ${!admin ? "User not found" : "Wrong password"}`,
+    );
+    await recordFailedAuth(
+      ipAddress,
+      email,
+      !admin ? "EMAIL_NOT_FOUND" : "WRONG_PASSWORD",
+    );
+
+    await repo.logFailedLogin({
+      actorType: "SUPER_ADMIN",
+      identifier: email,
+      ipAddress,
+      userAgent,
+      reason: !admin ? "EMAIL_NOT_FOUND" : "WRONG_PASSWORD",
+    });
     throw ApiError.unauthorized("Invalid credentials");
   }
 
-  if (!admin.is_active) throw ApiError.forbidden("Account disabled");
+  if (!admin.is_active) {
+    console.log(`❌ [SUPER ADMIN LOGIN FAILED] Account disabled: ${email}`);
+    throw ApiError.forbidden("Account disabled");
+  }
 
   const sessionId = crypto.randomUUID();
-
   const { accessToken, refreshToken, refreshHash, expiresAt } = issueTokenPair({
     userId: admin.id,
     role: "SUPER_ADMIN",
@@ -91,17 +96,22 @@ export const loginSuperAdmin = async ({
     refreshHash,
   });
 
-  repo.updateSuperAdminLastLogin(admin.id).catch(() => {});
+  await repo.updateSuperAdminLastLogin(admin.id).catch(() => {});
+  await recordSuccessfulAuth(ipAddress, admin.id, "SUPER_ADMIN");
 
-  writeAuditLog({
-    actorId: admin.id,
-    actorType: "SUPER_ADMIN",
-    action: AuditAction.LOGIN,
-    entity: "SuperAdmin",
-    entityId: admin.id,
-    ip: ipAddress,
-    ua: userAgent,
-  });
+  await repo
+    .createAuditLog({
+      actorId: admin.id,
+      actorType: "SUPER_ADMIN",
+      action: "LOGIN",
+      entity: "SuperAdmin",
+      entityId: admin.id,
+      ip: ipAddress,
+      ua: userAgent,
+    })
+    .catch(() => {});
+
+  console.log(`✅ [SUPER ADMIN LOGIN SUCCESS] ${admin.email}`);
 
   return {
     access_token: accessToken,
@@ -116,7 +126,7 @@ export const loginSuperAdmin = async ({
 };
 
 // =============================================================================
-// SCHOOL USER LOGIN
+// SCHOOL ADMIN LOGIN
 // =============================================================================
 
 export const loginSchoolUser = async ({
@@ -126,32 +136,42 @@ export const loginSchoolUser = async ({
   deviceInfo,
   userAgent,
 }) => {
+  console.log(`\n🏫 [SCHOOL ADMIN LOGIN] Email: ${email} from ${ipAddress}`);
+
   const user = await repo.findSchoolUserByEmail(email);
+
   const valid = await verifyPassword(
     password,
     user?.password_hash ?? "$2b$12$invalidhashfortimingprotection",
   );
 
   if (!user || !valid) {
-    repo
-      .logFailedLogin({
-        actorType: "SCHOOL_USER",
-        identifier: email,
-        ipAddress,
-        userAgent,
-        reason: !user ? "EMAIL_NOT_FOUND" : "WRONG_PASSWORD",
-      })
-      .catch(() => {});
+    console.log(`❌ [SCHOOL ADMIN LOGIN FAILED] Email: ${email}`);
+    await recordFailedAuth(
+      ipAddress,
+      email,
+      !user ? "EMAIL_NOT_FOUND" : "WRONG_PASSWORD",
+    );
+
+    await repo.logFailedLogin({
+      actorType: "ADMIN",
+      identifier: email,
+      ipAddress,
+      userAgent,
+      reason: !user ? "EMAIL_NOT_FOUND" : "WRONG_PASSWORD",
+    });
     throw ApiError.unauthorized("Invalid credentials");
   }
 
-  if (!user.is_active) throw ApiError.forbidden("Account disabled");
+  if (!user.is_active) {
+    console.log(`❌ [SCHOOL ADMIN LOGIN FAILED] Account disabled: ${email}`);
+    throw ApiError.forbidden("Account disabled");
+  }
 
   const sessionId = crypto.randomUUID();
-
   const { accessToken, refreshToken, refreshHash, expiresAt } = issueTokenPair({
     userId: user.id,
-    role: "SCHOOL_USER",
+    role: "ADMIN",
     schoolId: user.school_id,
     sessionId,
   });
@@ -165,17 +185,24 @@ export const loginSchoolUser = async ({
     refreshHash,
   });
 
-  repo.updateSchoolUserLastLogin(user.id).catch(() => {});
+  await repo.updateSchoolUserLastLogin(user.id).catch(() => {});
+  await recordSuccessfulAuth(ipAddress, user.id, "ADMIN");
 
-  writeAuditLog({
-    actorId: user.id,
-    actorType: "SCHOOL_USER",
-    action: AuditAction.LOGIN,
-    entity: "SchoolUser",
-    entityId: user.id,
-    ip: ipAddress,
-    ua: userAgent,
-  });
+  await repo
+    .createAuditLog({
+      actorId: user.id,
+      actorType: "ADMIN",
+      action: "LOGIN",
+      entity: "SchoolUser",
+      entityId: user.id,
+      ip: ipAddress,
+      ua: userAgent,
+    })
+    .catch(() => {});
+
+  console.log(
+    `✅ [SCHOOL ADMIN LOGIN SUCCESS] ${user.email} (School: ${user.school_id})`,
+  );
 
   return {
     access_token: accessToken,
@@ -192,47 +219,123 @@ export const loginSchoolUser = async ({
 
 // =============================================================================
 // PARENT LOGIN: SEND OTP
-// No DB lookup on send — avoids user-existence leak
-// isNewUser is determined in verifyOtp after OTP is confirmed valid
 // =============================================================================
 
-export const sendOtp = async ({ phone }) => {
+export const sendOtp = async ({ phone, ipAddress, deviceId }) => {
+  console.log(`\n📱 [OTP REQUEST] Phone: ${phone} from ${ipAddress}`);
+
+  const phoneKey = `otp:phone:${phone}`;
+  const phoneAttempts = await redis.incr(phoneKey);
+  if (phoneAttempts === 1) await redis.expire(phoneKey, 3600);
+  console.log(`📊 Phone attempts: ${phoneAttempts}/5`);
+
+  if (phoneAttempts > 5) {
+    console.log(
+      `❌ [OTP BLOCKED] Phone ${phone} exceeded limit (${phoneAttempts})`,
+    );
+    await recordFailedAuth(ipAddress, phone, "OTP_PHONE_LIMIT_EXCEEDED");
+    throw ApiError.tooManyRequests("Too many OTP requests. Try after 1 hour.");
+  }
+
+  const ipKey = `otp:ip:${ipAddress}`;
+  const ipAttempts = await redis.incr(ipKey);
+  if (ipAttempts === 1) await redis.expire(ipKey, 3600);
+  console.log(`🌐 IP attempts: ${ipAttempts}/20`);
+
+  if (ipAttempts > 20) {
+    console.log(
+      `❌ [OTP BLOCKED] IP ${ipAddress} exceeded limit (${ipAttempts})`,
+    );
+    await recordFailedAuth(ipAddress, phone, "OTP_IP_LIMIT_EXCEEDED");
+    throw ApiError.tooManyRequests("Too many OTP requests from this IP.");
+  }
+
   const otp = generateOtp();
   const hashed = hashOtp(otp);
 
-  await Promise.all([
-    redis.setex(otpHashKey(phone), OTP_TTL_SECONDS, hashed),
-    redis.del(otpAttemptsKey(phone)),
-  ]);
+  console.log(`🔐 [OTP GENERATED] Phone: ${phone}, OTP: ${otp}`);
+  console.log(`⏱️  OTP expires in ${OTP_TTL_SECONDS} seconds`);
+
+  const otpData = {
+    hash: hashed,
+    phone,
+    deviceId: deviceId || null,
+    createdAt: Date.now(),
+    attempts: 0,
+  };
+
+  await redis.setex(`otp:${phone}`, OTP_TTL_SECONDS, JSON.stringify(otpData));
+  await redis.del(`otp:attempts:${phone}`);
+
+  // Log OTP in a beautiful box
+  const timestamp = new Date().toLocaleTimeString();
+  console.log(
+    `\n╔════════════════════════════════════════════════════════════════════════════╗`,
+  );
+  console.log(
+    `║  🔐 OTP VERIFICATION CODE                                                       ║`,
+  );
+  console.log(
+    `╠════════════════════════════════════════════════════════════════════════════╣`,
+  );
+  console.log(
+    `║  Purpose: LOGIN                                                           ║`,
+  );
+  console.log(`║  Phone:   ${phone.padEnd(66)}║`);
+  console.log(`║  OTP:     \x1b[32m${otp.padEnd(66)}\x1b[0m║`);
+  console.log(`║  Time:    ${timestamp.padEnd(66)}║`);
+  console.log(`║  Expires: 5 minutes${" ".padEnd(57)}║`);
+  console.log(
+    `╚════════════════════════════════════════════════════════════════════════════╝\n`,
+  );
 
   if (process.env.NODE_ENV !== "production") {
-    logger.info({ phone, devCode: otp }, "[DEV] OTP"); // devCode avoids REDACT_PATHS
+    logger.info({ phone, devCode: otp }, "[DEV] OTP sent");
   }
 
-  return { message: "OTP sent successfully" };
+  const response = {
+    message: "OTP sent successfully",
+    expiresIn: OTP_TTL_SECONDS,
+  };
+
+  // Return OTP in development for easy testing
+  if (process.env.NODE_ENV !== "production") {
+    response.devCode = otp;
+  }
+
+  return response;
 };
 
 // =============================================================================
 // PARENT LOGIN: VERIFY OTP
-// SECURITY: constant-time comparison — prevents timing attacks on OTP
 // =============================================================================
 
 export const verifyOtp = async ({ phone, otp, ipAddress, deviceInfo }) => {
+  console.log(`\n🔑 [OTP VERIFY] Phone: ${phone}, OTP: ${otp}`);
+
   const attempts = parseInt(
-    (await redis.get(otpAttemptsKey(phone))) ?? "0",
+    (await redis.get(`otp:attempts:${phone}`)) ?? "0",
     10,
   );
 
+  console.log(`📊 Attempt count: ${attempts}/${OTP_MAX_ATTEMPTS}`);
+
   if (attempts >= OTP_MAX_ATTEMPTS) {
+    console.log(`❌ [OTP FAILED] Too many attempts for ${phone}`);
+    await recordFailedAuth(ipAddress, phone, "OTP_MAX_ATTEMPTS_EXCEEDED");
     throw ApiError.tooManyRequests("Too many OTP attempts. Try again later.");
   }
 
-  const storedHash = await redis.get(otpHashKey(phone));
-  if (!storedHash) throw ApiError.badRequest("OTP expired or not requested");
+  const storedData = await redis.get(`otp:${phone}`);
+  if (!storedData) {
+    console.log(`❌ [OTP FAILED] OTP expired for ${phone}`);
+    await recordFailedAuth(ipAddress, phone, "OTP_EXPIRED");
+    throw ApiError.badRequest("OTP expired or not requested");
+  }
 
+  const otpData = JSON.parse(storedData);
   const inputHash = hashOtp(otp);
-
-  const storedBuf = Buffer.from(storedHash, "hex");
+  const storedBuf = Buffer.from(otpData.hash, "hex");
   const inputBuf = Buffer.from(inputHash, "hex");
 
   const valid =
@@ -240,29 +343,50 @@ export const verifyOtp = async ({ phone, otp, ipAddress, deviceInfo }) => {
     crypto.timingSafeEqual(storedBuf, inputBuf);
 
   if (!valid) {
-    await redis.incr(otpAttemptsKey(phone));
+    await redis.incr(`otp:attempts:${phone}`);
+    console.log(`❌ [OTP FAILED] Invalid OTP for ${phone}`);
+    await recordFailedAuth(ipAddress, phone, "INVALID_OTP");
     throw ApiError.unauthorized("Invalid OTP");
   }
 
+  console.log(`✅ [OTP SUCCESS] Verified for ${phone}`);
+
   await Promise.all([
-    redis.del(otpHashKey(phone)),
-    redis.del(otpAttemptsKey(phone)),
+    redis.del(`otp:${phone}`),
+    redis.del(`otp:attempts:${phone}`),
   ]);
 
   const phoneIndex = hashForLookup(phone);
   let parent = await repo.findParentByPhoneIndex(phoneIndex);
 
-  // 🚨 FIX: do NOT create parent in login flow
+  let isNewUser = false;
+
   if (!parent) {
-    throw ApiError.badRequest("Account not found. Please register first.");
+    parent = await repo.createParentUser({
+      encryptedPhone: encryptField(phone),
+      phoneIndex,
+      language: deviceInfo?.language,
+    });
+    isNewUser = true;
+    console.log(`👤 [NEW USER] Created parent account for ${phone}`);
+  }
+
+  if (parent.status !== "ACTIVE") {
+    console.log(`❌ [OTP FAILED] Account suspended for ${phone}`);
+    throw ApiError.forbidden("Account suspended");
   }
 
   const sessionId = crypto.randomUUID();
+  const deviceFingerprint = generateDeviceFingerprint({
+    headers: { "user-agent": deviceInfo?.userAgent },
+    ip: ipAddress,
+  });
 
   const { accessToken, refreshToken, refreshHash, expiresAt } = issueTokenPair({
     userId: parent.id,
     role: "PARENT_USER",
     sessionId,
+    deviceFingerprint,
   });
 
   await repo.createSession({
@@ -272,99 +396,132 @@ export const verifyOtp = async ({ phone, otp, ipAddress, deviceInfo }) => {
     deviceInfo,
     expiresAt,
     refreshHash,
+    deviceFingerprint,
   });
 
-  repo.updateParentLastLogin(parent.id).catch(() => {});
+  await repo.updateParentLastLogin(parent.id).catch(() => {});
+  await recordSuccessfulAuth(ipAddress, parent.id, "PARENT_USER");
+
+  const children = await prisma.parentStudent.findMany({
+    where: { parent_id: parent.id },
+    take: 1,
+  });
+
+  console.log(
+    `✅ [LOGIN SUCCESS] Parent ${parent.id} - ${children.length} child(ren)`,
+  );
 
   return {
     access_token: accessToken,
     refresh_token: refreshToken,
     expires_at: expiresAt,
-    is_new_user: false,
+    token_type: "Bearer",
+    is_new_user: isNewUser,
     parent_id: parent.id,
+    has_children: children.length > 0,
   };
 };
 
 // =============================================================================
 // PARENT REGISTRATION: STEP 1 — INIT
-//
-// 1. Validate card_number exists, has a student, is not already claimed
-// 2. Generate one-time nonce (binds card + phone, stored in Redis 10min)
-// 3. Send OTP to phone
-// 4. Return nonce + masked phone for frontend display
 // =============================================================================
 
-export const registerInit = async ({ card_number, phone }) => {
+export const registerInit = async ({ card_number, phone, ipAddress }) => {
+  console.log(`\n📇 [REGISTER INIT] Card: ${card_number}, Phone: ${phone}`);
+
   const card = await repo.findCardForRegistration(card_number);
 
-  // Card must exist and belong to an active school
   if (!card) {
+    console.log(`❌ [REGISTER FAILED] Card not found: ${card_number}`);
+    await recordFailedAuth(ipAddress, card_number, "INVALID_CARD_NUMBER");
     throw ApiError.notFound(
       "Card not found. Check the number printed on your physical card.",
     );
   }
 
-  // Card already claimed — student exists and has a parent linked
-  // BLANK cards have student_id = null until first registration — that is normal
   if (card.student_id && card.student?.parents?.length > 0) {
+    console.log(`❌ [REGISTER FAILED] Card already registered: ${card_number}`);
+    await recordFailedAuth(ipAddress, card_number, "CARD_ALREADY_REGISTERED");
     throw ApiError.conflict(
       "This card is already registered. Sign in instead.",
     );
   }
 
-  // Edge case: student exists (PRE_DETAILS order) but is inactive
   if (card.student_id && !card.student?.is_active) {
     throw ApiError.badRequest(
       "This card is linked to an inactive student. Contact your school.",
     );
   }
 
-  // Generate nonce — 64 hex chars, single-use, 10min TTL
-  // Store card_id (not student_id) — student doesn't exist yet for BLANK cards
   const nonce = crypto.randomBytes(32).toString("hex");
   const nonceData = JSON.stringify({
     card_id: card.id,
     card_number,
     school_id: card.school_id,
-    // For PRE_DETAILS cards: student already exists, carry their id
-    // For BLANK cards: null — student will be created in registerVerify
     student_id: card.student_id ?? null,
-    phone, // must match in step 2
+    phone,
+    ip: ipAddress,
   });
 
-  await redis.setex(nonceKey(nonce), NONCE_TTL, nonceData);
+  await redis.setex(`reg:nonce:${nonce}`, NONCE_TTL, nonceData);
 
-  // Send OTP
   const otp = generateOtp();
   const hashed = hashOtp(otp);
 
+  const otpData = {
+    hash: hashed,
+    phone,
+    purpose: "registration",
+    attempts: 0,
+  };
+
   await Promise.all([
-    redis.setex(otpHashKey(phone), OTP_TTL_SECONDS, hashed),
-    redis.del(otpAttemptsKey(phone)),
+    redis.setex(`otp:${phone}`, OTP_TTL_SECONDS, JSON.stringify(otpData)),
+    redis.del(`otp:attempts:${phone}`),
   ]);
+
+  console.log(`🔐 [REGISTRATION OTP] Phone: ${phone}, OTP: ${otp}`);
+  console.log(`📝 [REGISTRATION OTP] Nonce: ${nonce.slice(0, 16)}...`);
+
+  // Display OTP in a beautiful box for registration
+  const timestamp = new Date().toLocaleTimeString();
+  console.log(
+    `\n╔════════════════════════════════════════════════════════════════════════════╗`,
+  );
+  console.log(
+    `║  🔐 OTP VERIFICATION CODE (REGISTRATION)                                      ║`,
+  );
+  console.log(
+    `╠════════════════════════════════════════════════════════════════════════════╣`,
+  );
+  console.log(
+    `║  Purpose: REGISTRATION                                                    ║`,
+  );
+  console.log(`║  Card:    ${card_number.padEnd(66)}║`);
+  console.log(`║  Phone:   ${phone.padEnd(66)}║`);
+  console.log(`║  OTP:     \x1b[32m${otp.padEnd(66)}\x1b[0m║`);
+  console.log(`║  Time:    ${timestamp.padEnd(66)}║`);
+  console.log(`║  Expires: 5 minutes${" ".padEnd(57)}║`);
+  console.log(
+    `╚════════════════════════════════════════════════════════════════════════════╝\n`,
+  );
 
   if (process.env.NODE_ENV !== "production") {
     logger.info({ phone, devCode: otp }, "[DEV] Registration OTP");
   }
 
-  const masked_phone = phone.replace(/(\+\d{2})(\d{5})(\d{5})/, "$1 *****$3");
+  const maskedPhone = phone.replace(/(\+\d{2})(\d{5})(\d{5})/, "$1 *****$3");
 
   return {
     nonce,
-    masked_phone,
-    // For PRE_DETAILS cards: show the student name as a welcome hint
-    // For BLANK cards: null — parent hasn't set up profile yet
+    masked_phone: maskedPhone,
     student_first_name: card.student?.first_name ?? null,
+    devCode: process.env.NODE_ENV !== "production" ? otp : undefined,
   };
 };
 
 // =============================================================================
 // PARENT REGISTRATION: STEP 2 — VERIFY
-//
-// 1. Verify OTP (constant-time, attempt-limited)
-// 2. Validate nonce (single-use, phone must match step 1)
-// 3. Atomic transaction: create/find parent + link to student
-// 4. Issue session + token pair
 // =============================================================================
 
 export const registerVerify = async ({
@@ -374,22 +531,33 @@ export const registerVerify = async ({
   ipAddress,
   deviceInfo,
 }) => {
-  // [1] OTP validation (unchanged)
+  console.log(
+    `\n✅ [REGISTER VERIFY] Phone: ${phone}, Nonce: ${nonce.slice(0, 16)}...`,
+  );
+
   const attempts = parseInt(
-    (await redis.get(otpAttemptsKey(phone))) ?? "0",
+    (await redis.get(`otp:attempts:${phone}`)) ?? "0",
     10,
   );
 
+  console.log(`📊 Attempt count: ${attempts}/${OTP_MAX_ATTEMPTS}`);
+
   if (attempts >= OTP_MAX_ATTEMPTS) {
+    console.log(`❌ [REGISTER FAILED] Too many attempts for ${phone}`);
+    await recordFailedAuth(ipAddress, phone, "REGISTRATION_OTP_MAX_ATTEMPTS");
     throw ApiError.tooManyRequests("Too many OTP attempts. Try again later.");
   }
 
-  const storedHash = await redis.get(otpHashKey(phone));
-  if (!storedHash)
+  const storedData = await redis.get(`otp:${phone}`);
+  if (!storedData) {
+    console.log(`❌ [REGISTER FAILED] OTP expired for ${phone}`);
+    await recordFailedAuth(ipAddress, phone, "REGISTRATION_OTP_EXPIRED");
     throw ApiError.badRequest("OTP expired. Request a new code.");
+  }
 
+  const otpData = JSON.parse(storedData);
   const inputHash = hashOtp(otp);
-  const storedBuf = Buffer.from(storedHash, "hex");
+  const storedBuf = Buffer.from(otpData.hash, "hex");
   const inputBuf = Buffer.from(inputHash, "hex");
 
   const valid =
@@ -397,13 +565,16 @@ export const registerVerify = async ({
     crypto.timingSafeEqual(storedBuf, inputBuf);
 
   if (!valid) {
-    await redis.incr(otpAttemptsKey(phone));
+    await redis.incr(`otp:attempts:${phone}`);
+    console.log(`❌ [REGISTER FAILED] Invalid OTP for ${phone}`);
+    await recordFailedAuth(ipAddress, phone, "REGISTRATION_INVALID_OTP");
     throw ApiError.unauthorized("Invalid OTP");
   }
 
-  // [2] Nonce validation (unchanged)
-  const nonceRaw = await redis.get(nonceKey(nonce));
+  const nonceRaw = await redis.get(`reg:nonce:${nonce}`);
   if (!nonceRaw) {
+    console.log(`❌ [REGISTER FAILED] Nonce expired: ${nonce.slice(0, 16)}...`);
+    await recordFailedAuth(ipAddress, phone, "REGISTRATION_NONCE_EXPIRED");
     throw ApiError.badRequest(
       "Registration session expired. Please start again.",
     );
@@ -412,16 +583,21 @@ export const registerVerify = async ({
   const nonceData = JSON.parse(nonceRaw);
 
   if (nonceData.phone !== phone) {
+    console.log(
+      `❌ [REGISTER FAILED] Phone mismatch: expected ${nonceData.phone}, got ${phone}`,
+    );
+    await recordFailedAuth(ipAddress, phone, "REGISTRATION_PHONE_MISMATCH");
     throw ApiError.badRequest(
       "Phone number mismatch. Please start registration again.",
     );
   }
 
+  console.log(`✅ [OTP SUCCESS] Verified for registration: ${phone}`);
+
   const phoneIndex = hashForLookup(phone);
 
   const { parent, studentId, isNewUser } = await prisma.$transaction(
     async (tx) => {
-      // ── Parent ──────────────────────────────────────────────
       let existing = await tx.parentUser.findUnique({
         where: { phone_index: phoneIndex },
         select: { id: true, status: true },
@@ -439,78 +615,36 @@ export const registerVerify = async ({
           select: { id: true, status: true },
         });
         isNew = true;
+        console.log(`👤 [NEW USER] Created parent account for ${phone}`);
       }
 
-      // ── Student handling ────────────────────────────────────
       let resolvedStudentId = nonceData.student_id;
 
       if (!resolvedStudentId) {
-        // BLANK card → create student
-        const stubStudent = await tx.student.create({
-          data: {
-            school_id: nonceData.school_id,
-            first_name: null,
-            last_name: null,
-            setup_stage: "PENDING",
-            is_active: true,
-          },
-          select: { id: true },
-        });
-
+        const stubStudent = await repo.createStubStudent(nonceData.school_id);
         resolvedStudentId = stubStudent.id;
+        console.log(
+          `👶 [NEW STUDENT] Created stub student: ${resolvedStudentId}`,
+        );
 
-        await tx.emergencyProfile.create({
-          data: {
-            student_id: resolvedStudentId,
-            visibility: "HIDDEN",
-            is_visible: false,
-          },
-        });
-
-        await tx.card.update({
-          where: { id: nonceData.card_id },
-          data: { student_id: resolvedStudentId },
-        });
+        await repo.createEmergencyProfile(resolvedStudentId);
+        await repo.updateCardStudent(nonceData.card_id, resolvedStudentId);
       }
 
-      // 🔥 FIX: ALWAYS LINK TOKEN → STUDENT (for BOTH flows)
-      const cardWithToken = await tx.card.findUnique({
-        where: { id: nonceData.card_id },
-        select: { token_id: true },
-      });
+      const cardWithToken = await repo.findCardWithToken(nonceData.card_id);
 
       if (cardWithToken?.token_id) {
-        await tx.token.update({
-          where: { id: cardWithToken.token_id },
-          data: {
-            student_id: resolvedStudentId,
-            status: "ACTIVE",
-          },
-        });
+        await repo.updateTokenStudent(
+          cardWithToken.token_id,
+          resolvedStudentId,
+        );
+        console.log(
+          `🔑 [TOKEN LINKED] Token ${cardWithToken.token_id} linked to student`,
+        );
       }
 
-      // ── ParentStudent link ─────────────────────────────────
-      await tx.parentStudent.upsert({
-        where: {
-          parent_id_student_id: {
-            parent_id: existing.id,
-            student_id: resolvedStudentId,
-          },
-        },
-        update: {},
-        create: {
-          parent_id: existing.id,
-          student_id: resolvedStudentId,
-          relationship: "Parent",
-          is_primary: true,
-        },
-      });
-
-      await tx.parentNotificationPref.upsert({
-        where: { parent_id: existing.id },
-        update: {},
-        create: { parent_id: existing.id },
-      });
+      await repo.linkParentToStudent(existing.id, resolvedStudentId);
+      await repo.createParentNotificationPref(existing.id);
 
       return {
         parent: existing,
@@ -520,19 +654,23 @@ export const registerVerify = async ({
     },
   );
 
-  // cleanup (unchanged)
   await Promise.all([
-    redis.del(nonceKey(nonce)),
-    redis.del(otpHashKey(phone)),
-    redis.del(otpAttemptsKey(phone)),
+    redis.del(`reg:nonce:${nonce}`),
+    redis.del(`otp:${phone}`),
+    redis.del(`otp:attempts:${phone}`),
   ]);
 
   const sessionId = crypto.randomUUID();
+  const deviceFingerprint = generateDeviceFingerprint({
+    headers: { "user-agent": deviceInfo?.userAgent },
+    ip: ipAddress,
+  });
 
   const { accessToken, refreshToken, refreshHash, expiresAt } = issueTokenPair({
     userId: parent.id,
     role: "PARENT_USER",
     sessionId,
+    deviceFingerprint,
   });
 
   await repo.createSession({
@@ -542,14 +680,21 @@ export const registerVerify = async ({
     deviceInfo,
     expiresAt,
     refreshHash,
+    deviceFingerprint,
   });
 
-  repo.updateParentLastLogin(parent.id).catch(() => {});
+  await repo.updateParentLastLogin(parent.id).catch(() => {});
+  await recordSuccessfulAuth(ipAddress, parent.id, "PARENT_USER");
+
+  console.log(
+    `✅ [REGISTRATION SUCCESS] Parent: ${parent.id}, Student: ${studentId}`,
+  );
 
   return {
     access_token: accessToken,
     refresh_token: refreshToken,
     expires_at: expiresAt,
+    token_type: "Bearer",
     is_new_user: isNewUser,
     parent_id: parent.id,
     student_id: studentId,
@@ -558,7 +703,6 @@ export const registerVerify = async ({
 
 // =============================================================================
 // REFRESH TOKENS
-// SECURITY: reuse detection — rotated token replayed = wipe all sessions
 // =============================================================================
 
 export const refreshTokens = async ({
@@ -566,32 +710,39 @@ export const refreshTokens = async ({
   ipAddress,
   deviceInfo,
 }) => {
+  console.log(`\n🔄 [REFRESH TOKEN] IP: ${ipAddress}`);
+
   const hash = hashToken(refreshToken);
 
-  // Check if this refresh token was already rotated (reuse = possible theft)
   const isBlacklisted = await redis.get(`blacklist:${hash}`);
   if (isBlacklisted) {
     const meta = JSON.parse(isBlacklisted);
     if (meta?.userId && meta?.role) {
-      logger.error(
-        {
-          userId: meta.userId,
-          role: meta.role,
-          ip: ipAddress,
-          type: "refresh_token_reuse",
-        },
-        "Refresh token reuse detected — wiping all sessions",
+      console.log(
+        `⚠️ [REFRESH TOKEN REUSE DETECTED] User: ${meta.userId}, Role: ${meta.role}`,
       );
-      await wipeAllSessions(meta.userId, meta.role);
+      await recordFailedAuth(ipAddress, meta.userId, "REFRESH_TOKEN_REUSE");
+      logger.error(
+        { userId: meta.userId, role: meta.role, ip: ipAddress },
+        "Refresh token reuse detected",
+      );
+      await repo.revokeAllUserSessions(meta.userId, meta.role);
     }
     throw ApiError.unauthorized("Security alert: please log in again");
   }
 
   const session = await repo.findSessionByRefreshHash(hash);
 
-  if (!session || !session.is_active)
+  if (!session || !session.is_active) {
+    console.log(`❌ [REFRESH TOKEN] Invalid session`);
+    await recordFailedAuth(ipAddress, null, "INVALID_REFRESH_SESSION");
     throw ApiError.unauthorized("Session invalid");
-  if (session.expires_at < new Date()) throw ApiError.sessionExpired();
+  }
+  if (session.expires_at < new Date()) {
+    console.log(`❌ [REFRESH TOKEN] Session expired`);
+    await recordFailedAuth(ipAddress, null, "EXPIRED_REFRESH_SESSION");
+    throw ApiError.sessionExpired();
+  }
 
   let role, userId, schoolId;
 
@@ -599,19 +750,24 @@ export const refreshTokens = async ({
     role = "SUPER_ADMIN";
     userId = session.admin_user_id;
   } else if (session.school_user_id) {
-    role = "SCHOOL_USER";
+    role = "ADMIN";
     userId = session.school_user_id;
     const user = await repo.findSchoolUserById(userId);
     schoolId = user?.school_id;
-  } else {
+  } else if (session.parent_user_id) {
     role = "PARENT_USER";
     userId = session.parent_user_id;
+  } else {
+    throw ApiError.unauthorized("Invalid session");
   }
+
+  console.log(`✅ [REFRESH TOKEN] User: ${userId}, Role: ${role}`);
 
   const {
     accessToken,
     refreshToken: newRefresh,
     refreshHash,
+    expiresAt,
   } = issueTokenPair({
     userId,
     role,
@@ -621,30 +777,23 @@ export const refreshTokens = async ({
 
   await repo.updateSessionRefreshHash(session.id, refreshHash);
 
-  // Blacklist old refresh token with metadata for reuse detection
-  const oldHashTtl = Math.ceil(
-    (new Date(session.expires_at) - Date.now()) / 1000,
-  );
+  const oldHashTtl = Math.ceil((session.expires_at - Date.now()) / 1000);
   if (oldHashTtl > 0) {
     await redis
       .setex(`blacklist:${hash}`, oldHashTtl, JSON.stringify({ userId, role }))
       .catch(() => {});
-    repo.addRefreshToBlacklist(hash, session.expires_at).catch(() => {});
   }
-
-  // Invalidate session cache — old cached session has stale refresh hash
-  await invalidateSessionCache(session.id);
 
   return {
     access_token: accessToken,
     refresh_token: newRefresh,
     expires_at: expiresAt,
+    token_type: "Bearer",
   };
 };
 
 // =============================================================================
 // LOGOUT
-// Kills Redis caches immediately — no waiting for TTL expiry
 // =============================================================================
 
 export const logoutUser = async ({
@@ -655,54 +804,109 @@ export const logoutUser = async ({
   userId,
   role,
 }) => {
+  console.log(
+    `\n🚪 [LOGOUT] User: ${userId}, Role: ${role}, Session: ${sessionId}`,
+  );
+
   const ops = [];
 
-  // 1. Blacklist access token + kill its Redis "clean" cache
   const accessHash = hashToken(token);
   ops.push(repo.addToBlacklist(accessHash, new Date(exp * 1000)));
-  ops.push(invalidateBlacklistCache(accessHash));
+  ops.push(
+    redis.setex(
+      `blacklist:${accessHash}`,
+      exp - Math.floor(Date.now() / 1000),
+      "1",
+    ),
+  );
 
-  // 2. Revoke session in DB
-  if (sessionId) ops.push(repo.revokeSession(sessionId, "MANUAL_LOGOUT"));
+  if (sessionId) {
+    ops.push(repo.revokeSession(sessionId, "MANUAL_LOGOUT"));
+  }
 
-  // 3. Blacklist refresh token — can't be replayed post-logout
   if (refreshToken) {
     const refreshHash = hashToken(refreshToken);
-    const refreshExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-    ops.push(repo.addRefreshToBlacklist(refreshHash, refreshExpiry));
-
     ops.push(
-      repo.findSessionByRefreshHash(refreshHash).then((s) => {
-        if (s && s.id !== sessionId)
-          return repo.revokeSession(s.id, "MANUAL_LOGOUT");
-      }),
+      repo.addToBlacklist(
+        refreshHash,
+        new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      ),
     );
   }
 
   await Promise.all(ops);
 
-  // 4. Kill Redis caches immediately
-  await Promise.all([
-    sessionId ? invalidateSessionCache(sessionId) : Promise.resolve(),
-    userId && role ? invalidateUserCache(role, userId) : Promise.resolve(),
-  ]);
+  if (sessionId) {
+    await redis.del(`session:${sessionId}`).catch(() => {});
+  }
+  if (userId && role) {
+    await redis.del(`user:${role}:${userId}`).catch(() => {});
+  }
+
+  console.log(`✅ [LOGOUT SUCCESS] User: ${userId}`);
 };
 
 // =============================================================================
-// INTERNAL: Wipe all sessions (reuse detection nuclear option)
+// CHANGE PASSWORD
 // =============================================================================
 
-async function wipeAllSessions(userId, role) {
-  const sessionIds = await repo.findAllActiveSessionIds(userId, role);
-  await repo.revokeAllUserSessions(userId, role, "SUSPICIOUS_ACTIVITY");
+export const changePassword = async ({
+  userId,
+  role,
+  oldPassword,
+  newPassword,
+  ipAddress,
+}) => {
+  console.log(`\n🔒 [CHANGE PASSWORD] User: ${userId}, Role: ${role}`);
 
-  await Promise.all([
-    ...sessionIds.map((id) => invalidateSessionCache(id)),
-    invalidateUserCache(role, userId),
-  ]);
+  let user, passwordHash;
 
-  logger.warn(
-    { userId, role, sessionCount: sessionIds.length },
-    "All sessions wiped — reuse detected",
-  );
-}
+  if (role === "SUPER_ADMIN") {
+    user = await repo.findSuperAdminById(userId);
+    passwordHash = user?.password_hash;
+  } else if (role === "ADMIN") {
+    user = await repo.findSchoolUserById(userId);
+    passwordHash = user?.password_hash;
+  } else if (role === "PARENT_USER") {
+    user = await repo.findParentById(userId);
+    passwordHash = user?.password_hash;
+  } else {
+    throw ApiError.badRequest("Invalid user type");
+  }
+
+  if (!user) throw ApiError.notFound("User not found");
+
+  const isValid = await verifyPassword(oldPassword, passwordHash);
+  if (!isValid) {
+    console.log(`❌ [CHANGE PASSWORD] Invalid old password for user ${userId}`);
+    await recordFailedAuth(ipAddress, userId, "INVALID_OLD_PASSWORD");
+    throw ApiError.unauthorized("Invalid current password");
+  }
+
+  const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+  if (role === "SUPER_ADMIN") {
+    await repo.updateSuperAdminPassword(userId, hashedPassword);
+  } else if (role === "ADMIN") {
+    await repo.updateSchoolUserPassword(userId, hashedPassword);
+  } else {
+    await repo.updateParentPassword(userId, hashedPassword);
+  }
+
+  await repo.revokeAllUserSessions(userId, role, "PASSWORD_CHANGED");
+
+  await repo
+    .createAuditLog({
+      actorId: userId,
+      actorType: role,
+      action: "PASSWORD_CHANGED",
+      entity: role,
+      entityId: userId,
+      ip: ipAddress,
+    })
+    .catch(() => {});
+
+  console.log(`✅ [CHANGE PASSWORD SUCCESS] User: ${userId}`);
+
+  return { message: "Password changed successfully. Please login again." };
+};

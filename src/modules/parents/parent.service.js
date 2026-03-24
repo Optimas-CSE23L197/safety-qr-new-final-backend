@@ -14,14 +14,30 @@
 //   3. App sees this flag → clears device cache → re-fetches /me
 // =============================================================================
 
+// =============================================================================
+// modules/parents/parent.service.js — RESQID (FIXED)
+// Orchestration + encryption + caching. No Prisma.
+// =============================================================================
+
+import crypto from "crypto";
 import * as repo from "./parent.repository.js";
 import { cacheAside, cacheDel } from "../../utils/cache/cache.js";
-import { encryptField, decryptField } from "../../utils/security/encryption.js";
+import {
+  encryptField,
+  decryptField,
+  hashForLookup,
+} from "../../utils/security/encryption.js";
 import { writeAuditLog, AuditAction } from "../../utils/helpers/auditLogger.js";
 import { buildOffsetMeta } from "../../utils/response/paginate.js";
+import { prisma } from "../../config/prisma.js";
+import { redis } from "../../config/redis.js";
+import { hashOtp } from "../../services/otp/otp.service.js";
+import { logger } from "../../config/logger.js";
 
 const HOME_KEY = (id) => `parent:home:${id}`;
 const HOME_TTL = 5 * 60; // 5 min server-side Redis TTL
+
+// ... rest of your service functions (keep them as is) ...
 
 // ─── GET /me ─────────────────────────────────────────────────────────────────
 
@@ -280,4 +296,140 @@ export async function deleteAccount(parentId) {
     entity: "ParentUser",
     entityId: parentId,
   });
+}
+
+// ─── GET /me/location-history ────────────────────────────────────────────────
+// NEW: Get location history for a student
+
+export async function getLocationHistory(parentId, query) {
+  const { student_id, cursor, limit = 20, from_date, to_date } = query;
+
+  if (!student_id) {
+    throw new Error("student_id is required");
+  }
+
+  const fromDate = from_date ? new Date(from_date) : undefined;
+  const toDate = to_date ? new Date(to_date) : undefined;
+
+  const result = await repo.getLocationHistory({
+    parentId,
+    studentId: student_id,
+    cursor,
+    limit,
+    fromDate,
+    toDate,
+  });
+
+  return result;
+}
+
+// ─── GET /me/anomalies ───────────────────────────────────────────────────────
+// NEW: Get anomalies for parent's students
+
+export async function getAnomalies(parentId, query) {
+  const { cursor, limit = 20, severity, resolved } = query;
+
+  const result = await repo.getAnomalies(parentId, {
+    cursor,
+    limit,
+    severity,
+    resolved:
+      resolved === "true" ? true : resolved === "false" ? false : undefined,
+  });
+
+  return result;
+}
+
+// ─── GET /me/cards ───────────────────────────────────────────────────────────
+// NEW: Get all cards for parent's students
+
+export async function getCards(parentId) {
+  const cards = await repo.getCards(parentId);
+
+  return cards.map((card) => ({
+    id: card.id,
+    card_number: card.card_number,
+    student_name:
+      `${card.student.first_name || ""} ${card.student.last_name || ""}`.trim(),
+    student_id: card.student.id,
+    status: card.token?.status || "UNASSIGNED",
+    expires_at: card.token?.expires_at,
+    file_url: card.file_url,
+    print_status: card.print_status,
+  }));
+}
+
+// ─── POST /me/request-renewal ────────────────────────────────────────────────
+// NEW: Request card renewal
+
+export async function requestRenewal(parentId, body) {
+  const { card_id, payment_method } = body;
+
+  const result = await repo.requestRenewal(parentId, {
+    cardId: card_id,
+    paymentMethod: payment_method,
+  });
+
+  writeAuditLog({
+    actorId: parentId,
+    actorType: "PARENT_USER",
+    action: "CARD_RENEWAL_REQUEST",
+    entity: "Card",
+    entityId: card_id,
+  });
+
+  return result;
+}
+
+// ─── PATCH /me/notification-prefs ────────────────────────────────────────────
+// EXISTING - already implemented
+
+// ─── PATCH /me/change-phone ──────────────────────────────────────────────────
+// NEW: Change parent phone number (with OTP verification)
+
+export async function changePhone(parentId, newPhone, otp, ipAddress) {
+  // Verify OTP
+  const storedData = await redis.get(`otp:phone_change:${newPhone}`);
+  if (!storedData) throw new Error("OTP expired or not requested");
+
+  const otpData = JSON.parse(storedData);
+  const inputHash = hashOtp(otp);
+  const storedBuf = Buffer.from(otpData.hash, "hex");
+  const inputBuf = Buffer.from(inputHash, "hex");
+
+  const valid =
+    storedBuf.length === inputBuf.length &&
+    crypto.timingSafeEqual(storedBuf, inputBuf);
+
+  if (!valid) throw new Error("Invalid OTP");
+
+  // Update phone
+  const phoneIndex = hashForLookup(newPhone);
+  const encryptedPhone = encryptField(newPhone);
+
+  await prisma.parentUser.update({
+    where: { id: parentId },
+    data: {
+      phone: encryptedPhone,
+      phone_index: phoneIndex,
+      is_phone_verified: true,
+    },
+  });
+
+  // Revoke all sessions
+  await repo.revokeAllUserSessions(parentId, "PARENT_USER", "PHONE_CHANGED");
+
+  // Clean up OTP
+  await redis.del(`otp:phone_change:${newPhone}`);
+
+  writeAuditLog({
+    actorId: parentId,
+    actorType: "PARENT_USER",
+    action: "PHONE_CHANGED",
+    entity: "ParentUser",
+    entityId: parentId,
+    ip: ipAddress,
+  });
+
+  return { message: "Phone number updated. Please login again." };
 }

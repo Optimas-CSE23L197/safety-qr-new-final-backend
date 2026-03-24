@@ -24,12 +24,12 @@ exports.Prisma = Prisma
 exports.$Enums = {}
 
 /**
- * Prisma Client JS version: 7.4.2
- * Query Engine version: 94a226be1cf2967af2541cca5529f0f7ba866919
+ * Prisma Client JS version: 7.5.0
+ * Query Engine version: 280c870be64f457428992c43c1f6d557fab6e29e
  */
 Prisma.prismaVersion = {
-  client: "7.4.2",
-  engine: "94a226be1cf2967af2541cca5529f0f7ba866919"
+  client: "7.5.0",
+  engine: "280c870be64f457428992c43c1f6d557fab6e29e"
 }
 
 Prisma.PrismaClientKnownRequestError = () => {
@@ -914,6 +914,63 @@ exports.Prisma.WebhookEventScalarFieldEnum = {
   error: 'error'
 };
 
+exports.Prisma.DeadLetterQueueScalarFieldEnum = {
+  id: 'id',
+  job_type: 'job_type',
+  payload: 'payload',
+  error_message: 'error_message',
+  retry_count: 'retry_count',
+  last_attempt: 'last_attempt',
+  resolved: 'resolved',
+  resolved_at: 'resolved_at',
+  created_at: 'created_at'
+};
+
+exports.Prisma.IdempotencyKeyScalarFieldEnum = {
+  id: 'id',
+  key: 'key',
+  resource_type: 'resource_type',
+  resource_id: 'resource_id',
+  status: 'status',
+  response: 'response',
+  expires_at: 'expires_at',
+  created_at: 'created_at'
+};
+
+exports.Prisma.FeatureFlagOverrideScalarFieldEnum = {
+  id: 'id',
+  flag_key: 'flag_key',
+  target_type: 'target_type',
+  target_id: 'target_id',
+  enabled: 'enabled',
+  percentage: 'percentage',
+  expires_at: 'expires_at',
+  created_by: 'created_by',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
+};
+
+exports.Prisma.AuthAttemptScalarFieldEnum = {
+  id: 'id',
+  identifier: 'identifier',
+  identifier_type: 'identifier_type',
+  success: 'success',
+  failure_reason: 'failure_reason',
+  ip_address: 'ip_address',
+  user_agent: 'user_agent',
+  created_at: 'created_at'
+};
+
+exports.Prisma.IpBlocklistScalarFieldEnum = {
+  id: 'id',
+  ip_address: 'ip_address',
+  reason: 'reason',
+  blocked_by: 'blocked_by',
+  blocked_at: 'blocked_at',
+  expires_at: 'expires_at',
+  is_active: 'is_active'
+};
+
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -1172,7 +1229,7 @@ exports.PrintStatus = exports.$Enums.PrintStatus = {
 
 exports.ActorType = exports.$Enums.ActorType = {
   SUPER_ADMIN: 'SUPER_ADMIN',
-  SCHOOL_USER: 'SCHOOL_USER',
+  ADMIN: 'ADMIN',
   PARENT_USER: 'PARENT_USER',
   SYSTEM: 'SYSTEM'
 };
@@ -1355,7 +1412,12 @@ exports.Prisma.ModelName = {
   ApiKey: 'ApiKey',
   Webhook: 'Webhook',
   WebhookDelivery: 'WebhookDelivery',
-  WebhookEvent: 'WebhookEvent'
+  WebhookEvent: 'WebhookEvent',
+  DeadLetterQueue: 'DeadLetterQueue',
+  IdempotencyKey: 'IdempotencyKey',
+  FeatureFlagOverride: 'FeatureFlagOverride',
+  AuthAttempt: 'AuthAttempt',
+  IpBlocklist: 'IpBlocklist'
 };
 
 /**

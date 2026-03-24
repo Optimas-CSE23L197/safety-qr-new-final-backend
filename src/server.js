@@ -1,5 +1,5 @@
 // =============================================================================
-// server.js — RESQID
+// server.js — RESQID (ENHANCED WITH CONSOLE LOGGING)
 // HTTP server entry point — binds the Express app to a port
 // Handles: clustering, graceful shutdown, startup health checks,
 //          unhandled rejections, uncaught exceptions, process signals
@@ -20,6 +20,35 @@ import { disconnectRedis } from "./config/redis.js";
 import { setupProcessErrorHandlers } from "./middleware/error.middleware.js";
 
 // =============================================================================
+// Console Logger for Startup (always visible)
+// =============================================================================
+
+const consoleLog = (message, data = {}) => {
+  const timestamp = new Date().toISOString();
+  const logMsg = `[${timestamp}] ${message}`;
+  if (Object.keys(data).length > 0) {
+    console.log(logMsg, data);
+  } else {
+    console.log(logMsg);
+  }
+};
+
+const consoleError = (message, error) => {
+  const timestamp = new Date().toISOString();
+  console.error(`[${timestamp}] ❌ ${message}`, error);
+};
+
+const consoleSuccess = (message, data = {}) => {
+  const timestamp = new Date().toISOString();
+  const logMsg = `[${timestamp}] ✅ ${message}`;
+  if (Object.keys(data).length > 0) {
+    console.log(logMsg, data);
+  } else {
+    console.log(logMsg);
+  }
+};
+
+// =============================================================================
 // Cluster Configuration
 // =============================================================================
 
@@ -28,6 +57,25 @@ const ENABLE_CLUSTER = ENV.IS_PROD && process.env.CLUSTER !== "false";
 // In production: one worker per CPU core (up to 4 — diminishing returns above)
 // In development: single process (easier debugging, faster restarts)
 const WORKER_COUNT = ENABLE_CLUSTER ? Math.min(os.cpus().length, 4) : 1;
+
+consoleLog(
+  "╔══════════════════════════════════════════════════════════════════╗",
+);
+consoleLog(
+  "║                      RESQID BACKEND SERVER                        ║",
+);
+consoleLog(
+  "╚══════════════════════════════════════════════════════════════════╝",
+);
+consoleLog("");
+consoleLog(`📦 Environment: ${ENV.NODE_ENV}`);
+consoleLog(`🔢 Node version: ${process.version}`);
+consoleLog(`💾 PID: ${process.pid}`);
+consoleLog(`🖥️  Platform: ${process.platform}`);
+consoleLog(`🧠 CPUs: ${os.cpus().length}`);
+consoleLog(`⚙️  Cluster: ${ENABLE_CLUSTER ? "enabled" : "disabled"}`);
+consoleLog(`👷 Workers: ${WORKER_COUNT}`);
+consoleLog("");
 
 // =============================================================================
 // Primary Process (Cluster Manager)
@@ -44,6 +92,10 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
 // =============================================================================
 
 function runPrimary() {
+  consoleSuccess(
+    `Primary process ${process.pid} starting ${WORKER_COUNT} workers`,
+  );
+
   logger.info(
     {
       type: "cluster_primary_start",
@@ -65,6 +117,10 @@ function runPrimary() {
   cluster.on("exit", (worker, code, signal) => {
     const reason = signal ?? `exit code ${code}`;
 
+    consoleError(
+      `Worker ${worker.id} (pid ${worker.process.pid}) exited: ${reason}`,
+    );
+
     logger.warn(
       {
         type: "worker_exit",
@@ -84,6 +140,7 @@ function runPrimary() {
     crashTracker.set(worker.id, recentCrashes);
 
     if (recentCrashes.length > 5) {
+      consoleError(`Worker ${worker.id} is crash-looping — not respawning`);
       logger.fatal(
         {
           type: "worker_crash_loop",
@@ -97,6 +154,7 @@ function runPrimary() {
 
     // Normal exit (SIGTERM during graceful shutdown) — don't respawn
     if (code === 0 || signal === "SIGTERM") {
+      consoleLog(`Worker ${worker.id} exited cleanly — not respawning`);
       logger.info(
         { workerId: worker.id },
         `Worker ${worker.id} exited cleanly — not respawning`,
@@ -105,10 +163,7 @@ function runPrimary() {
     }
 
     // Unexpected crash — respawn after short delay
-    logger.info(
-      { type: "worker_respawn", workerId: worker.id },
-      `Respawning worker ${worker.id}`,
-    );
+    consoleLog(`Respawning worker ${worker.id}`);
     setTimeout(() => forkWorker(worker.id), 1000);
   });
 
@@ -119,6 +174,7 @@ function runPrimary() {
 
 function forkWorker(id) {
   const worker = cluster.fork({ WORKER_ID: String(id) });
+  consoleLog(`Worker ${id} forked (pid ${worker.process.pid})`);
   logger.info(
     { type: "worker_forked", workerId: id, pid: worker.process.pid },
     `Worker ${id} forked (pid ${worker.process.pid})`,
@@ -127,6 +183,7 @@ function forkWorker(id) {
 }
 
 function shutdownPrimary(signal) {
+  consoleLog(`Primary received ${signal} — shutting down all workers`);
   logger.info(
     { signal, type: "primary_shutdown" },
     `Primary received ${signal} — shutting down all workers`,
@@ -141,7 +198,7 @@ function shutdownPrimary(signal) {
 
   // Force kill after 15s if workers don't exit cleanly
   setTimeout(() => {
-    logger.error("Primary forced shutdown — workers did not exit in time");
+    consoleError("Primary forced shutdown — workers did not exit in time");
     process.exit(1);
   }, 15_000).unref();
 }
@@ -153,13 +210,19 @@ function shutdownPrimary(signal) {
 async function runWorker() {
   const workerId = process.env.WORKER_ID ?? "1";
 
+  consoleLog(`🟢 Starting worker ${workerId} (pid ${process.pid})...`);
+
   try {
     // ── Startup Dependency Checks ──────────────────────────────────────────────
     // Verify DB + Redis are reachable before binding to port
     // Fail fast — better to crash at startup than to serve broken requests
+
+    consoleLog(`🔍 Worker ${workerId}: Running startup checks...`);
     await runStartupChecks(workerId);
+    consoleSuccess(`Worker ${workerId}: All startup checks passed`);
 
     // ── Create Express App ─────────────────────────────────────────────────────
+    consoleLog(`🏗️  Worker ${workerId}: Creating Express app...`);
     const app = createApp();
 
     // ── Create HTTP Server ────────────────────────────────────────────────────
@@ -180,6 +243,7 @@ async function runWorker() {
     // ── Graceful Shutdown on Cluster Message ──────────────────────────────────
     process.on("message", (msg) => {
       if (msg === "shutdown") {
+        consoleLog(`Worker ${workerId} received shutdown signal from primary`);
         logger.info(
           { workerId, type: "worker_shutdown_signal" },
           `Worker ${workerId} received shutdown signal from primary`,
@@ -189,6 +253,7 @@ async function runWorker() {
     });
 
     // ── Bind to Port ──────────────────────────────────────────────────────────
+    consoleLog(`🔌 Worker ${workerId}: Binding to port ${ENV.PORT}...`);
     await new Promise((resolve, reject) => {
       server.listen(ENV.PORT, (err) => {
         if (err) return reject(err);
@@ -197,6 +262,10 @@ async function runWorker() {
     });
 
     const addr = server.address();
+    consoleSuccess(
+      `Worker ${workerId} listening on port ${addr?.port ?? ENV.PORT}`,
+    );
+
     logger.info(
       {
         type: "server_started",
@@ -216,6 +285,7 @@ async function runWorker() {
 
     return server;
   } catch (err) {
+    consoleError(`Worker ${workerId} failed to start: ${err.message}`, err);
     logger.fatal(
       {
         type: "worker_startup_failed",
@@ -234,10 +304,7 @@ async function runWorker() {
 // =============================================================================
 
 async function runStartupChecks(workerId) {
-  logger.info(
-    { type: "startup_checks", workerId },
-    "Running startup dependency checks...",
-  );
+  consoleLog(`📡 Worker ${workerId}: Checking PostgreSQL connection...`);
 
   const { checkPrismaHealth } = await import("./config/prisma.js");
   const { checkRedisHealth } = await import("./config/redis.js");
@@ -253,19 +320,29 @@ async function runStartupChecks(workerId) {
   const redisOk =
     redisResult.status === "fulfilled" && redisResult.value?.status === "ok";
 
-  if (!dbOk) {
+  if (dbOk) {
+    consoleSuccess(
+      `Worker ${workerId}: PostgreSQL connected (${dbResult.value?.latencyMs}ms)`,
+    );
+  } else {
     const reason =
       dbResult.status === "rejected"
         ? dbResult.reason?.message
         : dbResult.value?.error;
+    consoleError(`Worker ${workerId}: PostgreSQL connection failed: ${reason}`);
     throw new Error(`PostgreSQL not reachable at startup: ${reason}`);
   }
 
-  if (!redisOk) {
+  if (redisOk) {
+    consoleSuccess(
+      `Worker ${workerId}: Redis connected (${redisResult.value?.latencyMs}ms)`,
+    );
+  } else {
     const reason =
       redisResult.status === "rejected"
         ? redisResult.reason?.message
         : redisResult.value?.error;
+    consoleError(`Worker ${workerId}: Redis connection failed: ${reason}`);
     throw new Error(`Redis not reachable at startup: ${reason}`);
   }
 
@@ -312,6 +389,7 @@ async function gracefulShutdown(server, workerId, exitCode) {
   if (isShuttingDown) return;
   isShuttingDown = true;
 
+  consoleLog(`🛑 Worker ${workerId} starting graceful shutdown...`);
   logger.info(
     { type: "graceful_shutdown_start", workerId, exitCode },
     `Worker ${workerId} starting graceful shutdown`,
@@ -319,6 +397,9 @@ async function gracefulShutdown(server, workerId, exitCode) {
 
   // Hard timeout — if shutdown takes longer than 15s, force exit
   const forceExit = setTimeout(() => {
+    consoleError(
+      `Worker ${workerId}: Graceful shutdown timed out — forcing exit`,
+    );
     logger.error(
       { type: "forced_shutdown", workerId },
       "Graceful shutdown timed out — forcing exit",
@@ -330,6 +411,7 @@ async function gracefulShutdown(server, workerId, exitCode) {
   try {
     // [1] Stop accepting new HTTP connections
     // In-flight requests continue until complete or timeout
+    consoleLog(`Worker ${workerId}: Closing HTTP server...`);
     await new Promise((resolve) => {
       server.close((err) => {
         if (err) {
@@ -338,17 +420,19 @@ async function gracefulShutdown(server, workerId, exitCode) {
         resolve();
       });
     });
-    logger.info(
-      { workerId },
-      "HTTP server closed — no longer accepting connections",
-    );
+    consoleSuccess(`Worker ${workerId}: HTTP server closed`);
 
     // [2] Disconnect Prisma — flushes connection pool
+    consoleLog(`Worker ${workerId}: Disconnecting PostgreSQL...`);
     await disconnectPrisma();
+    consoleSuccess(`Worker ${workerId}: PostgreSQL disconnected`);
 
     // [3] Disconnect Redis — sends QUIT command, waits for pending commands
+    consoleLog(`Worker ${workerId}: Disconnecting Redis...`);
     await disconnectRedis();
+    consoleSuccess(`Worker ${workerId}: Redis disconnected`);
 
+    consoleSuccess(`Worker ${workerId}: Shutdown complete`);
     logger.info(
       { type: "graceful_shutdown_complete", workerId },
       `Worker ${workerId} shutdown complete`,
@@ -357,6 +441,7 @@ async function gracefulShutdown(server, workerId, exitCode) {
     clearTimeout(forceExit);
     process.exit(exitCode ?? 0);
   } catch (err) {
+    consoleError(`Worker ${workerId}: Error during shutdown: ${err.message}`);
     logger.error(
       { type: "shutdown_error", workerId, err: err.message },
       "Error during graceful shutdown",
@@ -373,29 +458,36 @@ async function gracefulShutdown(server, workerId, exitCode) {
 function logStartupSummary(port) {
   const lines = [
     "",
-    "╔══════════════════════════════════════════════════════╗",
-    "║              RESQID API — STARTED                    ║",
-    "╚══════════════════════════════════════════════════════╝",
-    `  Environment  : ${ENV.NODE_ENV}`,
-    `  Port         : ${port}`,
-    `  Workers      : ${WORKER_COUNT}`,
-    `  Node.js      : ${process.version}`,
-    `  PID          : ${process.pid}`,
-    `  Trust Proxy  : ${ENV.TRUST_PROXY}`,
-    `  Cluster      : ${ENABLE_CLUSTER ? "enabled" : "disabled"}`,
+    "╔══════════════════════════════════════════════════════════════════╗",
+    "║                     RESQID API — STARTED ✅                       ║",
+    "╚══════════════════════════════════════════════════════════════════╝",
     "",
-    "  Endpoints:",
-    `  ├── GET  /health              liveness probe`,
-    `  ├── GET  /api/health          readiness probe`,
-    `  ├── GET  /api/status          version info`,
-    `  ├── *    /api/v1/auth         authentication`,
-    `  ├── *    /api/v1/parents      parent app`,
-    `  ├── *    /api/v1/scan         QR scan (public)`,
-    `  ├── *    /api/v1/emergency    emergency profile (public)`,
-    `  ├── *    /api/v1/school-admin school dashboard`,
-    `  └── *    /api/v1/super-admin  super admin dashboard`,
+    `  📦 Environment  : ${ENV.NODE_ENV}`,
+    `  🔌 Port         : ${port}`,
+    `  👷 Workers      : ${WORKER_COUNT}`,
+    `  🔢 Node.js      : ${process.version}`,
+    `  💾 PID          : ${process.pid}`,
+    `  🖥️  Platform    : ${process.platform}`,
+    `  🔒 Trust Proxy  : ${ENV.TRUST_PROXY}`,
+    `  ⚙️  Cluster     : ${ENABLE_CLUSTER ? "enabled" : "disabled"}`,
+    "",
+    `  🌐 Endpoints:`,
+    `  ├── GET  /health              → liveness probe`,
+    `  ├── GET  /api/health          → readiness probe`,
+    `  ├── GET  /api/status          → version info`,
+    `  ├── *    /api/v1/auth         → authentication`,
+    `  ├── *    /api/v1/parents      → parent app (mobile)`,
+    `  ├── *    /api/v1/scan         → QR scan (public)`,
+    `  ├── *    /api/v1/emergency    → emergency profile (public)`,
+    `  ├── *    /api/v1/school-admin → school dashboard`,
+    `  └── *    /api/v1/super-admin  → super admin dashboard`,
+    "",
+    `  ✅ Ready to accept requests!`,
     "",
   ];
 
-  lines.forEach((line) => logger.info(line));
+  lines.forEach((line) => {
+    console.log(line);
+    if (line.trim()) logger.info(line);
+  });
 }
