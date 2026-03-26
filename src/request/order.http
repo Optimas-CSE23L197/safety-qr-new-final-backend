@@ -1,677 +1,426 @@
 # =============================================================================
-# order.http — RESQID Order Pipeline
-# REST Client (VS Code extension: humao.rest-client)
-#
-# USAGE:
-#   1. Fill in @token (JWT from POST /api/auth/login)
-#   2. Fill in @schoolId (from your DB / super admin dashboard)
-#   3. Run steps in order — copy IDs from responses into variables below
-#
-# PIPELINE:
-#   Step 1  POST   /api/orders                         → PENDING
-#   Step 2  PATCH  /api/orders/:id/confirm             → CONFIRMED
-#   Step 3a POST   /api/orders/:id/invoice/advance     → PAYMENT_PENDING
-#   Step 3b PATCH  /api/orders/:id/payment/advance     → ADVANCE_RECEIVED
-#   Step 4  POST   /api/orders/:id/generate            → TOKEN_GENERATED
-#   Step 5  POST   /api/orders/:id/design              → CARD_DESIGN_READY
-#   Step 5r POST   /api/orders/:id/design/retry        → CARD_DESIGN_READY (retry)
-#   Step 6  PATCH  /api/orders/:id/vendor              → SENT_TO_VENDOR
-#   Step 7a PATCH  /api/orders/:id/printing/start      → PRINTING
-#   Step 7b PATCH  /api/orders/:id/printing/complete   → PRINT_COMPLETE
-#   Step 8a POST   /api/orders/:id/shipment            → READY_TO_SHIP
-#   Step 8b PATCH  /api/orders/:id/shipment/shipped    → SHIPPED
-#   Step 8c PATCH  /api/orders/:id/shipment/delivered  → BALANCE_PENDING
-#   Step 9a POST   /api/orders/:id/invoice/balance     → BALANCE_PENDING (invoice issued)
-#   Step 9b PATCH  /api/orders/:id/payment/balance     → COMPLETED
-#   Step 10 PATCH  /api/orders/:id/cancel              → CANCELLED
-#   Refund  PATCH  /api/orders/:id/refund              → REFUNDED
+# ORDER ORCHESTRATOR HTTP TEST FILE (UPDATED)
 # =============================================================================
 
-# ── Variables — fill these in ─────────────────────────────────────────────────
+@baseUrl = http://localhost:3000/api/v1
+@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJiNWIzMmZkYS02YTBkLTRmNjctOWIwNS03ZjhiZjY0NmU4OTMiLCJyb2xlIjoiU1VQRVJfQURNSU4iLCJzZXNzaW9uSWQiOiJlNGYwNThmMi1hNDYzLTQ0YWItODJkNy03ZGNjOTc0ZTgyODgiLCJqdGkiOiI2ODgwYmY5Zi1mMzJhLTQ3MmYtODY3NC1hOTM0Y2UyMDA5ZjEiLCJpYXQiOjE3NzQ1NTUxNjksImV4cCI6MTc3NDU1Njk2OSwiYXVkIjoicmVzcWlkLWFwaSIsImlzcyI6InJlc3FpZCJ9.HgnJWAmd4S60eG_TOYdZb5YcsQXI0J9a7s4j4-rHltY
+@schoolId = 63399a0c-e248-402f-9b01-20a01a6a66ea
 
-@baseUrl    = http://localhost:3000/api/v1
-@token      = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxNDA0M2YzMC00MTkyLTRkOTItYTQ4OS1kOTBkMDY0YzBiZDEiLCJyb2xlIjoiU1VQRVJfQURNSU4iLCJzZXNzaW9uSWQiOiIxZDVjMjlkMi02MTg0LTQ5YmYtYTViNy0zMTJhMDZkOWM0ODkiLCJqdGkiOiI5ZDEyM2IyMi05MzYxLTQyYjUtYWE5YS03ZTc2ZjgyZDI3NmIiLCJpYXQiOjE3NzQyNzMyMzEsImV4cCI6MTc3NDI3NTAzMSwiYXVkIjoicmVzcWlkLWFwaSIsImlzcyI6InJlc3FpZCJ9.4GfNshwiYKNduPI8P19n5nZl0PMIa1flRTbfABz0ADU
-@schoolId   = 4b37cafd-d57d-470b-89f5-03429711e0a7	
-@vendorId   = 9d13c68f-ecd9-4d9c-a0aa-8fa76fd6b945		
-
-# ── Copy from responses as you go ─────────────────────────────────────────────
-
-@orderId    = 5664f1e5-906e-4e9d-b7b0-98dcc2d176ac		
-@invoiceId  = 6109537b-f518-4a97-93b9-99bf77ddcebc
-
-
-###############################################################################
-# READ — List orders
-###############################################################################
-
-### List all orders (paginated)
-GET {{baseUrl}}/orders?page=1&limit=20
-Authorization: Bearer {{token}}
-
-###
-
-### List orders for a specific school
-GET {{baseUrl}}/orders?school_id={{schoolId}}&page=1&limit=20
-Authorization: Bearer {{token}}
-
-###
-
-### List by status
-GET {{baseUrl}}/orders?status=PENDING&page=1&limit=20
-Authorization: Bearer {{token}}
-
-###
-
-### List CALL channel orders only
-GET {{baseUrl}}/orders?channel=CALL&page=1&limit=20
-Authorization: Bearer {{token}}
-
-###
-
-### Get single order by ID
-GET {{baseUrl}}/orders/{{orderId}}
-Authorization: Bearer {{token}}
-
+# =============================================================================
+# TEST DATA (Generate new UUIDs for each test run)
+# =============================================================================
+# Run these commands to generate fresh IDs:
+#   node -e "console.log(crypto.randomUUID())"
+#
+# Generated on: 2025-03-27
+@blankOrderId = c1535d3b-aec3-4766-bd47-63eb949d9936
+@preDetailsOrderId = a1b2c3d4-e5f6-7890-abcd-ef1234567890
+@vendorId = 4ad6959a-4860-449f-8092-12214edbf65d
+@invoiceId = ADD_INVOICE_ID
 
 ###############################################################################
-# STEP 1 — CREATE ORDER (DASHBOARD — BLANK)
-# Expected: 201 { order: { status: "PENDING" }, orderNumber: "ORD-YYYY-XXXX" }
+# PHASE 1: CREATE ORDERS
 ###############################################################################
 
-### Create DASHBOARD BLANK order
+### 1.1 Create BLANK order (10 cards)
+# @name createBlankOrder
 POST {{baseUrl}}/orders
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
   "school_id": "{{schoolId}}",
-  "channel": "DASHBOARD",
   "order_type": "BLANK",
-  "card_count": 100,
-  "delivery": {
-    "delivery_name": "Principal Ravi Kumar",
-    "delivery_phone": "+919876543210",
-    "delivery_address": "123 School Lane, Near Bus Stand",
-    "delivery_city": "Kolkata",
-    "delivery_state": "West Bengal",
-    "delivery_pincode": "700001"
+  "card_count": 10,
+  "delivery_address": {
+    "name": "Principal Sharma",
+    "phone": "9876543210",
+    "address": "123 School Lane, Civil Lines",
+    "city": "Delhi",
+    "state": "Delhi",
+    "pincode": "110001"
   },
-  "notes": "Urgent — new academic year",
-  "admin_notes": "School confirmed over call"
+  "notes": "Test BLANK order - 10 cards"
 }
 
-###
-
-### Create CALL order (delivery address optional at creation)
+### 1.2 Create PRE_DETAILS order (5 cards with student data)
+# @name createPreDetailsOrder
 POST {{baseUrl}}/orders
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
   "school_id": "{{schoolId}}",
-  "channel": "CALL",
-  "order_type": "BLANK",
-  "card_count": 50,
-  "delivery": {},
-  "caller_name": "Priya Singh",
-  "caller_phone": "+918765432109",
-  "call_notes": "Principal called directly — needs cards by month end"
-}
-
-###
-
-### Create PRE_DETAILS order (student list uploaded separately)
-POST {{baseUrl}}/orders
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "school_id": "{{schoolId}}",
-  "channel": "DASHBOARD",
   "order_type": "PRE_DETAILS",
-  "card_count": 200,
-  "delivery": {
-    "delivery_name": "Vice Principal Das",
-    "delivery_phone": "+919123456789",
-    "delivery_address": "45 Park Street",
-    "delivery_city": "Mumbai",
-    "delivery_state": "Maharashtra",
-    "delivery_pincode": "400001"
-  }
-}
-
-###
-
-### Validation failure — missing delivery fields for DASHBOARD
-# Expected: 400 with field-level errors
-POST {{baseUrl}}/orders
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "school_id": "{{schoolId}}",
-  "channel": "DASHBOARD",
-  "order_type": "BLANK",
-  "card_count": 100,
-  "delivery": {
-    "delivery_name": "Principal Test"
-  }
-}
-
-###
-
-### Validation failure — card_count exceeds 1500
-# Expected: 400
-POST {{baseUrl}}/orders
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "school_id": "{{schoolId}}",
-  "channel": "DASHBOARD",
-  "order_type": "BLANK",
-  "card_count": 2000,
-  "delivery": {
-    "delivery_name": "Principal Test",
-    "delivery_phone": "+919876543210",
-    "delivery_address": "123 Test St",
-    "delivery_city": "Delhi",
-    "delivery_state": "Delhi",
-    "delivery_pincode": "110001"
-  }
-}
-
-
-###############################################################################
-# STEP 2 — CONFIRM ORDER
-# Expected: 200 { order: { status: "CONFIRMED", advance_amount, balance_amount } }
-###############################################################################
-
-### Confirm order (DASHBOARD — delivery already on order)
-PATCH {{baseUrl}}/orders/{{orderId}}/confirm
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "note": "Verified school details — confirmed"
-}
-
-###
-
-### Confirm CALL order + provide delivery address at confirm time
-PATCH {{baseUrl}}/orders/{{orderId}}/confirm
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "delivery": {
-    "delivery_address": "456 School Road",
-    "delivery_city": "Pune",
-    "delivery_state": "Maharashtra",
-    "delivery_pincode": "411001"
+  "card_count": 5,
+  "items": [
+    {
+      "student_name": "Aarav Sharma",
+      "class": "10",
+      "section": "A",
+      "roll_number": "101"
+    },
+    {
+      "student_name": "Vihaan Gupta",
+      "class": "10",
+      "section": "A",
+      "roll_number": "102"
+    },
+    {
+      "student_name": "Ananya Singh",
+      "class": "10",
+      "section": "B",
+      "roll_number": "103"
+    },
+    {
+      "student_name": "Reyansh Kumar",
+      "class": "9",
+      "section": "A",
+      "roll_number": "104"
+    },
+    {
+      "student_name": "Sai Patel",
+      "class": "9",
+      "section": "B",
+      "roll_number": "105"
+    }
+  ],
+  "delivery_address": {
+    "name": "Principal Sharma",
+    "phone": "9876543210",
+    "address": "123 School Lane, Civil Lines",
+    "city": "Delhi",
+    "state": "Delhi",
+    "pincode": "110001"
   },
-  "note": "Delivery address collected over call"
+  "notes": "Test PRE_DETAILS order - 5 cards with student data"
 }
 
-###
+###############################################################################
+# PHASE 2: LIST & VIEW ORDERS
+###############################################################################
 
-### Confirm with custom unit price (ENTERPRISE tier only)
-# Expected: 403 if school is not ENTERPRISE
-PATCH {{baseUrl}}/orders/{{orderId}}/confirm
+### 2.1 List all orders
+GET {{baseUrl}}/orders
+Authorization: Bearer {{token}}
+
+### 2.2 List orders with filters (status filter)
+GET {{baseUrl}}/orders?status=PENDING&limit=10
+Authorization: Bearer {{token}}
+
+### 2.3 Get order details
+GET {{baseUrl}}/orders/{{blankOrderId}}
+Authorization: Bearer {{token}}
+
+### 2.4 Get order status (simple)
+GET {{baseUrl}}/orders/{{blankOrderId}}/status
+Authorization: Bearer {{token}}
+
+###############################################################################
+# PHASE 3: CONFIRM ORDER (Super Admin Only)
+###############################################################################
+
+### 3.1 Confirm BLANK order
+PATCH {{baseUrl}}/orders/{{blankOrderId}}/confirm
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "custom_unit_price": 15000,
-  "note": "Special enterprise pricing agreed"
+  "note": "Order approved by super admin"
 }
 
-###
+### 3.2 Confirm PRE_DETAILS order
+PATCH {{baseUrl}}/orders/{{preDetailsOrderId}}/confirm
+Authorization: Bearer {{token}}
+Content-Type: application/json
 
-### Idempotency — confirm already-confirmed order
-# Expected: 400 (wrong status)
-PATCH {{baseUrl}}/orders/{{orderId}}/confirm
+{
+  "note": "PRE_DETAILS order approved"
+}
+
+###############################################################################
+# PHASE 4: GENERATE ADVANCE INVOICE
+###############################################################################
+
+### 4.1 Generate advance invoice for BLANK order
+POST {{baseUrl}}/orders/{{blankOrderId}}/invoice/advance
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {}
 
-
-###############################################################################
-# STEP 3a — SEND ADVANCE INVOICE
-# Expected: 201 { order: { status: "PAYMENT_PENDING" }, invoice: { invoice_number } }
-###############################################################################
-
-### Send advance invoice (default 7-day due date)
-POST {{baseUrl}}/orders/{{orderId}}/invoice/advance
+### 4.2 Get invoice details (by order + type)
+GET {{baseUrl}}/orders/{{blankOrderId}}/invoice/advance
 Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "note": "Advance invoice sent via WhatsApp"
-}
-
-###
-
-### Send advance invoice with explicit due date
-POST {{baseUrl}}/orders/{{orderId}}/invoice/advance
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "due_at": "2026-04-15T00:00:00.000Z",
-  "note": "Due by end of April as agreed"
-}
-
-###
-
-### Idempotency — send advance invoice twice
-# Expected: 409 Conflict
-POST {{baseUrl}}/orders/{{orderId}}/invoice/advance
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{}
-
 
 ###############################################################################
-# STEP 3b — MARK ADVANCE PAID
-# Expected: 200 { order: { status: "ADVANCE_RECEIVED" }, payment, batch }
+# PHASE 5: RECORD ADVANCE PAYMENT
 ###############################################################################
 
-### Record advance payment (UPI)
-PATCH {{baseUrl}}/orders/{{orderId}}/payment/advance
+### 5.1 Record advance payment for BLANK order
+PATCH {{baseUrl}}/orders/{{blankOrderId}}/payment/advance
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
   "amount_received": 117410,
   "payment_mode": "UPI",
-  "payment_ref": "UPI-REF-20260321-001",
-  "note": "Received via school UPI ID"
+  "payment_ref": "PAY-ADV-001-{{$timestamp}}",
+  "note": "Advance payment via UPI"
 }
 
-###
-
-### Record advance payment (bank transfer)
-PATCH {{baseUrl}}/orders/{{orderId}}/payment/advance
+### 5.2 Record advance payment for PRE_DETAILS order
+PATCH {{baseUrl}}/orders/{{preDetailsOrderId}}/payment/advance
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "amount_received": 234820,
+  "amount_received": 5000,
   "payment_mode": "BANK_TRANSFER",
-  "payment_ref": "UTR-HDFC-20260321-XYZ",
-  "note": "NEFT received — UTR verified"
+  "payment_ref": "NEFT-123456789",
+  "note": "Advance payment via NEFT"
 }
-
-###
-
-### Record advance payment (cheque)
-PATCH {{baseUrl}}/orders/{{orderId}}/payment/advance
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "amount_received": 117410,
-  "payment_mode": "CHEQUE",
-  "payment_ref": "CHQ-001234",
-  "note": "Post-dated cheque deposited"
-}
-
-###
-
-### Validation failure — missing required fields
-# Expected: 400
-PATCH {{baseUrl}}/orders/{{orderId}}/payment/advance
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "payment_mode": "UPI"
-}
-
 
 ###############################################################################
-# STEP 4 — GENERATE TOKENS + QR CODES
-# Expected: 201 { batchId, tokenCount, failedCount }
-# Note: tokens[] is stripped from response (internal only)
+# PHASE 6: GENERATE TOKENS (Triggers token.worker)
 ###############################################################################
 
-### Generate tokens (triggers QR PNG generation + S3 upload)
-POST {{baseUrl}}/orders/{{orderId}}/generate
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "note": "Token generation triggered manually"
-}
-
-###
-
-### Wrong status guard — generate tokens before advance received
-# Expected: 400
-POST {{baseUrl}}/orders/{{orderId}}/generate
+### 6.1 Generate tokens for BLANK order
+POST {{baseUrl}}/orders/{{blankOrderId}}/tokens/generate
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {}
 
-
-###############################################################################
-# STEP 5 — CARD DESIGN
-# Expected: 201 { order, designedCount, cardDesignFiles }
-# Note: stub engine by default (CARD_DESIGN_ENGINE not set)
-###############################################################################
-
-### Generate card designs
-POST {{baseUrl}}/orders/{{orderId}}/design
+### 6.2 Generate tokens for PRE_DETAILS order
+POST {{baseUrl}}/orders/{{preDetailsOrderId}}/tokens/generate
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{
-  "note": "Initial card design run"
-}
+{}
 
-###
+###############################################################################
+# PHASE 7: GENERATE CARD DESIGNS (Triggers design.worker)
+###############################################################################
 
-### Retry card design (after CARD_DESIGN_REVISION)
-POST {{baseUrl}}/orders/{{orderId}}/design/retry
+### 7.1 Generate card designs for BLANK order
+POST {{baseUrl}}/orders/{{blankOrderId}}/design/generate
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{
-  "note": "Retrying after school logo update"
-}
+{}
 
+### 7.2 Generate card designs for PRE_DETAILS order
+POST {{baseUrl}}/orders/{{preDetailsOrderId}}/design/generate
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{}
 
 ###############################################################################
-# STEP 6 — SEND TO VENDOR
-# Expected: 200 { order: { status: "SENT_TO_VENDOR" }, vendor }
+# PHASE 8: ASSIGN VENDOR
 ###############################################################################
 
-### Send to vendor
-PATCH {{baseUrl}}/orders/{{orderId}}/vendor
+### 8.1 Assign vendor to BLANK order
+PATCH {{baseUrl}}/orders/{{blankOrderId}}/vendor
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
   "vendor_id": "{{vendorId}}",
-  "vendor_notes": "Matte lamination, 0.76mm PVC, CR80 size",
-  "note": "Files uploaded to vendor FTP"
+  "vendor_notes": "Priority printing required",
+  "note": "Assigned to primary vendor"
 }
 
-###
-
-### Missing vendor_id — validation failure
-# Expected: 400
-PATCH {{baseUrl}}/orders/{{orderId}}/vendor
+### 8.2 Assign vendor to PRE_DETAILS order
+PATCH {{baseUrl}}/orders/{{preDetailsOrderId}}/vendor
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "vendor_notes": "Some notes"
+  "vendor_id": "{{vendorId}}",
+  "vendor_notes": "Standard printing",
+  "note": "Assigned to primary vendor"
 }
 
-
 ###############################################################################
-# STEP 7a — MARK PRINTING STARTED
-# Expected: 200 { order: { status: "PRINTING" } }
+# PHASE 9: PRINTING
 ###############################################################################
 
-### Mark printing started
-PATCH {{baseUrl}}/orders/{{orderId}}/printing/start
+### 9.1 Start printing for BLANK order
+PATCH {{baseUrl}}/orders/{{blankOrderId}}/printing
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "note": "Vendor confirmed printing started"
+  "status": "STARTED",
+  "note": "Printing started at vendor"
 }
 
-
-###############################################################################
-# STEP 7b — MARK PRINT COMPLETE
-# Expected: 200 { order: { status: "PRINT_COMPLETE" } }
-# Side effects: Card.print_status → PRINTED, CardOrderItem.card_printed → true
-###############################################################################
-
-### Mark print complete
-PATCH {{baseUrl}}/orders/{{orderId}}/printing/complete
+### 9.2 Complete printing for BLANK order
+PATCH {{baseUrl}}/orders/{{blankOrderId}}/printing
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "note": "All 100 cards printed and QC checked by vendor"
+  "status": "COMPLETED",
+  "note": "All cards printed successfully"
 }
 
-
-###############################################################################
-# STEP 8a — CREATE SHIPMENT
-# Expected: 201 { order: { status: "READY_TO_SHIP" }, shipment }
-###############################################################################
-
-### Create Shiprocket shipment
-POST {{baseUrl}}/orders/{{orderId}}/shipment
+### 9.3 Start printing for PRE_DETAILS order
+PATCH {{baseUrl}}/orders/{{preDetailsOrderId}}/printing
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "shiprocket_order_id": "SR-ORD-123456",
-  "shiprocket_shipment_id": "SR-SHIP-789012",
-  "awb_code": "DLVR-AWB-001",
+  "status": "STARTED",
+  "note": "Printing started"
+}
+
+### 9.4 Complete printing for PRE_DETAILS order
+PATCH {{baseUrl}}/orders/{{preDetailsOrderId}}/printing
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "status": "COMPLETED",
+  "note": "Printing completed"
+}
+
+###############################################################################
+# PHASE 10: SHIPMENT
+###############################################################################
+
+### 10.1 Create shipment for BLANK order
+POST {{baseUrl}}/orders/{{blankOrderId}}/shipment
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "awb_code": "DLV-{{$timestamp}}",
   "courier_name": "Delhivery",
-  "tracking_url": "https://www.delhivery.com/track/package/DLVR-AWB-001",
-  "label_url": "https://cdn.shiprocket.in/labels/SR-SHIP-789012.pdf",
-  "note": "Shiprocket booking confirmed"
+  "tracking_url": "https://track.delhivery.com/{{$timestamp}}",
+  "notes": "Handle with care"
 }
 
-###
-
-### Create shipment (manual courier — no Shiprocket)
-POST {{baseUrl}}/orders/{{orderId}}/shipment
+### 10.2 Mark shipment as shipped
+PATCH {{baseUrl}}/orders/{{blankOrderId}}/shipment/shipped
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "awb_code": "BLUEDART-XYZ789",
+  "note": "Picked up by courier"
+}
+
+### 10.3 Create shipment for PRE_DETAILS order
+POST {{baseUrl}}/orders/{{preDetailsOrderId}}/shipment
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "awb_code": "BLU-{{$timestamp}}",
   "courier_name": "Blue Dart",
-  "tracking_url": "https://www.bluedart.com/tracking/BLUEDART-XYZ789",
-  "note": "Manual courier booking"
+  "tracking_url": "https://track.bluedart.com/{{$timestamp}}"
 }
 
-
-###############################################################################
-# STEP 8b — MARK SHIPPED (picked up by courier)
-# Expected: 200 { order: { status: "SHIPPED" } }
-###############################################################################
-
-### Mark shipped
-PATCH {{baseUrl}}/orders/{{orderId}}/shipment/shipped
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "tracking_url": "https://www.delhivery.com/track/package/DLVR-AWB-001",
-  "note": "Courier picked up from vendor — tracking shared with school"
-}
-
-
-###############################################################################
-# STEP 8c — MARK DELIVERED
-# Expected: 200 { order: { status: "BALANCE_PENDING" }, tokensIssued, balanceDueAt }
-# Side effects: Token.status → ISSUED, balance_due_at set (7 days from now)
-###############################################################################
-
-### Mark delivered
-PATCH {{baseUrl}}/orders/{{orderId}}/shipment/delivered
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "note": "Principal confirmed receipt — signed POD received"
-}
-
-
-###############################################################################
-# STEP 9a — SEND BALANCE INVOICE
-# Expected: 201 { invoice: { invoice_number, status: "ISSUED" } }
-###############################################################################
-
-### Send balance invoice
-POST {{baseUrl}}/orders/{{orderId}}/invoice/balance
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "note": "Balance invoice sent — due in 7 days"
-}
-
-###
-
-### Send balance invoice with explicit due date
-POST {{baseUrl}}/orders/{{orderId}}/invoice/balance
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "due_at": "2026-04-30T00:00:00.000Z",
-  "note": "Extended due date per principal request"
-}
-
-###
-
-### Idempotency — send balance invoice twice
-# Expected: 409 Conflict
-POST {{baseUrl}}/orders/{{orderId}}/invoice/balance
+### 10.4 Mark PRE_DETAILS shipment as shipped
+PATCH {{baseUrl}}/orders/{{preDetailsOrderId}}/shipment/shipped
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {}
 
-
 ###############################################################################
-# STEP 9b — MARK BALANCE PAID → COMPLETED
-# Expected: 200 { order: { status: "COMPLETED", payment_status: "PAID" }, payment }
+# PHASE 11: DELIVERY CONFIRMATION
 ###############################################################################
 
-### Record balance payment
-PATCH {{baseUrl}}/orders/{{orderId}}/payment/balance
+### 11.1 Confirm delivery for BLANK order
+PATCH {{baseUrl}}/orders/{{blankOrderId}}/shipment/delivered
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "amount_received": 117410,
-  "payment_mode": "BANK_TRANSFER",
-  "payment_ref": "UTR-HDFC-20260401-BAL",
-  "note": "Balance received — order fully closed"
+  "note": "Received by school office"
 }
 
-###
-
-### Validation failure — zero amount
-# Expected: 400
-PATCH {{baseUrl}}/orders/{{orderId}}/payment/balance
+### 11.2 Confirm delivery for PRE_DETAILS order
+PATCH {{baseUrl}}/orders/{{preDetailsOrderId}}/shipment/delivered
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{
-  "amount_received": 0,
-  "payment_mode": "UPI"
-}
-
+{}
 
 ###############################################################################
-# STEP 10 — CANCEL ORDER
-# Expected: 200 { order: { status: "CANCELLED" }, tokensRevoked, requiresRefund }
+# PHASE 12: BALANCE PAYMENT & COMPLETION
 ###############################################################################
 
-### Cancel PENDING order (no refund required)
-PATCH {{baseUrl}}/orders/{{orderId}}/cancel
+### 12.1 Record balance payment for BLANK order
+PATCH {{baseUrl}}/orders/{{blankOrderId}}/payment/balance
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "reason": "School requested cancellation — budget constraints"
-}
-
-###
-
-### Cancel after advance received (refund required)
-# Expected: requiresRefund: true, tokensRevoked: N
-PATCH {{baseUrl}}/orders/{{orderId}}/cancel
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "reason": "School closed for renovations — order not needed"
-}
-
-###
-
-### Validation failure — reason too short
-# Expected: 400
-PATCH {{baseUrl}}/orders/{{orderId}}/cancel
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "reason": "ok"
-}
-
-###
-
-### Guard — cancel past PRINT_COMPLETE
-# Expected: 400 (not cancellable at this stage)
-PATCH {{baseUrl}}/orders/{{orderId}}/cancel
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "reason": "Trying to cancel a shipped order — should fail"
-}
-
-
-###############################################################################
-# REFUND — Record refund issued
-# Precondition: order must be CANCELLED with requiresRefund: true
-# Expected: 200 { order: { status: "REFUNDED" }, payment }
-###############################################################################
-
-### Record refund
-PATCH {{baseUrl}}/orders/{{orderId}}/refund
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "amount_refunded": 117410,
-  "payment_mode": "BANK_TRANSFER",
-  "refund_ref": "UTR-REFUND-20260321-001",
-  "note": "Refund transferred to school account"
-}
-
-###
-
-### Refund via UPI
-PATCH {{baseUrl}}/orders/{{orderId}}/refund
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "amount_refunded": 117410,
+  "amount_received": 5000,
   "payment_mode": "UPI",
-  "refund_ref": "UPI-REFUND-20260321",
-  "note": "Refund sent to school UPI"
+  "payment_ref": "PAY-BAL-001-{{$timestamp}}",
+  "note": "Balance payment completed"
 }
 
-###
-
-### Validation failure — refund on non-CANCELLED order
-# Expected: 400
-PATCH {{baseUrl}}/orders/{{orderId}}/refund
+### 12.2 Record balance payment for PRE_DETAILS order
+PATCH {{baseUrl}}/orders/{{preDetailsOrderId}}/payment/balance
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
-  "amount_refunded": 117410,
-  "payment_mode": "UPI"
+  "amount_received": 5000,
+  "payment_mode": "BANK_TRANSFER",
+  "payment_ref": "NEFT-987654321",
+  "note": "Balance payment via NEFT"
 }
+
+###############################################################################
+# PHASE 13: ORCHESTRATOR MONITORING
+###############################################################################
+
+### 13.1 Check queue health
+GET {{baseUrl}}/orders/orchestrator/health
+Authorization: Bearer {{token}}
+
+### 13.2 Get order status after completion
+GET {{baseUrl}}/orders/{{blankOrderId}}/status
+Authorization: Bearer {{token}}
+
+### 13.3 Get PRE_DETAILS order status
+GET {{baseUrl}}/orders/{{preDetailsOrderId}}/status
+Authorization: Bearer {{token}}
+
+###############################################################################
+# OPTIONAL: CANCELLATION (Only works before advance payment or after refund)
+###############################################################################
+
+### Cancel order (only if in cancellable state)
+POST {{baseUrl}}/orders/{{blankOrderId}}/cancel
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "reason": "School requested cancellation",
+  "notes": "Will process refund"
+}
+
+###############################################################################
+# UTILITY: Get invoice by ID
+###############################################################################
+
+### Get invoice details by ID (replace with actual invoice ID from response)
+GET {{baseUrl}}/orders/invoice/{{invoiceId}}
+Authorization: Bearer {{token}}
+
+###############################################################################
+# NOTES:
+# 1. Replace {{blankOrderId}} and {{preDetailsOrderId}} with actual IDs from create responses
+# 2. {{$timestamp}} is a VS Code REST Client variable that inserts current timestamp
+# 3. Run requests in order from Phase 1 to Phase 13
+# 4. For Phase 5 (payment), amount should be 50% of total invoice
+# 5. For Phase 12 (balance), amount should be remaining 50%
+###############################################################################

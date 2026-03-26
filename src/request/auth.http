@@ -4,8 +4,8 @@
 ### =============================================================================
 
 @baseUrl      = http://localhost:3000/api/v1
-@accessToken  = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxNDA0M2YzMC00MTkyLTRkOTItYTQ4OS1kOTBkMDY0YzBiZDEiLCJyb2xlIjoiU1VQRVJfQURNSU4iLCJzZXNzaW9uSWQiOiIxZDVjMjlkMi02MTg0LTQ5YmYtYTViNy0zMTJhMDZkOWM0ODkiLCJqdGkiOiI5ZDEyM2IyMi05MzYxLTQyYjUtYWE5YS03ZTc2ZjgyZDI3NmIiLCJpYXQiOjE3NzQyNzMyMzEsImV4cCI6MTc3NDI3NTAzMSwiYXVkIjoicmVzcWlkLWFwaSIsImlzcyI6InJlc3FpZCJ9.4GfNshwiYKNduPI8P19n5nZl0PMIa1flRTbfABz0ADU
-@refreshToken = 19307ae22c751a557153cffae5292a16186e822f172a8f25a152c1b753631303
+@accessToken  = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJiNWIzMmZkYS02YTBkLTRmNjctOWIwNS03ZjhiZjY0NmU4OTMiLCJyb2xlIjoiU1VQRVJfQURNSU4iLCJzZXNzaW9uSWQiOiI5ODEyYzExMy0yMzEzLTQxNDUtYWVkNC0zOWVjNWQ5YWZjMmUiLCJqdGkiOiI4YTI2YzBiMS1iMmM5LTQzYzYtOGExMi0xMGY1OGM1YjU2M2IiLCJpYXQiOjE3NzQ1MTgwNzYsImV4cCI6MTc3NDUxOTg3NiwiYXVkIjoicmVzcWlkLWFwaSIsImlzcyI6InJlc3FpZCJ9.jg8vjlKQLqw4RyK2XGq7IuOkWFjacwyOjcpAS53cd_o
+@refreshToken = 518f3073ec7d6892238bb9337a820836fcaddb0a7fc388d04b19a777c48539d1
 @studentId    = PASTE_STUDENT_UUID_HERE
 
 ### ═══════════════════════════════════════════════════
@@ -16,7 +16,7 @@
 POST {{baseUrl}}/auth/super-admin
 Content-Type: application/json
 
-{ "email": "karananimesh144@gmail.com", "password": "Karan@144#" }
+{ "email": "admin@corez.com", "password": "Admin@123" }
 
 ###
 

@@ -1,313 +1,272 @@
 // =============================================================================
-// order.validation.js — RESQID
-// Zod v4 schemas for every order endpoint.
+// order.validation.js — RESQID (SECURITY ENHANCED)
 // =============================================================================
 
 import { z } from "zod";
 
 // =============================================================================
-// SHARED
+// SHARED — with input sanitization
 // =============================================================================
 
-const pincodeSchema = z.string().regex(/^\d{6}$/, "Pincode must be 6 digits");
+const uuidSchema = z.string().uuid("Invalid UUID format");
 
-const deliverySchema = z
+// Phone: Indian format only, sanitized
+const phoneSchema = z
+  .string()
+  .regex(/^[6-9]\d{9}$/, "Invalid Indian phone number")
+  .transform((val) => val.replace(/\D/g, "")); // Remove non-digits
+
+// Pincode: 6 digits only
+const pincodeSchema = z
+  .string()
+  .regex(/^[1-9][0-9]{5}$/, "Invalid pincode")
+  .transform((val) => val.slice(0, 6));
+
+// Name: prevent XSS, limit length
+const nameSchema = z
+  .string()
+  .min(1, "Name is required")
+  .max(100, "Name too long")
+  .regex(/^[a-zA-Z\s\-'.]+$/, "Name contains invalid characters");
+
+// Address: allow letters, numbers, spaces, commas, hyphens
+const addressSchema = z
+  .string()
+  .min(1, "Address required")
+  .max(500, "Address too long")
+  .regex(/^[a-zA-Z0-9\s\-',.#/]+$/, "Address contains invalid characters");
+
+// =============================================================================
+// CREATE ORDER (with rate limit considerations)
+// =============================================================================
+
+export const createOrderSchema = z
   .object({
-    delivery_name: z.string().min(2).max(100),
-    delivery_phone: z.string().regex(/^\+?[\d\s-]{8,15}$/, "Invalid phone"),
-    delivery_address: z.string().min(5).max(300),
-    delivery_city: z.string().min(2).max(100),
-    delivery_state: z.string().min(2).max(100),
-    delivery_pincode: pincodeSchema,
-    delivery_notes: z.string().max(500).optional(),
-  })
-  .strict();
-
-const partialDeliverySchema = deliverySchema.partial();
-
-const paymentBodySchema = z
-  .object({
-    amount_received: z
+    school_id: uuidSchema,
+    order_type: z.enum(["BLANK", "PRE_DETAILS"]),
+    card_count: z
       .number()
-      .int()
-      .positive({ message: "Amount must be positive paise" }),
-    payment_mode: z.enum([
-      "BANK_TRANSFER",
-      "UPI",
-      "CHEQUE",
-      "RAZORPAY",
-      "CASH",
-    ]),
-    payment_ref: z.string().min(1).max(100).optional(),
+      .int("Card count must be integer")
+      .min(1, "Minimum 1 card")
+      .max(1500, "Maximum 1500 cards per order"),
+
+    items: z
+      .array(
+        z.object({
+          student_id: uuidSchema.optional(),
+          student_name: nameSchema,
+          class: z.string().max(50).optional(),
+          section: z.string().max(50).optional(),
+          roll_number: z.string().max(50).optional(),
+          photo_url: z.string().url("Invalid photo URL").optional(),
+        }),
+      )
+      .optional(),
+
+    delivery_address: z
+      .object({
+        name: nameSchema,
+        phone: phoneSchema,
+        address: addressSchema,
+        city: nameSchema,
+        state: nameSchema,
+        pincode: pincodeSchema,
+      })
+      .optional(),
+
+    notes: z.string().max(500, "Notes too long").optional(),
+  })
+  .strict()
+  .superRefine((data, ctx) => {
+    if (data.order_type === "PRE_DETAILS") {
+      if (!data.items || data.items.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Items are required for PRE_DETAILS orders",
+          path: ["items"],
+        });
+      }
+      if (data.items && data.items.length !== data.card_count) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Items count (${data.items.length}) must match card_count (${data.card_count})`,
+          path: ["items"],
+        });
+      }
+    }
+    if (data.order_type === "BLANK" && data.items && data.items.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "BLANK orders must not include items",
+        path: ["items"],
+      });
+    }
+  });
+
+// =============================================================================
+// CONFIRM ORDER
+// =============================================================================
+
+export const confirmOrderSchema = z
+  .object({
     note: z.string().max(500).optional(),
   })
   .strict();
 
 // =============================================================================
-// CREATE ORDER
-// POST /api/orders
+// PAYMENT (with amount validation)
 // =============================================================================
 
-export const createOrderSchema = z.object({
-  body: z
-    .object({
-      school_id: z.string().uuid(),
-      channel: z.enum(["DASHBOARD", "CALL"]),
-      order_type: z.enum(["BLANK", "PRE_DETAILS"]),
-      // FIX [V-1]: was max(5000) but step4 hard cap is MAX_CARDS_PER_ORDER=1500.
-      // Mismatched limits meant an admin could create an order with 3000 cards,
-      // pass validation, then get a silent hard error at generate time.
-      // Now consistent: validation rejects at input, before any DB write.
-      card_count: z.number().int().min(1).max(1500),
+export const paymentSchema = z
+  .object({
+    amount_received: z
+      .number()
+      .positive("Amount must be greater than 0")
+      .max(100000000, "Amount exceeds limit"), // Max ₹10,00,000
+    payment_mode: z.enum([
+      "UPI",
+      "BANK_TRANSFER",
+      "CHEQUE",
+      "RAZORPAY",
+      "CASH",
+    ]),
+    payment_ref: z
+      .string()
+      .min(1, "Payment reference required")
+      .max(100, "Reference too long")
+      .regex(/^[a-zA-Z0-9\-_]+$/, "Invalid reference format"),
+    note: z.string().max(500).optional(),
+  })
+  .strict();
 
-      // Delivery — required for DASHBOARD, optional for CALL
-      delivery: partialDeliverySchema.optional(),
+// =============================================================================
+// VENDOR ASSIGNMENT
+// =============================================================================
 
-      // CALL channel context
-      caller_name: z.string().max(100).optional(),
-      caller_phone: z
-        .string()
-        .regex(/^\+?[\d\s-]{8,15}$/)
-        .optional(),
-      call_notes: z.string().max(1000).optional(),
+export const assignVendorSchema = z
+  .object({
+    vendor_id: uuidSchema,
+    vendor_notes: z.string().max(500).optional(),
+    note: z.string().max(500).optional(),
+  })
+  .strict();
 
-      notes: z.string().max(1000).optional(),
-      admin_notes: z.string().max(1000).optional(),
-    })
-    .strict()
-    .superRefine((data, ctx) => {
-      // DASHBOARD requires complete delivery address
-      if (data.channel === "DASHBOARD") {
-        const d = data.delivery ?? {};
-        const required = [
-          "delivery_name",
-          "delivery_phone",
-          "delivery_address",
-          "delivery_city",
-          "delivery_state",
-          "delivery_pincode",
-        ];
-        required.forEach((field) => {
-          if (!d[field]) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              path: ["delivery", field],
-              message: `${field} is required for DASHBOARD orders`,
-            });
-          }
-        });
+// =============================================================================
+// PRINTING STATUS
+// =============================================================================
+
+export const printingStatusSchema = z
+  .object({
+    status: z.enum(["STARTED", "COMPLETED"]),
+    note: z.string().max(500).optional(),
+  })
+  .strict();
+
+// =============================================================================
+// SHIPMENT
+// =============================================================================
+
+export const createShipmentSchema = z
+  .object({
+    awb_code: z
+      .string()
+      .min(1, "AWB code required")
+      .max(100)
+      .regex(/^[a-zA-Z0-9\-_]+$/, "Invalid AWB format"),
+    courier_name: z.string().min(1).max(100),
+    tracking_url: z.string().url("Invalid tracking URL").optional(),
+    notes: z.string().max(500).optional(),
+  })
+  .strict();
+
+export const markShippedSchema = z
+  .object({
+    note: z.string().max(500).optional(),
+  })
+  .strict();
+
+// =============================================================================
+// DELIVERY
+// =============================================================================
+
+export const deliverySchema = z
+  .object({
+    note: z.string().max(500).optional(),
+  })
+  .strict();
+
+// =============================================================================
+// CANCEL ORDER
+// =============================================================================
+
+export const cancelOrderSchema = z
+  .object({
+    reason: z.string().min(1, "Cancellation reason required").max(500),
+    notes: z.string().max(500).optional(),
+  })
+  .strict();
+
+// =============================================================================
+// LIST ORDERS (with pagination limits)
+// =============================================================================
+
+export const listOrdersSchema = z
+  .object({
+    // order.validation.js — listOrdersSchema
+    status: z
+      .enum([
+        "PENDING",
+        "CONFIRMED",
+        "PAYMENT_PENDING",
+        "ADVANCE_RECEIVED",
+        "TOKEN_GENERATION", // ← ADD
+        "TOKEN_GENERATED",
+        "CARD_DESIGN", // ← ADD
+        "CARD_DESIGN_READY",
+        "SENT_TO_VENDOR", // ← ADD
+        "PRINTING",
+        "PRINT_COMPLETE", // ← ADD
+        "READY_TO_SHIP", // ← ADD
+        "SHIPPED",
+        "OUT_FOR_DELIVERY", // ← ADD
+        "DELIVERED",
+        "BALANCE_PENDING", // ← ADD
+        "COMPLETED",
+        "CANCELLED",
+        "FAILED",
+        "REFUNDED", // ← ADD
+      ])
+      .optional(),
+
+    school_id: uuidSchema.optional(),
+
+    from_date: z.string().datetime().optional(),
+    to_date: z.string().datetime().optional(),
+
+    limit: z
+      .string()
+      .regex(/^\d+$/)
+      .transform(Number)
+      .pipe(z.number().int().min(1).max(100))
+      .optional(),
+
+    offset: z
+      .string()
+      .regex(/^\d+$/)
+      .transform(Number)
+      .pipe(z.number().int().min(0))
+      .optional(),
+  })
+  .strict()
+  .refine(
+    (data) => {
+      if (data.from_date && data.to_date) {
+        return new Date(data.from_date) <= new Date(data.to_date);
       }
-    }),
-});
-
-// =============================================================================
-// CONFIRM ORDER
-// PATCH /api/orders/:id/confirm
-// =============================================================================
-
-export const confirmOrderSchema = z.object({
-  params: z.object({ id: z.string().uuid() }),
-  body: z
-    .object({
-      delivery: partialDeliverySchema.optional(),
-      // SEC: custom_unit_price is ENTERPRISE-only. min(1) prevents ₹0 price bypass.
-      // The business logic layer (step2.confirm) must verify pricing_tier === ENTERPRISE
-      // before honouring this override.
-      custom_unit_price: z.number().int().min(1).optional(),
-      note: z.string().max(500).optional(),
-    })
-    .strict(),
-});
-
-// =============================================================================
-// SEND ADVANCE INVOICE
-// POST /api/orders/:id/invoice/advance
-// =============================================================================
-
-export const advanceInvoiceSchema = z.object({
-  params: z.object({ id: z.string().uuid() }),
-  body: z
-    .object({
-      due_at: z.string().datetime().optional(),
-      note: z.string().max(500).optional(),
-    })
-    .strict(),
-});
-
-// =============================================================================
-// MARK ADVANCE PAID
-// PATCH /api/orders/:id/payment/advance
-// =============================================================================
-
-export const advancePaymentSchema = z.object({
-  params: z.object({ id: z.string().uuid() }),
-  body: paymentBodySchema,
-});
-
-// =============================================================================
-// GENERATE TOKENS
-// POST /api/orders/:id/generate
-// =============================================================================
-
-export const generateTokensSchema = z.object({
-  params: z.object({ id: z.string().uuid() }),
-  body: z
-    .object({
-      note: z.string().max(500).optional(),
-    })
-    .strict(),
-});
-
-// =============================================================================
-// CARD DESIGN
-// POST /api/orders/:id/design
-// POST /api/orders/:id/design/retry
-// =============================================================================
-
-export const cardDesignSchema = z.object({
-  params: z.object({ id: z.string().uuid() }),
-  body: z
-    .object({
-      note: z.string().max(500).optional(),
-    })
-    .strict(),
-});
-
-// =============================================================================
-// SEND TO VENDOR
-// PATCH /api/orders/:id/vendor
-// =============================================================================
-
-export const vendorSchema = z.object({
-  params: z.object({ id: z.string().uuid() }),
-  body: z
-    .object({
-      vendor_id: z.string().uuid(),
-      vendor_notes: z.string().max(1000).optional(),
-      note: z.string().max(500).optional(),
-    })
-    .strict(),
-});
-
-// =============================================================================
-// PRINTING
-// PATCH /api/orders/:id/printing/start
-// PATCH /api/orders/:id/printing/complete
-// =============================================================================
-
-export const printingSchema = z.object({
-  params: z.object({ id: z.string().uuid() }),
-  body: z
-    .object({
-      note: z.string().max(500).optional(),
-    })
-    .strict(),
-});
-
-// =============================================================================
-// CREATE SHIPMENT
-// POST /api/orders/:id/shipment
-// =============================================================================
-
-export const createShipmentSchema = z.object({
-  params: z.object({ id: z.string().uuid() }),
-  body: z
-    .object({
-      shiprocket_order_id: z.string().max(100).optional(),
-      shiprocket_shipment_id: z.string().max(100).optional(),
-      awb_code: z.string().max(100).optional(),
-      courier_name: z.string().max(100).optional(),
-      tracking_url: z.string().url().optional(),
-      label_url: z.string().url().optional(),
-      note: z.string().max(500).optional(),
-    })
-    .strict(),
-});
-
-// =============================================================================
-// MARK SHIPPED / DELIVERED
-// =============================================================================
-
-export const shippedSchema = z.object({
-  params: z.object({ id: z.string().uuid() }),
-  body: z
-    .object({
-      tracking_url: z.string().url().optional(),
-      note: z.string().max(500).optional(),
-    })
-    .strict(),
-});
-
-export const deliveredSchema = z.object({
-  params: z.object({ id: z.string().uuid() }),
-  body: z
-    .object({
-      note: z.string().max(500).optional(),
-    })
-    .strict(),
-});
-
-// =============================================================================
-// BALANCE INVOICE + PAYMENT
-// =============================================================================
-
-export const balanceInvoiceSchema = z.object({
-  params: z.object({ id: z.string().uuid() }),
-  body: z
-    .object({
-      due_at: z.string().datetime().optional(),
-      note: z.string().max(500).optional(),
-    })
-    .strict(),
-});
-
-export const balancePaymentSchema = z.object({
-  params: z.object({ id: z.string().uuid() }),
-  body: paymentBodySchema,
-});
-
-// =============================================================================
-// CANCEL + REFUND
-// =============================================================================
-
-export const cancelOrderSchema = z.object({
-  params: z.object({ id: z.string().uuid() }),
-  body: z
-    .object({
-      reason: z.string().min(5, "Cancellation reason required").max(500),
-    })
-    .strict(),
-});
-
-export const refundOrderSchema = z.object({
-  params: z.object({ id: z.string().uuid() }),
-  body: z
-    .object({
-      amount_refunded: z.number().int().positive(),
-      refund_ref: z.string().min(1).max(100).optional(),
-      payment_mode: z.enum([
-        "BANK_TRANSFER",
-        "UPI",
-        "CHEQUE",
-        "RAZORPAY",
-        "CASH",
-      ]),
-      note: z.string().max(500).optional(),
-    })
-    .strict(),
-});
-
-// =============================================================================
-// LIST ORDERS (query params)
-// GET /api/orders
-// =============================================================================
-
-export const listOrdersSchema = z.object({
-  query: z.object({
-    page: z.coerce.number().int().min(1).default(1),
-    limit: z.coerce.number().int().min(1).max(100).default(20),
-    status: z.string().optional(),
-    school_id: z.string().uuid().optional(),
-    channel: z.enum(["DASHBOARD", "CALL"]).optional(),
-  }),
-});
+      return true;
+    },
+    {
+      message: "from_date cannot be greater than to_date",
+      path: ["from_date"],
+    },
+  );

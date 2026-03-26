@@ -1,176 +1,185 @@
 // =============================================================================
 // order.routes.js — RESQID
-// All order pipeline routes.
-// All routes: authenticateSuperAdmin → validate → asyncHandler (in controller)
 // =============================================================================
 
 import { Router } from "express";
-import { validate } from "../../middleware/validate.middleware.js";
 import { authenticate } from "../../middleware/auth.middleware.js";
+import { validate } from "../../middleware/validate.middleware.js";
+import { ownSchoolOnly } from "../../middleware/restrictionOwnSchool.middleware.js";
+import { rbac } from "../../middleware/rbac.middleware.js";
 
-import {
-  getOrders,
-  getOrderById,
-  createOrder,
-  confirmOrder,
-  sendAdvanceInvoice,
-  markAdvancePaid,
-  generateTokens,
-  generateCardDesign,
-  retryCardDesign,
-  sendToVendor,
-  markPrintingStarted,
-  markPrintingComplete,
-  createShipment,
-  markShipped,
-  markDelivered,
-  sendBalanceInvoice,
-  markBalancePaid,
-  cancelOrder,
-  refundOrder,
-} from "./order.controller.js";
-
-import {
-  listOrdersSchema,
-  createOrderSchema,
-  confirmOrderSchema,
-  advanceInvoiceSchema,
-  advancePaymentSchema,
-  generateTokensSchema,
-  cardDesignSchema,
-  vendorSchema,
-  printingSchema,
-  createShipmentSchema,
-  shippedSchema,
-  deliveredSchema,
-  balanceInvoiceSchema,
-  balancePaymentSchema,
-  cancelOrderSchema,
-  refundOrderSchema,
-} from "./order.validation.js";
+import * as controller from "./order.controller.js";
+import * as validation from "./order.validation.js";
+import { getQueueHealth } from "../order_orchestrator/queues/queue.manager.js";
 
 const router = Router();
 
-// All order routes require super admin auth
+// All order routes require authentication
 router.use(authenticate);
 
-// =============================================================================
-// READ
-// =============================================================================
-
-router.get("/", validate(listOrdersSchema), getOrders);
-router.get("/:id", getOrderById);
+// Role shortcuts
+const superAdmin = rbac(["SUPER_ADMIN"]);
+const schoolAdmin = rbac(["SCHOOL_ADMIN", "SUPER_ADMIN"]);
 
 // =============================================================================
-// STEP 1 — CREATE ORDER
-// POST /api/orders
-// =============================================================================
-
-router.post("/", validate(createOrderSchema), createOrder);
-
-// =============================================================================
-// STEP 2 — CONFIRM
-// PATCH /api/orders/:id/confirm
-// =============================================================================
-
-router.patch("/:id/confirm", validate(confirmOrderSchema), confirmOrder);
-
-// =============================================================================
-// STEP 3 — PAYMENT
-// POST  /api/orders/:id/invoice/advance
-// PATCH /api/orders/:id/payment/advance
+// ORDER CRUD
 // =============================================================================
 
 router.post(
-  "/:id/invoice/advance",
-  validate(advanceInvoiceSchema),
-  sendAdvanceInvoice,
-);
-router.patch(
-  "/:id/payment/advance",
-  validate(advancePaymentSchema),
-  markAdvancePaid,
+  "/",
+  schoolAdmin,
+  validate(validation.createOrderSchema),
+  controller.createOrder,
 );
 
-// =============================================================================
-// STEP 4 — GENERATE TOKENS + QR
-// POST /api/orders/:id/generate
-// =============================================================================
+router.get(
+  "/",
+  validate(validation.listOrdersSchema, "query"),
+  controller.listOrders,
+);
 
-router.post("/:id/generate", validate(generateTokensSchema), generateTokens);
+router.get("/:orderId", schoolAdmin, ownSchoolOnly, controller.getOrderDetails);
 
-// =============================================================================
-// STEP 5 — CARD DESIGN
-// POST /api/orders/:id/design
-// POST /api/orders/:id/design/retry
-// =============================================================================
-
-router.post("/:id/design", validate(cardDesignSchema), generateCardDesign);
-router.post("/:id/design/retry", validate(cardDesignSchema), retryCardDesign);
-
-// =============================================================================
-// STEP 6 — VENDOR
-// PATCH /api/orders/:id/vendor
-// =============================================================================
-
-router.patch("/:id/vendor", validate(vendorSchema), sendToVendor);
+router.get(
+  "/:orderId/status",
+  schoolAdmin,
+  ownSchoolOnly,
+  controller.getOrderStatus,
+);
 
 // =============================================================================
-// STEP 7 — PRINTING
-// PATCH /api/orders/:id/printing/start
-// PATCH /api/orders/:id/printing/complete
+// CONFIRM & INVOICE
 // =============================================================================
 
 router.patch(
-  "/:id/printing/start",
-  validate(printingSchema),
-  markPrintingStarted,
+  "/:orderId/confirm",
+  superAdmin,
+  validate(validation.confirmOrderSchema),
+  controller.confirmOrder,
 );
+
+router.post(
+  "/:orderId/invoice/advance",
+  superAdmin,
+  controller.generateAdvanceInvoice,
+);
+
+// =============================================================================
+// INVOICE — DOWNLOAD
+// =============================================================================
+
+router.get(
+  "/:orderId/invoice/:type",
+  schoolAdmin,
+  ownSchoolOnly,
+  controller.downloadInvoice,
+);
+
+router.get("/invoice/:invoiceId", schoolAdmin, controller.getInvoiceById);
+
+// =============================================================================
+// PAYMENT
+// =============================================================================
+
 router.patch(
-  "/:id/printing/complete",
-  validate(printingSchema),
-  markPrintingComplete,
+  "/:orderId/payment/advance",
+  superAdmin,
+  validate(validation.paymentSchema),
+  controller.recordAdvancePayment,
 );
 
-// =============================================================================
-// STEP 8 — SHIPMENT
-// POST  /api/orders/:id/shipment
-// PATCH /api/orders/:id/shipment/shipped
-// PATCH /api/orders/:id/shipment/delivered
-// =============================================================================
-
-router.post("/:id/shipment", validate(createShipmentSchema), createShipment);
-router.patch("/:id/shipment/shipped", validate(shippedSchema), markShipped);
 router.patch(
-  "/:id/shipment/delivered",
-  validate(deliveredSchema),
-  markDelivered,
+  "/:orderId/payment/balance",
+  superAdmin,
+  validate(validation.paymentSchema),
+  controller.recordBalancePayment,
 );
 
 // =============================================================================
-// STEP 9 — BALANCE + COMPLETE
-// POST  /api/orders/:id/invoice/balance
-// PATCH /api/orders/:id/payment/balance
+// TOKEN GENERATION
+// =============================================================================
+
+router.post("/:orderId/tokens/generate", superAdmin, controller.generateTokens);
+
+// =============================================================================
+// CARD DESIGN
 // =============================================================================
 
 router.post(
-  "/:id/invoice/balance",
-  validate(balanceInvoiceSchema),
-  sendBalanceInvoice,
+  "/:orderId/design/generate",
+  superAdmin,
+  controller.generateCardDesigns,
 );
+
+// =============================================================================
+// VENDOR
+// =============================================================================
+
 router.patch(
-  "/:id/payment/balance",
-  validate(balancePaymentSchema),
-  markBalancePaid,
+  "/:orderId/vendor",
+  superAdmin,
+  validate(validation.assignVendorSchema),
+  controller.assignVendor,
 );
 
 // =============================================================================
-// STEP 10 — CANCEL + REFUND
-// PATCH /api/orders/:id/cancel
-// PATCH /api/orders/:id/refund
+// PRINTING
 // =============================================================================
 
-router.patch("/:id/cancel", validate(cancelOrderSchema), cancelOrder);
-router.patch("/:id/refund", validate(refundOrderSchema), refundOrder);
+router.patch(
+  "/:orderId/printing",
+  superAdmin,
+  validate(validation.printingStatusSchema),
+  controller.updatePrintingStatus,
+);
+
+// =============================================================================
+// SHIPMENT
+// =============================================================================
+
+router.post(
+  "/:orderId/shipment",
+  superAdmin,
+  validate(validation.createShipmentSchema),
+  controller.createShipment,
+);
+
+router.patch(
+  "/:orderId/shipment/shipped",
+  superAdmin,
+  validate(validation.markShippedSchema),
+  controller.markShipmentShipped,
+);
+
+// =============================================================================
+// DELIVERY
+// =============================================================================
+
+router.patch(
+  "/:orderId/shipment/delivered",
+  superAdmin,
+  validate(validation.deliverySchema),
+  controller.confirmDelivery,
+);
+
+// =============================================================================
+// CANCELLATION
+// =============================================================================
+
+router.post(
+  "/:orderId/cancel",
+  superAdmin,
+  validate(validation.cancelOrderSchema),
+  controller.cancelOrder,
+);
+
+// =============================================================================
+// HEALTH
+// =============================================================================
+
+router.get("/orchestrator/health", async (req, res) => {
+  const health = await getQueueHealth();
+  res.json({ success: true, data: health });
+});
 
 export default router;

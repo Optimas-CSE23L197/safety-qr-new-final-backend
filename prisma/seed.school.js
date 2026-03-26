@@ -8,7 +8,7 @@ import { prisma } from "../src/config/prisma.js";
 import bcrypt from "bcrypt";
 
 // ─── Configuration ───────────────────────────────────────────────────────────
-const SCHOOLS = [
+export const SCHOOLS = [
   {
     name: "Delhi Public School",
     code: "DPS-001",
@@ -115,7 +115,7 @@ const SCHOOLS = [
 // HELPER FUNCTIONS
 // =============================================================================
 
-async function createSchool(schoolData) {
+export async function createSchool(schoolData) {
   console.log(`\n📚 Creating school: ${schoolData.name}...`);
 
   // 1. Create School
@@ -176,51 +176,64 @@ async function createSchool(schoolData) {
   const taxAmount = Math.round(totalAmount * 0.18);
   const grandTotal = totalAmount + taxAmount;
 
-  await prisma.subscription.create({
-    data: {
-      school_id: school.id,
-      plan: schoolData.subscription.plan,
-      status: schoolData.subscription.status,
-      pricing_tier: schoolData.pricing_tier,
-      school_type: schoolData.school_type,
-      student_count: schoolData.subscription.student_count,
-      unit_price: schoolData.subscription.unit_price,
-      renewal_price: schoolData.subscription.renewal_price,
-      total_amount: totalAmount,
-      tax_amount: taxAmount,
-      grand_total: grandTotal,
-      current_period_start: new Date(),
-      current_period_end: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
-    },
+  const existingSubscription = await prisma.subscription.findFirst({
+    where: { school_id: school.id },
   });
-  console.log(
-    `   ✅ Subscription created (₹${(schoolData.subscription.unit_price / 100).toFixed(2)}/student)`,
-  );
 
-  // 5. Create a test student
-  const student = await prisma.student.create({
-    data: {
-      school_id: school.id,
-      first_name: "Test",
-      last_name: "Student",
-      class: "10",
-      section: "A",
-      setup_stage: "BASIC",
-      is_active: true,
-    },
-  });
-  console.log(
-    `   ✅ Test student created: ${student.first_name} ${student.last_name}`,
-  );
+  if (!existingSubscription) {
+    await prisma.subscription.create({
+      data: {
+        school_id: school.id,
+        plan: schoolData.subscription.plan,
+        status: schoolData.subscription.status,
+        pricing_tier: schoolData.pricing_tier,
+        school_type: schoolData.school_type,
+        student_count: schoolData.subscription.student_count,
+        unit_price: schoolData.subscription.unit_price,
+        renewal_price: schoolData.subscription.renewal_price,
+        total_amount: totalAmount,
+        tax_amount: taxAmount,
+        grand_total: grandTotal,
+        current_period_start: new Date(),
+        current_period_end: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      },
+    });
+    console.log(
+      `   ✅ Subscription created (₹${(schoolData.subscription.unit_price / 100).toFixed(2)}/student)`,
+    );
+  } else {
+    console.log(`   ⏭️  Subscription already exists, skipping...`);
+  }
+
+  // 5. Create a test student (FIXED - use create instead of upsert)
+  try {
+    const student = await prisma.student.create({
+      data: {
+        school_id: school.id,
+        first_name: "Test",
+        last_name: "Student",
+        class: "10",
+        section: "A",
+        setup_stage: "BASIC",
+        is_active: true,
+      },
+    });
+    console.log(
+      `   ✅ Test student created: ${student.first_name} ${student.last_name}`,
+    );
+  } catch (error) {
+    // Student might already exist, that's fine
+    console.log(`   ⏭️  Test student already exists, skipping...`);
+  }
 
   return { school, admin };
 }
 
 // =============================================================================
-// MAIN SEED FUNCTION
+// MAIN SEED FUNCTION (export this for use in seed.js)
 // =============================================================================
 
-async function main() {
+export async function seedSchools() {
   console.log(
     "\n╔══════════════════════════════════════════════════════════════╗",
   );
@@ -247,12 +260,12 @@ async function main() {
     "\n╔══════════════════════════════════════════════════════════════╗",
   );
   console.log(
-    "║              🎉 SEEDING COMPLETE!                            ║",
+    "║              🎉 SCHOOL SEEDING COMPLETE!                     ║",
   );
   console.log(
     "╚══════════════════════════════════════════════════════════════╝",
   );
-  console.log("\n📋 Login Credentials:");
+  console.log("\n📋 School Login Credentials:");
   console.log(
     "┌─────────────────────────────────────────────────────────────┐",
   );
@@ -279,15 +292,17 @@ async function main() {
 }
 
 // =============================================================================
-// RUN SEED
+// RUN SEED (if called directly)
 // =============================================================================
 
-main()
-  .catch((error) => {
-    console.error("\n❌ Seeding failed:", error);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-    console.log("🔌 Database connection closed\n");
-  });
+if (import.meta.url === `file://${process.argv[1]}`) {
+  seedSchools()
+    .catch((error) => {
+      console.error("\n❌ Seeding failed:", error);
+      process.exit(1);
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+      console.log("🔌 Database connection closed\n");
+    });
+}

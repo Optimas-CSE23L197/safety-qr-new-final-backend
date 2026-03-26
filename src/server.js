@@ -56,7 +56,8 @@ const ENABLE_CLUSTER = ENV.IS_PROD && process.env.CLUSTER !== "false";
 
 // In production: one worker per CPU core (up to 4 — diminishing returns above)
 // In development: single process (easier debugging, faster restarts)
-const WORKER_COUNT = ENABLE_CLUSTER ? Math.min(os.cpus().length, 4) : 1;
+// const WORKER_COUNT = ENABLE_CLUSTER ? Math.min(os.cpus().length, 4) : 1;
+const WORKER_COUNT = 1;
 
 consoleLog(
   "╔══════════════════════════════════════════════════════════════════╗",

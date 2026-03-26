@@ -39,3 +39,33 @@ export async function listStudents(req, res) {
     });
   }
 }
+
+/**
+ * GET /api/v1/school-admin/:schoolId/students/:studentId
+ * Get complete student details for school admin view
+ */
+export async function getStudentDetails(req, res) {
+  const { schoolId, studentId } = req.validatedParams;
+
+  try {
+    const student = await getStudentById(schoolId, studentId);
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        code: "NOT_FOUND",
+        message: "Student not found in this school",
+      });
+    }
+    return res.status(200).json({ success: true, data: student });
+  } catch (err) {
+    logger.error(
+      { schoolId, studentId, err: err.message },
+      "Student details fetch failed",
+    );
+    return res.status(500).json({
+      success: false,
+      code: "INTERNAL_ERROR",
+      message: "Failed to fetch student details",
+    });
+  }
+}

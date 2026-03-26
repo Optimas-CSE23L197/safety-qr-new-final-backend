@@ -4,10 +4,16 @@
 // Redis-backed — shared across all Node.js instances (cluster-safe)
 //
 // CHANGES FROM PREVIOUS VERSION:
-//   [FIX-1] redis.call(...args) → redis.sendCommand(args)
-//           ioredis does not expose .call(). Using it caused a TypeError
-//           on every rate-limit check, meaning NO rate limiting was active.
-//           The correct ioredis method is .sendCommand(argsArray).
+//   [FIX-1] redis.call(...args) → middlewareRedis.sendCommand(args)
+//           Two bugs in one line:
+//             a) ioredis has no .call() method — it does not exist and throws
+//                TypeError immediately, meaning NO rate limiting was ever active
+//             b) The imported `redis` singleton now has enableOfflineQueue: false
+//                (to fix the socket-hang bug on HTTP routes). Using it here would
+//                crash at startup because RedisStore runs an EVAL Lua script in
+//                its constructor, before the connection is ready.
+//           Fix: import `middlewareRedis` (enableOfflineQueue: true) and use
+//           its .sendCommand(argsArray) method which is what ioredis exposes.
 //   [FIX-2] perTokenScanLimit: req.params.token → req.params.code
 //           The scan route param is :code (not :token). req.params.token was
 //           always undefined, so all scans incremented the same Redis key
@@ -17,11 +23,16 @@
 //   [FIX-4] logRateLimitHit: on the public scan route req.userId is always
 //           undefined (no auth). The DEVICE branch was never reachable here.
 //           Clarified comment; logic unchanged (IP fallback is correct).
+//   [FIX-5] otpLimiter / perTokenScanLimit: all redis.incr / redis.expire /
+//           redis.ttl calls updated to use middlewareRedis for consistency.
 // =============================================================================
 
 import { rateLimit } from "express-rate-limit";
 import { RedisStore } from "rate-limit-redis";
-import { redis } from "../config/redis.js";
+// ✅ [FIX-1] Use middlewareRedis — enableOfflineQueue: true so Lua script
+// loading in the RedisStore constructor works at module load time.
+// Never use the `redis` (HTTP-path) singleton here.
+import { middlewareRedis } from "../config/redis.js";
 import { asyncHandler } from "../utils/response/asyncHandler.js";
 import { prisma } from "../config/prisma.js";
 import { extractIp } from "../utils/network/extractIp.js";
@@ -32,16 +43,17 @@ import { logger } from "../config/logger.js";
 // =============================================================================
 
 /**
- * Create a rate-limit-redis store wired to the shared ioredis instance.
+ * Create a rate-limit-redis store wired to the middlewareRedis ioredis instance.
  *
- * [FIX-1] ioredis uses .sendCommand(argsArray) — NOT .call(...args).
- * rate-limit-redis passes the command as spread args; we wrap to an array.
+ * rate-limit-redis v4 calls sendCommand(commandName, ...args).
+ * ioredis exposes this pattern via .call(command, ...args).
  *
  * @param {string} prefix — Redis key prefix e.g. "rl:scan:"
  */
 function makeRedisStore(prefix) {
   return new RedisStore({
-    sendCommand: (...args) => redis.call(...args),
+    // ✅ ioredis compatible adapter for rate-limit-redis v4
+    sendCommand: (command, ...args) => middlewareRedis.call(command, ...args),
     prefix,
   });
 }
@@ -84,7 +96,7 @@ export const publicEmergencyLimiter = rateLimit({
   store: makeRedisStore("rl:emergency:"),
   keyGenerator: (req) => extractIp(req),
   handler: onLimitReached,
-  skipSuccessfulRequests: false, // count every request — success or fail
+  skipSuccessfulRequests: false,
 });
 
 /**
@@ -95,7 +107,6 @@ export const publicEmergencyLimiter = rateLimit({
  * Used by: auth.routes.js
  */
 export const authLimiter = rateLimit({
-  // skip: () => process.env.NODE_ENV === "development",
   skip: () => false,
   windowMs: 15 * 60 * 1000,
   max: 5,
@@ -114,7 +125,6 @@ export const authLimiter = rateLimit({
  *
  * NOTE: Redis counter is NOT reset on successful OTP verify (intentional).
  * A user who verifies on attempt 2 gets only 1 more OTP in the window.
- * This is acceptable UX friction that prevents rapid re-request cycles.
  *
  * Used by: auth.routes.js
  */
@@ -123,14 +133,15 @@ export const otpLimiter = asyncHandler(async (req, res, next) => {
   if (!phone) return next();
 
   const key = `rl:otp:${phone}`;
-  const current = await redis.incr(key);
+  // ✅ [FIX-5] use middlewareRedis throughout — consistent client for all rate-limit ops
+  const current = await middlewareRedis.incr(key);
 
   if (current === 1) {
-    await redis.expire(key, 10 * 60); // 10-minute window
+    await middlewareRedis.expire(key, 10 * 60); // 10-minute window
   }
 
   if (current > 3) {
-    const ttl = await redis.ttl(key);
+    const ttl = await middlewareRedis.ttl(key);
     return res.status(429).json({
       success: false,
       message: "Too many OTP requests for this number",
@@ -221,15 +232,10 @@ export const tokenGenerationLimiter = rateLimit({
 /**
  * perTokenScanLimit
  * Prevents a single QR code from being hammered continuously.
- * 20 scans per hour per scan code — legitimate use is maybe 3–5 per day.
- *
- * On breach: persists a block entry to DB (ScanRateLimit table) so that
- * school admins and the anomaly detection system can correlate.
- * req.scanCount is set so the controller/service can access it without
- * a second Redis read.
+ * 20 scans per hour per scan code.
  *
  * [FIX-2] Was reading req.params.token — the scan route param is :code.
- * req.params.token was always undefined, so the guard never fired.
+ * [FIX-5] Uses middlewareRedis for all Redis ops.
  *
  * Used by: scan.routes.js
  */
@@ -238,15 +244,14 @@ export const perTokenScanLimit = asyncHandler(async (req, res, next) => {
   if (!scanCode) return next();
 
   const key = `rl:token:${scanCode}`;
-  const current = await redis.incr(key);
+  // ✅ [FIX-5] use middlewareRedis
+  const current = await middlewareRedis.incr(key);
 
   if (current === 1) {
-    await redis.expire(key, 60 * 60); // 1-hour window
+    await middlewareRedis.expire(key, 60 * 60); // 1-hour window
   }
 
   if (current > 20) {
-    // Persist block to DB for anomaly correlation and admin visibility.
-    // Non-blocking — a logging failure must not prevent the 429 response.
     persistTokenBlock(scanCode, current).catch((e) =>
       logger.warn({ err: e.message }, "Token block persist failed"),
     );
@@ -258,8 +263,6 @@ export const perTokenScanLimit = asyncHandler(async (req, res, next) => {
     });
   }
 
-  // Pass the running count downstream — service can use it for anomaly
-  // threshold checks without an additional Redis read.
   req.scanCount = current;
   next();
 });
@@ -271,8 +274,6 @@ export const perTokenScanLimit = asyncHandler(async (req, res, next) => {
 /**
  * checkIpBlocked
  * Checks ScanRateLimit for a persistent IP block written by anomaly detection.
- * Runs BEFORE other rate limiters on the public scan route — cheap DB lookup
- * that kills known-bad IPs before any Redis or crypto work happens.
  *
  * Used by: scan.routes.js (first middleware in chain)
  */
@@ -308,14 +309,10 @@ export const checkIpBlocked = asyncHandler(async (req, res, next) => {
  * Log a rate-limit hit to the ScanRateLimit table.
  * Called from onLimitReached — async, non-blocking, swallowed on failure.
  *
- * [FIX-4] On the public scan route req.userId is always null (no auth).
- * The DEVICE branch is never reached from scan.routes.js — only from
- * authenticated routes where req.userId is set. Both branches are correct;
- * this note clarifies the runtime path per route type.
+ * [FIX-4] req.userId is null on unauthenticated routes — always falls to IP.
  */
 async function logRateLimitHit(req) {
   const ip = extractIp(req);
-  // [FIX-4] req.userId is null on unauthenticated routes — always falls to IP
   const identifierType = req.userId ? "DEVICE" : "IP";
   const identifier = req.userId ?? ip;
 
@@ -342,7 +339,6 @@ async function logRateLimitHit(req) {
 
 /**
  * Persist a per-token block to ScanRateLimit for anomaly correlation.
- * Sets blocked_until = +1 hour, increments block_count.
  * Called fire-and-forget from perTokenScanLimit.
  */
 async function persistTokenBlock(scanCode, count) {
@@ -357,7 +353,7 @@ async function persistTokenBlock(scanCode, count) {
       count,
       last_hit: new Date(),
       block_count: { increment: 1 },
-      blocked_until: new Date(Date.now() + 60 * 60 * 1000), // +1 hour
+      blocked_until: new Date(Date.now() + 60 * 60 * 1000),
       blocked_reason: "Per-token scan limit exceeded",
     },
     create: {

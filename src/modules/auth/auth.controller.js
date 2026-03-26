@@ -1,5 +1,5 @@
 // =============================================================================
-// src/modules/auth/controller.js — RESQID (FIXED COOKIE FLOW)
+// src/modules/auth/controller.js — RESQID (FIXED)
 // =============================================================================
 
 import * as authService from "../../services/auth/auth.service.js";
@@ -23,7 +23,8 @@ export const loginSuperAdminController = asyncHandler(async (req, res) => {
 
   setAuthCookies(res, result.access_token, result.refresh_token);
 
-  return ApiResponse.ok({ user: result.user }, "Login successful").send(res);
+  // ✅ CORRECT: pass res as first argument
+  return ApiResponse.ok(res, { user: result.user }, "Login successful");
 });
 
 // ─── School User Login ────────────────────────────────────────────────────────
@@ -39,7 +40,7 @@ export const loginSchoolUserController = asyncHandler(async (req, res) => {
 
   setAuthCookies(res, result.access_token, result.refresh_token);
 
-  return ApiResponse.ok({ user: result.user }, "Login successful").send(res);
+  return ApiResponse.ok(res, { user: result.user }, "Login successful");
 });
 
 // ─── Parent Login: Send OTP ───────────────────────────────────────────────────
@@ -50,23 +51,39 @@ export const sendOtpController = asyncHandler(async (req, res) => {
     ipAddress: extractIp(req),
     deviceId: req.headers["x-device-id"],
   });
-  return ApiResponse.ok(result, "OTP sent successfully").send(res);
+  return ApiResponse.ok(res, result, "OTP sent successfully");
 });
 
 // ─── Parent Login: Verify OTP ─────────────────────────────────────────────────
 export const verifyOtpController = asyncHandler(async (req, res) => {
   const { phone, otp } = req.body;
-  const result = await authService.verifyOtp({
-    phone,
-    otp,
-    ipAddress: extractIp(req),
-    deviceInfo: {
-      ...parseUserAgentSummary(req),
-      userAgent: req.headers["user-agent"],
-      language: req.headers["accept-language"],
-    },
-  });
-  return ApiResponse.ok(result, "Login successful").send(res);
+
+  try {
+    const result = await authService.verifyOtp({
+      phone,
+      otp,
+      ipAddress: extractIp(req),
+      deviceInfo: {
+        ...parseUserAgentSummary(req),
+        userAgent: req.headers["user-agent"],
+        language: req.headers["accept-language"],
+      },
+    });
+    return ApiResponse.ok(res, result, "Login successful");
+  } catch (error) {
+    if (
+      error.code === "NOT_FOUND" ||
+      error.message.includes("Account not found")
+    ) {
+      return res.status(404).json({
+        success: false,
+        code: "USER_NOT_FOUND",
+        message: "Account not found. Please register using your RESQID card.",
+        redirectTo: "/register",
+      });
+    }
+    throw error;
+  }
 });
 
 // ─── Parent Registration: Step 1 — Init ──────────────────────────────────────
@@ -77,7 +94,7 @@ export const registerInitController = asyncHandler(async (req, res) => {
     phone,
     ipAddress: extractIp(req),
   });
-  return ApiResponse.ok(result, "OTP sent to your mobile number").send(res);
+  return ApiResponse.ok(res, result, "OTP sent to your mobile number");
 });
 
 // ─── Parent Registration: Step 2 — Verify ────────────────────────────────────
@@ -93,7 +110,7 @@ export const registerVerifyController = asyncHandler(async (req, res) => {
       userAgent: req.headers["user-agent"],
     },
   });
-  return ApiResponse.ok(result, "Registration successful").send(res);
+  return ApiResponse.ok(res, result, "Registration successful");
 });
 
 // ─── Refresh Token ────────────────────────────────────────────────────────────
@@ -112,7 +129,7 @@ export const refreshTokenController = asyncHandler(async (req, res) => {
 
   setAuthCookies(res, result.access_token, result.refresh_token);
 
-  return ApiResponse.ok(null, "Token refreshed").send(res);
+  return ApiResponse.ok(res, null, "Token refreshed");
 });
 
 // ─── Logout ───────────────────────────────────────────────────────────────────
@@ -130,10 +147,10 @@ export const logoutController = asyncHandler(async (req, res) => {
 
   clearAuthCookies(res);
 
-  return ApiResponse.ok(null, "Logged out successfully").send(res);
+  return ApiResponse.ok(res, null, "Logged out successfully");
 });
 
-// ✅ ADD THIS - Change Password Controller
+// ─── Change Password Controller ───────────────────────────────────────────────
 export const changePasswordController = asyncHandler(async (req, res) => {
   const { oldPassword, newPassword } = req.body;
 
@@ -145,11 +162,11 @@ export const changePasswordController = asyncHandler(async (req, res) => {
     ipAddress: extractIp(req),
   });
 
-  // Clear cookies after password change (force re-login)
   clearAuthCookies(res);
 
   return ApiResponse.ok(
+    res,
     result,
     "Password changed successfully. Please login again.",
-  ).send(res);
+  );
 });

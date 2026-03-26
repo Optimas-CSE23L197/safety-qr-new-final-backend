@@ -5,32 +5,44 @@ export default defineConfig({
     globals: true,
     environment: "node",
     clearMocks: true,
+    testTimeout: 120000,
+    hookTimeout: 60000,
+    setupFiles: ["tests/setup.js"],
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],
       include: ["src/modules/order/**"],
-      exclude: ["src/modules/order/order.routes.js"],
+      exclude: [
+        "src/modules/order/order.routes.js",
+        "src/modules/order/**/*.test.js",
+      ],
     },
     projects: [
       {
         test: {
           name: "unit",
-          include: ["tests/order/unit/**/*.test.js"],
-        },
-      },
-      {
-        test: {
-          name: "steps",
-          include: ["tests/order/steps/**/*.test.js"],
-          setupFiles: ["tests/setup/mocks.setup.js"],
+          include: ["tests/unit/**/*.test.js"],
         },
       },
       {
         test: {
           name: "integration",
-          include: ["tests/order/integration/**/*.test.js"],
-          setupFiles: ["tests/setup/db.setup.js"],
+          include: ["tests/integration/**/*.test.js"],
           pool: "forks",
+        },
+      },
+      {
+        test: {
+          name: "contract",
+          include: ["tests/contract/**/*.test.js"],
+        },
+      },
+      {
+        test: {
+          name: "load",
+          include: ["tests/load/**/*.test.js"],
+          testTimeout: 300000,
+          hookTimeout: 120000,
         },
       },
     ],

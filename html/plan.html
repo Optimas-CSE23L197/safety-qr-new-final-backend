@@ -1,0 +1,2003 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RESQID — 7-Day Backend Sprint Plan + Security Architecture</title>
+    <style>
+      :root {
+        --bg: #f8f7f4;
+        --card: #ffffff;
+        --border: #e5e3dc;
+        --text: #1a1a18;
+        --muted: #5c5b56;
+        --accent: #2563eb;
+        --accent-soft: #eff6ff;
+        --green: #15803d;
+        --green-soft: #f0fdf4;
+        --amber: #b45309;
+        --amber-soft: #fffbeb;
+        --red: #b91c1c;
+        --red-soft: #fef2f2;
+        --purple: #6d28d9;
+        --purple-soft: #f5f3ff;
+        --teal: #0f766e;
+        --teal-soft: #f0fdfa;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: -apple-system, "Segoe UI", Arial, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        font-size: 14px;
+        line-height: 1.6;
+      }
+      .page {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 40px 24px 80px;
+      }
+
+      /* Cover */
+      .cover {
+        background: #111827;
+        color: #fff;
+        border-radius: 12px;
+        padding: 48px 40px 40px;
+        margin-bottom: 40px;
+      }
+      .cover-tag {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: #9ca3af;
+        margin-bottom: 12px;
+      }
+      .cover h1 {
+        font-size: 32px;
+        font-weight: 700;
+        line-height: 1.2;
+        margin-bottom: 8px;
+      }
+      .cover-sub {
+        font-size: 16px;
+        color: #d1d5db;
+        margin-bottom: 32px;
+      }
+      .cover-stats {
+        display: flex;
+        gap: 32px;
+        flex-wrap: wrap;
+      }
+      .stat {
+      }
+      .stat-val {
+        font-size: 28px;
+        font-weight: 700;
+        color: #60a5fa;
+      }
+      .stat-lbl {
+        font-size: 12px;
+        color: #9ca3af;
+        margin-top: 2px;
+      }
+
+      /* TOC */
+      .toc {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 24px 28px;
+        margin-bottom: 40px;
+      }
+      .toc h2 {
+        font-size: 13px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        margin-bottom: 16px;
+      }
+      .toc-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 4px 32px;
+      }
+      .toc a {
+        color: var(--accent);
+        text-decoration: none;
+        font-size: 13px;
+      }
+      .toc a:hover {
+        text-decoration: underline;
+      }
+
+      /* Sections */
+      h2.section-title {
+        font-size: 22px;
+        font-weight: 700;
+        margin: 48px 0 4px;
+        padding-bottom: 12px;
+        border-bottom: 2px solid var(--border);
+      }
+      h2.section-title span {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--muted);
+        margin-left: 8px;
+      }
+      h3 {
+        font-size: 16px;
+        font-weight: 700;
+        margin: 28px 0 8px;
+      }
+      h4 {
+        font-size: 14px;
+        font-weight: 700;
+        margin: 20px 0 6px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      p {
+        margin-bottom: 10px;
+        color: var(--text);
+      }
+
+      /* Day cards */
+      .day-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        margin-top: 16px;
+      }
+      .day-card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      .day-header {
+        padding: 14px 18px 10px;
+        border-bottom: 1px solid var(--border);
+      }
+      .day-label {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+      .day-title {
+        font-size: 15px;
+        font-weight: 700;
+        margin-top: 2px;
+      }
+      .day-body {
+        padding: 14px 18px;
+      }
+      .day-body ul {
+        list-style: none;
+      }
+      .day-body ul li {
+        padding: 4px 0;
+        font-size: 13px;
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+      }
+      .day-body ul li::before {
+        content: "›";
+        color: var(--accent);
+        font-weight: 700;
+        flex-shrink: 0;
+        margin-top: 1px;
+      }
+
+      /* Person assignment */
+      .person-badge {
+        display: inline-block;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 2px 6px;
+        border-radius: 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        flex-shrink: 0;
+      }
+      .p1 {
+        background: #dbeafe;
+        color: #1d4ed8;
+      }
+      .p2 {
+        background: #d1fae5;
+        color: #065f46;
+      }
+      .p3 {
+        background: #fce7f3;
+        color: #9d174d;
+      }
+      .p4 {
+        background: #fef3c7;
+        color: #92400e;
+      }
+
+      /* Task table */
+      .task-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 12px 0 20px;
+        font-size: 13px;
+      }
+      .task-table th {
+        background: #f3f4f6;
+        font-weight: 700;
+        text-align: left;
+        padding: 8px 12px;
+        border: 1px solid var(--border);
+        font-size: 12px;
+      }
+      .task-table td {
+        padding: 8px 12px;
+        border: 1px solid var(--border);
+        vertical-align: top;
+      }
+      .task-table tr:nth-child(even) td {
+        background: #fafaf9;
+      }
+
+      /* Status badges */
+      .badge {
+        display: inline-block;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 2px 8px;
+        border-radius: 20px;
+      }
+      .badge-critical {
+        background: var(--red-soft);
+        color: var(--red);
+      }
+      .badge-high {
+        background: var(--amber-soft);
+        color: var(--amber);
+      }
+      .badge-medium {
+        background: var(--accent-soft);
+        color: var(--accent);
+      }
+      .badge-low {
+        background: var(--green-soft);
+        color: var(--green);
+      }
+      .badge-done {
+        background: var(--green-soft);
+        color: var(--green);
+      }
+      .badge-wip {
+        background: var(--amber-soft);
+        color: var(--amber);
+      }
+      .badge-todo {
+        background: #f3f4f6;
+        color: var(--muted);
+      }
+
+      /* Alert boxes */
+      .alert {
+        border-radius: 8px;
+        padding: 14px 16px;
+        margin: 16px 0;
+        font-size: 13px;
+      }
+      .alert-red {
+        background: var(--red-soft);
+        border-left: 3px solid var(--red);
+      }
+      .alert-amber {
+        background: var(--amber-soft);
+        border-left: 3px solid var(--amber);
+      }
+      .alert-green {
+        background: var(--green-soft);
+        border-left: 3px solid var(--green);
+      }
+      .alert-blue {
+        background: var(--accent-soft);
+        border-left: 3px solid var(--accent);
+      }
+      .alert-purple {
+        background: var(--purple-soft);
+        border-left: 3px solid var(--purple);
+      }
+      .alert strong {
+        font-weight: 700;
+        display: block;
+        margin-bottom: 4px;
+      }
+
+      /* Schema diff table */
+      .schema-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 12px 0 20px;
+        font-size: 12px;
+      }
+      .schema-table th {
+        background: #1e293b;
+        color: #e2e8f0;
+        font-weight: 600;
+        text-align: left;
+        padding: 8px 12px;
+      }
+      .schema-table td {
+        padding: 7px 12px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+        font-family: "Menlo", "Consolas", monospace;
+      }
+      .schema-table tr:hover td {
+        background: #f8fafc;
+      }
+      .add {
+        color: var(--green);
+      }
+      .fix {
+        color: var(--amber);
+      }
+      .warn {
+        color: var(--red);
+      }
+      .ok {
+        color: var(--muted);
+      }
+
+      /* Code block */
+      pre {
+        background: #1e293b;
+        color: #e2e8f0;
+        border-radius: 8px;
+        padding: 16px;
+        overflow-x: auto;
+        font-size: 12px;
+        line-height: 1.5;
+        margin: 12px 0 20px;
+      }
+      code {
+        font-family: "Menlo", "Consolas", monospace;
+        font-size: 12px;
+      }
+      p code,
+      li code {
+        background: #f1f5f9;
+        color: #1e40af;
+        padding: 1px 5px;
+        border-radius: 3px;
+      }
+
+      /* Security grid */
+      .sec-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 14px;
+        margin: 16px 0;
+      }
+      .sec-card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 14px 16px;
+      }
+      .sec-card h4 {
+        font-size: 12px;
+        margin: 0 0 8px;
+      }
+      .sec-card ul {
+        list-style: none;
+      }
+      .sec-card ul li {
+        font-size: 12px;
+        padding: 2px 0;
+        display: flex;
+        gap: 6px;
+        align-items: flex-start;
+      }
+      .sec-card ul li::before {
+        content: "✓";
+        color: var(--green);
+        font-weight: 700;
+        flex-shrink: 0;
+      }
+
+      /* Checklist */
+      .checklist {
+        list-style: none;
+        margin: 8px 0;
+      }
+      .checklist li {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        padding: 5px 0;
+        font-size: 13px;
+        border-bottom: 1px solid var(--border);
+      }
+      .checklist li:last-child {
+        border-bottom: none;
+      }
+      .check-box {
+        width: 16px;
+        height: 16px;
+        border: 1.5px solid var(--border);
+        border-radius: 3px;
+        flex-shrink: 0;
+        margin-top: 1px;
+      }
+
+      /* AI prompt box */
+      .ai-box {
+        background: var(--purple-soft);
+        border: 1px solid #c4b5fd;
+        border-radius: 8px;
+        padding: 14px 16px;
+        margin: 12px 0;
+        font-size: 13px;
+      }
+      .ai-box strong {
+        color: var(--purple);
+        display: block;
+        margin-bottom: 4px;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .ai-box code {
+        background: #ede9fe;
+      }
+
+      /* Timeline bar */
+      .timeline {
+        margin: 20px 0;
+      }
+      .tl-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 8px;
+      }
+      .tl-label {
+        width: 100px;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--muted);
+        flex-shrink: 0;
+      }
+      .tl-bar-wrap {
+        flex: 1;
+        background: #f1f5f9;
+        border-radius: 4px;
+        height: 24px;
+        position: relative;
+        overflow: hidden;
+      }
+      .tl-bar {
+        height: 100%;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        padding-left: 8px;
+        font-size: 11px;
+        font-weight: 600;
+        color: #fff;
+        white-space: nowrap;
+      }
+
+      /* Horizontal rule */
+      hr {
+        border: none;
+        border-top: 1px solid var(--border);
+        margin: 40px 0;
+      }
+
+      /* Print */
+      @media print {
+        .page {
+          max-width: 100%;
+          padding: 20px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <!-- COVER -->
+      <div class="cover">
+        <div class="cover-tag">
+          RESQID · coreZ Technologies Pvt. Ltd. · Confidential
+        </div>
+        <h1>7-Day Backend Sprint Plan<br />+ Cybersecurity Architecture</h1>
+        <div class="cover-sub">
+          Complete development roadmap for 4 engineers · schema v6.1 ·
+          AI-assisted velocity
+        </div>
+        <div class="cover-stats">
+          <div class="stat">
+            <div class="stat-val">7</div>
+            <div class="stat-lbl">Days to deadline</div>
+          </div>
+          <div class="stat">
+            <div class="stat-val">4</div>
+            <div class="stat-lbl">Engineers</div>
+          </div>
+          <div class="stat">
+            <div class="stat-val">~280hrs</div>
+            <div class="stat-lbl">Total dev capacity</div>
+          </div>
+          <div class="stat">
+            <div class="stat-val">~40</div>
+            <div class="stat-lbl">Modules to complete</div>
+          </div>
+          <div class="stat">
+            <div class="stat-val">v6.1</div>
+            <div class="stat-lbl">Schema version</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TOC -->
+      <div class="toc">
+        <h2>Contents</h2>
+        <div class="toc-grid">
+          <a href="#s1">1. Schema Audit & Gaps</a>
+          <a href="#s5">5. Security Architecture</a>
+          <a href="#s2">2. Team Roles & AI Strategy</a>
+          <a href="#s6">6. API Contract Reference</a>
+          <a href="#s3">3. 7-Day Sprint Plan</a>
+          <a href="#s7">7. Deployment Checklist</a>
+          <a href="#s4">4. Module Completion Matrix</a>
+          <a href="#s8">8. AI Prompt Library</a>
+        </div>
+      </div>
+
+      <!-- SECTION 1: SCHEMA AUDIT -->
+      <h2 class="section-title" id="s1">
+        1. Schema Audit &amp; Refinements <span>schema.prisma v6.1</span>
+      </h2>
+
+      <p>
+        Your schema is well-designed overall. v6.1 already fixed the critical FK
+        gaps. The following are remaining gaps and improvements needed before
+        you write another line of module code.
+      </p>
+
+      <h3>1.1 Critical gaps to fix before Day 1</h3>
+
+      <table class="schema-table">
+        <tr>
+          <th>Model</th>
+          <th>Issue</th>
+          <th>Fix</th>
+          <th>Priority</th>
+        </tr>
+        <tr>
+          <td class="warn">Session</td>
+          <td>
+            No DB-level check that exactly one user FK is set. App-layer only.
+          </td>
+          <td>
+            Add a PostgreSQL CHECK constraint via raw migration SQL:
+            <code
+              >CHECK (num_nonnulls(parent_user_id, school_user_id,
+              admin_user_id) = 1)</code
+            >
+          </td>
+          <td><span class="badge badge-critical">Critical</span></td>
+        </tr>
+        <tr>
+          <td class="warn">ScanAnomaly</td>
+          <td>
+            No <code>school_id</code> — can't query "all anomalies for school X"
+            without joining through Token.
+          </td>
+          <td>
+            Add <code>school_id String</code> denormalized, add
+            <code>@@index([school_id, created_at])</code>
+          </td>
+          <td><span class="badge badge-critical">Critical</span></td>
+        </tr>
+        <tr>
+          <td class="fix">CardOrder</td>
+          <td>
+            <code>invoice_id</code> field exists as loose field — not in schema.
+            Confirm it's fully replaced by <code>advance_invoice_id</code> /
+            <code>balance_invoice_id</code>.
+          </td>
+          <td>
+            Remove legacy <code>invoice_id</code> if it exists in DB. Confirm
+            migration.
+          </td>
+          <td><span class="badge badge-high">High</span></td>
+        </tr>
+        <tr>
+          <td class="fix">Notification</td>
+          <td>
+            No <code>idempotency_key</code> — duplicate notifications possible
+            on worker retry.
+          </td>
+          <td>
+            Add <code>idempotency_key String? @unique</code> to prevent
+            duplicate sends on retry.
+          </td>
+          <td><span class="badge badge-high">High</span></td>
+        </tr>
+        <tr>
+          <td class="fix">AuditLog</td>
+          <td>No TTL / archiving strategy. Will grow unbounded.</td>
+          <td>
+            Add <code>partition_month String</code> computed field for future
+            partitioning. Plan a 90-day archive job.
+          </td>
+          <td><span class="badge badge-high">High</span></td>
+        </tr>
+        <tr>
+          <td class="add">SchoolUser</td>
+          <td>
+            Missing <code>last_login_at</code> and
+            <code>failed_login_count</code> — needed for lockout logic.
+          </td>
+          <td>Add both fields. Mirror SuperAdmin pattern.</td>
+          <td><span class="badge badge-medium">Medium</span></td>
+        </tr>
+        <tr>
+          <td class="add">Token</td>
+          <td>
+            No <code>print_ready_url</code> — card design URL is on CardOrder,
+            not individual token. PRE_DETAILS needs per-token card PDFs.
+          </td>
+          <td>
+            Add <code>card_design_url String?</code> to Token for per-card PDF
+            link after design step.
+          </td>
+          <td><span class="badge badge-medium">Medium</span></td>
+        </tr>
+        <tr>
+          <td class="ok">WebhookEvent</td>
+          <td>
+            Inbound events from Razorpay/Shiprocket have no
+            <code>idempotency_key</code>.
+          </td>
+          <td>
+            Add <code>idempotency_key String? @unique</code> — providers resend
+            on timeout, must deduplicate.
+          </td>
+          <td><span class="badge badge-high">High</span></td>
+        </tr>
+        <tr>
+          <td class="ok">DeadLetterQueue</td>
+          <td>
+            No <code>order_id</code> or <code>school_id</code> link — hard to
+            triage.
+          </td>
+          <td>
+            Add <code>order_id String?</code>, <code>school_id String?</code>,
+            and indexes.
+          </td>
+          <td><span class="badge badge-medium">Medium</span></td>
+        </tr>
+      </table>
+
+      <h3>1.2 Migration SQL to add (create as new migration)</h3>
+      <pre><code>-- Session: enforce exactly one user FK at DB level
+ALTER TABLE "Session" ADD CONSTRAINT "session_exactly_one_user"
+  CHECK (num_nonnulls(parent_user_id, school_user_id, admin_user_id) = 1);
+
+-- ScanAnomaly: add school_id denorm
+ALTER TABLE "ScanAnomaly" ADD COLUMN "school_id" TEXT;
+UPDATE "ScanAnomaly" sa SET school_id = (
+  SELECT t.school_id FROM "Token" t WHERE t.id = sa.token_id
+);
+ALTER TABLE "ScanAnomaly" ALTER COLUMN "school_id" SET NOT NULL;
+CREATE INDEX "ScanAnomaly_school_id_created_at_idx" ON "ScanAnomaly"(school_id, created_at);
+
+-- Notification: idempotency
+ALTER TABLE "Notification" ADD COLUMN "idempotency_key" TEXT UNIQUE;
+
+-- WebhookEvent: idempotency
+ALTER TABLE "WebhookEvent" ADD COLUMN "idempotency_key" TEXT UNIQUE;
+
+-- DeadLetterQueue: traceability
+ALTER TABLE "DeadLetterQueue" ADD COLUMN "order_id" TEXT;
+ALTER TABLE "DeadLetterQueue" ADD COLUMN "school_id" TEXT;
+CREATE INDEX "DLQ_school_id_idx" ON "DeadLetterQueue"(school_id);
+CREATE INDEX "DLQ_order_id_idx" ON "DeadLetterQueue"(order_id);</code></pre>
+
+      <h3>1.3 Schema is already correct — do NOT change these</h3>
+      <p>
+        These were debated designs that are actually right: the
+        <code>Subscription</code
+        >/<code>SchoolPaymentBatch</code>/<code>Invoice</code>/<code
+          >Payment</code
+        >
+        four-layer money model is correct and should not be simplified. The
+        <code>OrderPipeline</code> + <code>OrderStepExecution</code> +
+        <code>JobExecution</code> + <code>StepLog</code> append-only pipeline
+        log is exactly right. The <code>token_hash</code> approach on Token
+        (never store raw token) is correct.
+      </p>
+
+      <hr />
+
+      <!-- SECTION 2: TEAM & AI STRATEGY -->
+      <h2 class="section-title" id="s2">
+        2. Team Roles &amp; AI-Assisted Development Strategy
+      </h2>
+
+      <h3>2.1 Team assignment (4 people)</h3>
+
+      <table class="task-table">
+        <tr>
+          <th>Person</th>
+          <th>Nickname</th>
+          <th>Domain ownership</th>
+          <th>Fallback</th>
+        </tr>
+        <tr>
+          <td><span class="person-badge p1">Dev 1</span></td>
+          <td>Pipeline Lead</td>
+          <td>
+            Order pipeline (steps 1–10), BullMQ workers, pipeline retry, stalled
+            job detection
+          </td>
+          <td>Schema migrations</td>
+        </tr>
+        <tr>
+          <td><span class="person-badge p2">Dev 2</span></td>
+          <td>Auth &amp; School Lead</td>
+          <td>
+            Auth (OTP, sessions, JWT), school_admin modules (card, QR, students,
+            tokens, dashboard), super_admin modules
+          </td>
+          <td>Middleware fixes</td>
+        </tr>
+        <tr>
+          <td><span class="person-badge p3">Dev 3</span></td>
+          <td>Scan &amp; Security Lead</td>
+          <td>
+            Scan system, anomaly detection, security middleware, rate limiting,
+            geo-block, IP reputation, CSRF hardening
+          </td>
+          <td>Notification worker</td>
+        </tr>
+        <tr>
+          <td><span class="person-badge p4">Dev 4</span></td>
+          <td>Infra &amp; Integration Lead</td>
+          <td>
+            Token generation worker, notification system, webhook handling
+            (Razorpay, Shiprocket), background jobs, observability
+          </td>
+          <td>API contract docs</td>
+        </tr>
+      </table>
+
+      <h3>2.2 AI-assisted development rules (for all 4 people)</h3>
+
+      <div class="alert alert-blue">
+        <strong
+          >Golden rule: AI writes the skeleton, you write the business
+          logic.</strong
+        >
+        Never let AI write security-critical code (JWT verification, token
+        validation, OTP logic, payment webhook signature checks) without deep
+        review. AI is fast at boilerplate — use it for repositories, validation
+        schemas, test stubs, and seed data.
+      </div>
+
+      <table class="task-table">
+        <tr>
+          <th>Task type</th>
+          <th>Use AI for</th>
+          <th>Do NOT use AI for</th>
+        </tr>
+        <tr>
+          <td>Repository layer</td>
+          <td>Prisma query boilerplate, pagination, filtering</td>
+          <td>
+            Complex JOIN queries with business rules — write these yourself
+          </td>
+        </tr>
+        <tr>
+          <td>Validation schemas</td>
+          <td>Zod/Joi schema generation from your Prisma types</td>
+          <td>
+            Security-sensitive fields (phone format, OTP, amounts in paise)
+          </td>
+        </tr>
+        <tr>
+          <td>Test stubs</td>
+          <td>Unit test skeletons for all step files</td>
+          <td>Security pen-test scenarios — write those manually</td>
+        </tr>
+        <tr>
+          <td>Seed data</td>
+          <td>Fake schools, students, orders for dev DB</td>
+          <td>Production credentials or real school data</td>
+        </tr>
+        <tr>
+          <td>Error messages</td>
+          <td>User-facing message copy</td>
+          <td>Internal error codes — keep those consistent yourself</td>
+        </tr>
+        <tr>
+          <td>Middleware</td>
+          <td>Rate-limit config values, helmet options</td>
+          <td>Auth middleware logic — review line by line</td>
+        </tr>
+      </table>
+
+      <h3>2.3 How to prompt AI effectively for this codebase</h3>
+
+      <div class="ai-box">
+        <strong>Prompt template — repository generation</strong>
+        "I have a Node.js backend with Prisma ORM, Express, and a repository
+        pattern. Here is my Prisma schema for [Model]: [paste model]. Generate a
+        repository file at
+        <code>src/modules/[module]/[module].repository.js</code> with these
+        functions: [list]. Use the Prisma client from
+        <code>src/config/prisma.js</code>. Return only the file — no
+        explanation."
+      </div>
+
+      <div class="ai-box">
+        <strong>Prompt template — pipeline step</strong>
+        "I have an order pipeline step file at
+        <code>src/modules/order/pipeline/step3.payment.js</code>. The step must:
+        (1) verify advance payment record exists in Payment table, (2) update
+        CardOrder.payment_status to PARTIALLY_PAID, (3) update CardOrder.status
+        to ADVANCE_RECEIVED, (4) log to OrderStepExecution, (5) be idempotent
+        (check if already done before doing). Here is my OrderStepExecution
+        schema: [paste]. Generate the step."
+      </div>
+
+      <div class="ai-box">
+        <strong>Prompt template — security review</strong>
+        "Review this Express middleware for security vulnerabilities.
+        Specifically check: (1) is JWT verification correct, (2) can tenant
+        scope be bypassed, (3) are there any timing attacks. Here is the code:
+        [paste auth.middleware.js]"
+      </div>
+
+      <hr />
+
+      <!-- SECTION 3: 7-DAY SPRINT -->
+      <h2 class="section-title" id="s3">3. 7-Day Sprint Plan</h2>
+
+      <div class="alert alert-amber">
+        <strong>Daily standup rule (15 min, every morning):</strong>
+        Each person states: what they completed, what they're doing today, and
+        if they're blocked. Blockers get resolved in the first 30 minutes of the
+        day, not at end of day. Use a shared doc or Notion to track task status
+        in real time.
+      </div>
+
+      <!-- Timeline bars -->
+      <div class="timeline">
+        <div class="tl-row">
+          <div class="tl-label">Dev 1</div>
+          <div class="tl-bar-wrap">
+            <div class="tl-bar" style="width: 100%; background: #2563eb">
+              Pipeline steps completion + BullMQ workers + retry
+            </div>
+          </div>
+        </div>
+        <div class="tl-row">
+          <div class="tl-label">Dev 2</div>
+          <div class="tl-bar-wrap">
+            <div class="tl-bar" style="width: 100%; background: #15803d">
+              Auth hardening + all school_admin modules + super_admin modules
+            </div>
+          </div>
+        </div>
+        <div class="tl-row">
+          <div class="tl-label">Dev 3</div>
+          <div class="tl-bar-wrap">
+            <div class="tl-bar" style="width: 100%; background: #9d174d">
+              Scan system + anomaly engine + security middleware + pen testing
+            </div>
+          </div>
+        </div>
+        <div class="tl-row">
+          <div class="tl-label">Dev 4</div>
+          <div class="tl-bar-wrap">
+            <div class="tl-bar" style="width: 100%; background: #92400e">
+              Token worker + notification system + webhooks + observability
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="day-grid">
+        <!-- DAY 1 -->
+        <div class="day-card">
+          <div class="day-header" style="background: #eff6ff">
+            <div class="day-label">Day 1 — Monday</div>
+            <div class="day-title">Foundation lock-in</div>
+          </div>
+          <div class="day-body">
+            <ul>
+              <li>
+                <span class="person-badge p1">Dev 1</span> Run schema migration
+                (Session CHECK, ScanAnomaly school_id, Notification
+                idempotency_key, WebhookEvent idempotency_key). Verify
+                migrations pass. Fix any seed data breaks.
+              </li>
+              <li>
+                <span class="person-badge p2">Dev 2</span> Audit all existing
+                auth middleware — ensure JWT expiry, refresh token rotation, and
+                single-device logic are correct. Fix any gaps found. Write
+                auth.http test file with all scenarios.
+              </li>
+              <li>
+                <span class="person-badge p3">Dev 3</span> Audit all existing
+                security middleware. Ensure rate-limit keys are composite (IP +
+                endpoint). Ensure CSRF tokens are tied to session. Ensure
+                geoBlock and ipBlock are actually wired into app.js.
+              </li>
+              <li>
+                <span class="person-badge p4">Dev 4</span> Set up BullMQ queues
+                properly: order-pipeline, token-generation, notification, audit,
+                scan-anomaly. Add queue health check endpoint. Ensure Bull Board
+                dashboard is running at /admin/queues (behind super_admin auth).
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- DAY 2 -->
+        <div class="day-card">
+          <div class="day-header" style="background: #f0fdf4">
+            <div class="day-label">Day 2 — Tuesday</div>
+            <div class="day-title">Pipeline core + Scan core</div>
+          </div>
+          <div class="day-body">
+            <ul>
+              <li>
+                <span class="person-badge p1">Dev 1</span> Complete pipeline
+                steps 1–5 (create, confirm, payment, generate, design). Each
+                step must write to OrderStepExecution. Add idempotency check at
+                start of each step.
+              </li>
+              <li>
+                <span class="person-badge p2">Dev 2</span> Complete
+                school_admin: students (list, detail, assign token), card
+                (template CRUD, lock/unlock), QR (generate, download). These are
+                the highest-traffic school admin endpoints.
+              </li>
+              <li>
+                <span class="person-badge p3">Dev 3</span> Complete
+                scan.service.js: the public QR scan endpoint that (1) looks up
+                token_hash, (2) validates status, (3) writes ScanLog, (4)
+                returns emergency profile. This is the most latency-sensitive
+                path — target under 200ms.
+              </li>
+              <li>
+                <span class="person-badge p4">Dev 4</span> Complete
+                tokenGenerationWorker.js: BullMQ worker that creates Token
+                records in batches, generates QR images via qr.service.js,
+                uploads to S3, updates TokenBatch progress. Must be resumable on
+                failure.
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- DAY 3 -->
+        <div class="day-card">
+          <div class="day-header" style="background: #fef3c7">
+            <div class="day-label">Day 3 — Wednesday</div>
+            <div class="day-title">
+              Pipeline completion + Anomaly + Notifications
+            </div>
+          </div>
+          <div class="day-body">
+            <ul>
+              <li>
+                <span class="person-badge p1">Dev 1</span> Complete pipeline
+                steps 6–10 (vendor dispatch, printing, shipment, completion,
+                cancel). Add stalledPipeline.job.js that marks pipelines as
+                stalled if no progress for 30 min. Wire Shiprocket webhook into
+                step 8.
+              </li>
+              <li>
+                <span class="person-badge p2">Dev 2</span> Complete
+                school_admin: scanLogs (list, filter, export CSV), scanAnomaly
+                (list, resolve, detail), notification (list, mark-read),
+                overview dashboard.
+              </li>
+              <li>
+                <span class="person-badge p3">Dev 3</span> Complete anomaly
+                detection engine: HIGH_FREQUENCY (Redis sliding window),
+                MULTIPLE_LOCATIONS (haversine between scans), AFTER_HOURS
+                (school timezone), BULK_SCRAPING (IP → multiple tokens). Each
+                detector writes ScanAnomaly and emits to notification queue.
+              </li>
+              <li>
+                <span class="person-badge p4">Dev 4</span> Complete notification
+                worker: fan-out per channel (SMS via MSG91, email via mailer,
+                push via Firebase FCM). Respect parent notification preferences
+                from ParentNotificationPrefs. Enforce quiet hours. Use
+                idempotency_key to prevent duplicate sends on retry.
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- DAY 4 -->
+        <div class="day-card">
+          <div class="day-header" style="background: #fdf4ff">
+            <div class="day-label">Day 4 — Thursday</div>
+            <div class="day-title">Super admin + Parents + Webhooks</div>
+          </div>
+          <div class="day-body">
+            <ul>
+              <li>
+                <span class="person-badge p1">Dev 1</span> Complete super_admin:
+                order management (list, detail, status-change, bulk), school
+                management (onboard, edit, suspend), pipeline dashboard. All
+                super_admin routes must have RBAC enforced at route level.
+              </li>
+              <li>
+                <span class="person-badge p2">Dev 2</span> Complete parents
+                module: registration flow (phone OTP → create ParentUser →
+                create Student skeleton → link to token via RegistrationNonce),
+                emergency profile CRUD, emergency contacts, card visibility
+                settings, card block/replace with OTP confirmation.
+              </li>
+              <li>
+                <span class="person-badge p3">Dev 3</span> Implement Razorpay
+                webhook handler: verify HMAC-SHA256 signature, deduplicate via
+                WebhookEvent.idempotency_key, process payment.captured → update
+                Payment + CardOrder + OrderPipeline. Implement Shiprocket
+                webhook: update OrderShipment status, advance pipeline step.
+              </li>
+              <li>
+                <span class="person-badge p4">Dev 4</span> Complete super_admin:
+                billing (subscription management, payment batch verification,
+                invoice generation, mark-paid), token overview, system health.
+                Add scheduler.service.js cron jobs: expired token cleanup,
+                behavioral cleanup, overdue subscription alerts.
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- DAY 5 -->
+        <div class="day-card">
+          <div class="day-header" style="background: #fff7ed">
+            <div class="day-label">Day 5 — Friday</div>
+            <div class="day-title">Security hardening + Integration</div>
+          </div>
+          <div class="day-body">
+            <ul>
+              <li>
+                <span class="person-badge p1">Dev 1</span> Integration testing:
+                run full order pipeline end-to-end in dev environment. Fix any
+                step transition bugs. Add pipeline.retry.js manual trigger for
+                super admins. Document all pipeline state transitions.
+              </li>
+              <li>
+                <span class="person-badge p2">Dev 2</span> Complete remaining
+                super_admin modules (developer: API keys, webhooks; safety: scan
+                anomaly review, IP blocklist; system: feature flags, maintenance
+                mode). Run full auth flow tests — all user types, all OTP
+                scenarios.
+              </li>
+              <li>
+                <span class="person-badge p3">Dev 3</span> Security hardening
+                day: run security.pentest.test.js. Fix all findings. Add
+                HONEYPOT_TRIGGERED anomaly (create fake tokens in DB, alert
+                immediately if scanned). Review all inputs for injection. Ensure
+                all encrypted fields (dob_encrypted, phone_encrypted,
+                doctor_phone_encrypted) are encrypted before write and decrypted
+                only when explicitly requested.
+              </li>
+              <li>
+                <span class="person-badge p4">Dev 4</span> Add observability:
+                structured Pino logging with trace-id on every request, BullMQ
+                job lifecycle events to audit log, error boundaries in all
+                workers. Set up Sentry error capture. Write API response time
+                baseline measurements.
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- DAY 6 -->
+        <div class="day-card">
+          <div class="day-header" style="background: #f0fdfa">
+            <div class="day-label">Day 6 — Saturday</div>
+            <div class="day-title">Performance + Caching + Testing</div>
+          </div>
+          <div class="day-body">
+            <ul>
+              <li>
+                <span class="person-badge p1">Dev 1</span> Redis caching: cache
+                school settings (5 min TTL), token status lookups on scan path
+                (30s TTL — hot path), subscription status (1 min TTL). Use
+                cache-aside pattern. Add cache invalidation in relevant
+                repositories.
+              </li>
+              <li>
+                <span class="person-badge p2">Dev 2</span> Write complete .http
+                request files for all modules. Review all API responses for
+                consistency — all must use ApiResponse wrapper. Remove any raw
+                Prisma errors leaking to client.
+              </li>
+              <li>
+                <span class="person-badge p3">Dev 3</span> Load test the scan
+                endpoint: simulate 1000 concurrent scans using k6 or autocannon.
+                Target: p99 under 300ms. Fix any bottlenecks found. Ensure
+                ScanLog writes are async (fire-and-forget after returning
+                response).
+              </li>
+              <li>
+                <span class="person-badge p4">Dev 4</span> Write integration
+                tests for: payment webhook flow, token generation batch,
+                notification fan-out, pipeline step transitions. Ensure all
+                tests pass in CI. Add test coverage badge to README.
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- DAY 7 -->
+        <div class="day-card">
+          <div
+            class="day-header"
+            style="background: #f8f7f4; border-top: 3px solid #2563eb"
+          >
+            <div class="day-label">Day 7 — Sunday</div>
+            <div class="day-title">Pre-production lock + Handoff</div>
+          </div>
+          <div class="day-body">
+            <ul>
+              <li>
+                <span class="person-badge p1">Dev 1</span> Final pipeline run:
+                create a real order → go through all 10 steps manually → verify
+                all DB records are correct. Fix any final bugs. Merge all
+                pipeline branches.
+              </li>
+              <li>
+                <span class="person-badge p2">Dev 2</span> Write API
+                documentation for all endpoints (use .http files as base).
+                Ensure all environment variables are documented in .env.example.
+                Review and clean up any TODO comments.
+              </li>
+              <li>
+                <span class="person-badge p3">Dev 3</span> Final security
+                checklist run (see Section 5). Ensure all pen-test scenarios
+                pass. Write threat model summary document for the team.
+              </li>
+              <li>
+                <span class="person-badge p4">Dev 4</span> Production deployment
+                prep: Docker/PM2 config, Redis config, environment separation,
+                health check endpoints. Ensure workers restart on crash. Deploy
+                to staging and run smoke tests.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <hr />
+
+      <!-- SECTION 4: MODULE COMPLETION MATRIX -->
+      <h2 class="section-title" id="s4">4. Module Completion Matrix</h2>
+      <p>
+        Fill this in daily. Green = done, amber = in progress, grey = not
+        started.
+      </p>
+
+      <table class="task-table">
+        <tr>
+          <th>Module</th>
+          <th>Controller</th>
+          <th>Repository</th>
+          <th>Service</th>
+          <th>Validation</th>
+          <th>Tests</th>
+          <th>Owner</th>
+        </tr>
+        <tr>
+          <td>auth</td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="person-badge p2">Dev 2</span></td>
+        </tr>
+        <tr>
+          <td>order (core)</td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td>—</td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="person-badge p1">Dev 1</span></td>
+        </tr>
+        <tr>
+          <td>pipeline/step1–5</td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="person-badge p1">Dev 1</span></td>
+        </tr>
+        <tr>
+          <td>pipeline/step6–10</td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="person-badge p1">Dev 1</span></td>
+        </tr>
+        <tr>
+          <td>scan</td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="person-badge p3">Dev 3</span></td>
+        </tr>
+        <tr>
+          <td>scan anomaly</td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="person-badge p3">Dev 3</span></td>
+        </tr>
+        <tr>
+          <td>parents</td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="person-badge p2">Dev 2</span></td>
+        </tr>
+        <tr>
+          <td>school_admin/card</td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="person-badge p2">Dev 2</span></td>
+        </tr>
+        <tr>
+          <td>school_admin/students</td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="person-badge p2">Dev 2</span></td>
+        </tr>
+        <tr>
+          <td>school_admin/qr</td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="person-badge p2">Dev 2</span></td>
+        </tr>
+        <tr>
+          <td>school_admin/tokens</td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="person-badge p2">Dev 2</span></td>
+        </tr>
+        <tr>
+          <td>school_admin/scanLogs</td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="person-badge p2">Dev 2</span></td>
+        </tr>
+        <tr>
+          <td>school_admin/notification</td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="person-badge p4">Dev 4</span></td>
+        </tr>
+        <tr>
+          <td>school_admin/overview</td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="person-badge p2">Dev 2</span></td>
+        </tr>
+        <tr>
+          <td>super_admin/school</td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="person-badge p1">Dev 1</span></td>
+        </tr>
+        <tr>
+          <td>super_admin/order</td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="person-badge p1">Dev 1</span></td>
+        </tr>
+        <tr>
+          <td>super_admin/business</td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="person-badge p4">Dev 4</span></td>
+        </tr>
+        <tr>
+          <td>super_admin/tokens</td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="person-badge p4">Dev 4</span></td>
+        </tr>
+        <tr>
+          <td>super_admin/safety</td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="person-badge p3">Dev 3</span></td>
+        </tr>
+        <tr>
+          <td>super_admin/system</td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="person-badge p4">Dev 4</span></td>
+        </tr>
+        <tr>
+          <td>token worker</td>
+          <td>—</td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td>—</td>
+          <td>—</td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="person-badge p4">Dev 4</span></td>
+        </tr>
+        <tr>
+          <td>notification worker</td>
+          <td>—</td>
+          <td>—</td>
+          <td><span class="badge badge-wip">WIP</span></td>
+          <td>—</td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="person-badge p4">Dev 4</span></td>
+        </tr>
+        <tr>
+          <td>webhook handlers</td>
+          <td>—</td>
+          <td>—</td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td>—</td>
+          <td><span class="badge badge-todo">TODO</span></td>
+          <td><span class="person-badge p4">Dev 4</span></td>
+        </tr>
+      </table>
+
+      <hr />
+
+      <!-- SECTION 5: SECURITY -->
+      <h2 class="section-title" id="s5">5. Cybersecurity Architecture</h2>
+
+      <h3>5.1 Threat model — what you're protecting</h3>
+
+      <table class="task-table">
+        <tr>
+          <th>Asset</th>
+          <th>Threat</th>
+          <th>Impact</th>
+          <th>Priority</th>
+        </tr>
+        <tr>
+          <td>QR scan endpoint (public)</td>
+          <td>
+            Enumeration of token_hash values, bot scraping of student emergency
+            data
+          </td>
+          <td>Mass exposure of child medical data</td>
+          <td><span class="badge badge-critical">Critical</span></td>
+        </tr>
+        <tr>
+          <td>Parent account</td>
+          <td>
+            Account takeover via OTP replay or SIM swap, unauthorized card block
+          </td>
+          <td>Child safety risk — cards blocked, parents locked out</td>
+          <td><span class="badge badge-critical">Critical</span></td>
+        </tr>
+        <tr>
+          <td>Student emergency profile</td>
+          <td>
+            Unauthorized data modification (blood group, emergency contacts)
+          </td>
+          <td>Wrong emergency response — life risk</td>
+          <td><span class="badge badge-critical">Critical</span></td>
+        </tr>
+        <tr>
+          <td>Super admin</td>
+          <td>Credential brute-force, session hijack, insider threat</td>
+          <td>Full system compromise, financial fraud</td>
+          <td><span class="badge badge-critical">Critical</span></td>
+        </tr>
+        <tr>
+          <td>Payment webhooks</td>
+          <td>
+            Replayed or forged payment events → unauthorized order completion
+          </td>
+          <td>Financial loss, cards shipped without payment</td>
+          <td><span class="badge badge-critical">Critical</span></td>
+        </tr>
+        <tr>
+          <td>Token generation</td>
+          <td>SSRF via QR content, token hash prediction</td>
+          <td>Forged cards, unauthorized student registration</td>
+          <td><span class="badge badge-high">High</span></td>
+        </tr>
+        <tr>
+          <td>School admin</td>
+          <td>
+            Horizontal privilege escalation (school A accesses school B data)
+          </td>
+          <td>Data breach, regulatory liability</td>
+          <td><span class="badge badge-high">High</span></td>
+        </tr>
+        <tr>
+          <td>Encrypted PII fields</td>
+          <td>Key rotation failure, plaintext logging, encryption oracle</td>
+          <td>GDPR/DPDPA violation, PII exposure</td>
+          <td><span class="badge badge-high">High</span></td>
+        </tr>
+      </table>
+
+      <h3>5.2 Security controls — layer by layer</h3>
+
+      <div class="sec-grid">
+        <div class="sec-card">
+          <h4 style="color: var(--red)">Transport &amp; Network</h4>
+          <ul>
+            <li>HTTPS only — HSTS header enforced</li>
+            <li>TLS 1.2 minimum, TLS 1.3 preferred</li>
+            <li>No mixed content</li>
+            <li>Nginx-level rate limiting as first line</li>
+            <li>Block private IP ranges in QR scan (SSRF)</li>
+            <li>Geo-block suspicious countries (optional)</li>
+          </ul>
+        </div>
+        <div class="sec-card">
+          <h4 style="color: var(--red)">Authentication</h4>
+          <ul>
+            <li>OTP: sha256 hash stored, never plaintext</li>
+            <li>OTP: 5 attempt max, hard expiry 10 min</li>
+            <li>OTP: rate limit 1 send per 60s per phone</li>
+            <li>JWT: RS256 (asymmetric) preferred over HS256</li>
+            <li>JWT: 15 min access, 7 day refresh</li>
+            <li>Refresh: rotation on every use, revoke old</li>
+            <li>Single-device: new login kills all old sessions</li>
+          </ul>
+        </div>
+        <div class="sec-card">
+          <h4 style="color: var(--red)">Authorization</h4>
+          <ul>
+            <li>RBAC: role checked at route middleware layer</li>
+            <li>Tenant scope: school_id from JWT, never from request body</li>
+            <li>Parent: can only access own students</li>
+            <li>School admin: can only access own school data</li>
+            <li>
+              Row-level: all queries include WHERE school_id = jwt.school_id
+            </li>
+            <li>
+              Super admin routes: separate prefix + separate middleware chain
+            </li>
+          </ul>
+        </div>
+        <div class="sec-card">
+          <h4 style="color: var(--amber)">Input Validation</h4>
+          <ul>
+            <li>All inputs validated via Zod before controller</li>
+            <li>Phone: E.164 format enforced</li>
+            <li>Amounts: always in paise (integer), never floats</li>
+            <li>UUIDs: validated before DB lookup</li>
+            <li>File uploads: type + size checked, no executable extensions</li>
+            <li>SQL injection: prevented by Prisma parameterisation</li>
+            <li>XSS: sanitize middleware strips script tags</li>
+          </ul>
+        </div>
+        <div class="sec-card">
+          <h4 style="color: var(--amber)">API Security</h4>
+          <ul>
+            <li>CSRF: double-submit cookie for state-changing ops</li>
+            <li>Rate limiting: per-IP and per-user-ID sliding window</li>
+            <li>HPP: prevent HTTP parameter pollution</li>
+            <li>Request size: 1MB body limit (50MB for file upload only)</li>
+            <li>Helmet: all security headers set</li>
+            <li>API versioning: /v1/ prefix enforced</li>
+            <li>Content-Type enforcement: JSON only except file upload</li>
+          </ul>
+        </div>
+        <div class="sec-card">
+          <h4 style="color: var(--amber)">Data Protection</h4>
+          <ul>
+            <li>
+              PII encrypted: dob, phone (emergency contacts), doctor phone
+            </li>
+            <li>Encryption: AES-256-GCM, key from env (never committed)</li>
+            <li>No PII in logs — log student_id not student name</li>
+            <li>No raw errors to client — only error codes</li>
+            <li>
+              Prisma: never select * — always explicit field list on sensitive
+              models
+            </li>
+            <li>
+              Soft delete: deleted_at never truly deletes PII without explicit
+              purge
+            </li>
+          </ul>
+        </div>
+        <div class="sec-card">
+          <h4 style="color: var(--green)">Scan Security (Critical path)</h4>
+          <ul>
+            <li>token_hash: sha256 of random 32 bytes — unguessable</li>
+            <li>Rate limit: 10 scans per token per minute (Redis)</li>
+            <li>Device fingerprint: detect same device scanning many tokens</li>
+            <li>Honeypot tokens: fake tokens that alert if scanned</li>
+            <li>Trusted zones: known school IPs suppress anomaly alerts</li>
+            <li>
+              INVALID result: never reveal why (expired vs revoked vs fake)
+            </li>
+          </ul>
+        </div>
+        <div class="sec-card">
+          <h4 style="color: var(--green)">Worker &amp; Job Security</h4>
+          <ul>
+            <li>BullMQ: workers run with minimal permissions</li>
+            <li>Job payloads: no PII — only IDs</li>
+            <li>Idempotency: all jobs check before re-executing</li>
+            <li>DLQ: failed jobs quarantined, not lost</li>
+            <li>Webhook signature: HMAC-SHA256 verified before processing</li>
+            <li>SSRF prevention: outbound HTTP through allowlist only</li>
+          </ul>
+        </div>
+        <div class="sec-card">
+          <h4 style="color: var(--green)">Monitoring &amp; Response</h4>
+          <ul>
+            <li>Structured logs: every request has trace-id</li>
+            <li>Auth failures: logged to AuthAttempt table + Redis counter</li>
+            <li>Attack detection: attackLogger middleware flags patterns</li>
+            <li>Error alerts: Sentry for 5xx errors</li>
+            <li>Anomaly alerts: push + SMS to parents within 10 seconds</li>
+            <li>IP blocklist: auto-add after 50 failed auths in 1 hour</li>
+          </ul>
+        </div>
+      </div>
+
+      <h3>5.3 Security implementation checklist (Dev 3 owns this)</h3>
+      <ul class="checklist">
+        <li>
+          <div class="check-box"></div>
+          Razorpay webhook: verify <code>x-razorpay-signature</code> HMAC-SHA256
+          before ANY processing
+        </li>
+        <li>
+          <div class="check-box"></div>
+          Shiprocket webhook: verify shared secret from env before processing
+        </li>
+        <li>
+          <div class="check-box"></div>
+          OTP resend: invalidate previous OTP record before sending new one
+        </li>
+        <li>
+          <div class="check-box"></div>
+          Session lookup: always check
+          <code>is_active = true AND expires_at > now()</code> — never just by
+          refresh_token_hash
+        </li>
+        <li>
+          <div class="check-box"></div>
+          Card block: require fresh OTP even if user is already logged in
+        </li>
+        <li>
+          <div class="check-box"></div>
+          Card replacement: require OTP + create new RegistrationNonce + revoke
+          old token
+        </li>
+        <li>
+          <div class="check-box"></div>
+          Emergency profile update: log EVERY change to ParentEditLog with
+          old_value
+        </li>
+        <li>
+          <div class="check-box"></div>
+          Encrypted field decryption: only decrypt when explicitly needed (never
+          in list queries)
+        </li>
+        <li>
+          <div class="check-box"></div>
+          Super admin login: rate limit to 5 attempts per IP per hour, then
+          block
+        </li>
+        <li>
+          <div class="check-box"></div>
+          All /public/ scan routes: verify token_hash exists and status is
+          ACTIVE before returning ANY data
+        </li>
+        <li>
+          <div class="check-box"></div>
+          Tenant scope middleware: unit test that school A cannot access school
+          B endpoint even with valid school A JWT
+        </li>
+        <li>
+          <div class="check-box"></div>
+          QR generation: validate QR content is only the scan URL — no SSRF via
+          injected URL
+        </li>
+        <li>
+          <div class="check-box"></div>
+          S3 presigned URLs: expiry 15 minutes max, no public-read on any bucket
+        </li>
+        <li>
+          <div class="check-box"></div>
+          Env vars: no secret committed to git — check with
+          <code>git secrets</code> or truffleHog pre-commit hook
+        </li>
+        <li>
+          <div class="check-box"></div>
+          Error responses: never include stack trace, Prisma error code, or SQL
+          snippet
+        </li>
+      </ul>
+
+      <h3>
+        5.4 Known vulnerability patterns to prevent (specific to this codebase)
+      </h3>
+
+      <div class="alert alert-red">
+        <strong
+          >IDOR on school_id — Most likely critical bug in current code</strong
+        >
+        If your repository functions accept <code>school_id</code> from the
+        request body or params (e.g.
+        <code>POST /schools/:schoolId/students</code>), verify that
+        <code>params.schoolId === req.user.school_id</code> in the middleware —
+        never trust the client. Check every repository function that takes
+        school_id as input.
+      </div>
+
+      <div class="alert alert-red">
+        <strong>Token status bypass on scan endpoint</strong>
+        Ensure the scan path checks <code>status = ACTIVE</code>. REVOKED and
+        EXPIRED tokens must return a generic error — never return student data
+        even to legitimate scanners. The distinction between REVOKED/EXPIRED
+        must NOT be in the public response.
+      </div>
+
+      <div class="alert alert-amber">
+        <strong>Race condition on pipeline step transitions</strong>
+        Two concurrent requests to advance the same pipeline step must not
+        create two OrderStepExecution rows. Use a Redis distributed lock keyed
+        on <code>pipeline:${order_id}:${step}</code> with 30s TTL at the start
+        of each step advancement.
+      </div>
+
+      <div class="alert alert-amber">
+        <strong>Notification duplicate on worker retry</strong>
+        If the notification worker crashes after sending SMS but before marking
+        the Notification record SENT, retry will resend. The
+        <code>idempotency_key</code> field added to Notification prevents the DB
+        write, but MSG91 and Firebase have their own dedup — check their docs.
+      </div>
+
+      <hr />
+
+      <!-- SECTION 6: API CONTRACT -->
+      <h2 class="section-title" id="s6">6. Critical API Contracts</h2>
+
+      <h3>
+        6.1 Public scan endpoint (highest priority — used by emergency
+        responders)
+      </h3>
+      <pre><code>GET /v1/scan/:token_hash
+
+// Response 200 — ACTIVE token
+{
+  "success": true,
+  "data": {
+    "student": {
+      "name": "Riya Sharma",          // only if visibility != HIDDEN
+      "photo_url": "https://cdn...",  // only if show_photo = true
+      "class": "5A",                  // only if school allows
+      "school_name": "DPS Kolkata"
+    },
+    "emergency": {
+      "blood_group": "B_POS",         // only if visibility = PUBLIC
+      "allergies": "Peanuts",
+      "conditions": "Asthma",
+      "contacts": [
+        { "name": "Rajesh Sharma", "phone": "+919876543210", "relationship": "Father" }
+      ]
+    },
+    "card": { "expires_at": "2026-12-31" }
+  }
+}
+
+// Response 404 — token not found, EXPIRED, REVOKED, INACTIVE
+// NEVER reveal which one — generic message only
+{ "success": false, "message": "Card not found or inactive" }
+
+// Response 429 — rate limited
+{ "success": false, "message": "Too many scan requests" }</code></pre>
+
+      <h3>6.2 Pipeline step advancement (super admin only)</h3>
+      <pre><code>POST /v1/super-admin/orders/:orderId/pipeline/advance
+Authorization: Bearer &lt;super_admin_jwt&gt;
+Content-Type: application/json
+
+{
+  "step": "ADVANCE_PAYMENT",
+  "notes": "Received ₹50,000 via NEFT, UTR 12345678",
+  "metadata": { "payment_ref": "UTR12345678", "amount_received": 5000000 }
+}
+
+// Response 200
+{
+  "success": true,
+  "data": {
+    "pipeline_id": "uuid",
+    "previous_step": "ADVANCE_INVOICE",
+    "current_step": "ADVANCE_PAYMENT",
+    "overall_progress": 30,
+    "step_execution_id": "uuid"
+  }
+}</code></pre>
+
+      <h3>6.3 Parent emergency profile update</h3>
+      <pre><code>PUT /v1/parents/students/:studentId/emergency
+Authorization: Bearer &lt;parent_jwt&gt;
+Idempotency-Key: &lt;uuid&gt;   // required on client
+
+{
+  "blood_group": "O_POS",
+  "allergies": "Peanuts, Tree nuts",
+  "conditions": "Type 1 Diabetes",
+  "contacts": [
+    { "name": "Father", "phone": "+919876543210", "relationship": "Father", "priority": 1 }
+  ]
+}
+// Response creates ParentEditLog record with old_value snapshot</code></pre>
+
+      <hr />
+
+      <!-- SECTION 7: DEPLOYMENT -->
+      <h2 class="section-title" id="s7">
+        7. Pre-production Deployment Checklist
+      </h2>
+
+      <ul class="checklist">
+        <li>
+          <div class="check-box"></div>
+          All environment variables set in production (verify with
+          <code>node src/config/env.js</code> which should throw on missing
+          required vars)
+        </li>
+        <li>
+          <div class="check-box"></div>
+          Database: connection pool size set to (CPU cores × 2) + 5, max 20
+        </li>
+        <li>
+          <div class="check-box"></div>
+          Redis: persistence enabled (AOF), maxmemory-policy = allkeys-lru
+        </li>
+        <li>
+          <div class="check-box"></div>
+          BullMQ workers: run as separate process (PM2 cluster for API, PM2 fork
+          for each worker type)
+        </li>
+        <li>
+          <div class="check-box"></div>
+          PM2 ecosystem.config.js: restart on crash, max memory limit, log
+          rotation
+        </li>
+        <li>
+          <div class="check-box"></div>
+          S3 bucket: no public-read ACL, only presigned URLs or CDN with signed
+          cookies
+        </li>
+        <li>
+          <div class="check-box"></div>
+          Nginx: rate limiting at reverse proxy level (separate from app-level)
+        </li>
+        <li>
+          <div class="check-box"></div>
+          Sentry DSN configured, test error is sent and received
+        </li>
+        <li>
+          <div class="check-box"></div>
+          Health check endpoint <code>GET /health</code> returns 200 with DB
+          ping + Redis ping + queue depth
+        </li>
+        <li>
+          <div class="check-box"></div>
+          Bull Board protected by super_admin session middleware
+        </li>
+        <li>
+          <div class="check-box"></div>
+          <code>.env</code> NOT in git. <code>.env.example</code> has all keys
+          with dummy values
+        </li>
+        <li>
+          <div class="check-box"></div>
+          Production DB: run <code>prisma migrate deploy</code> (not
+          <code>prisma migrate dev</code>)
+        </li>
+        <li>
+          <div class="check-box"></div>
+          Test Razorpay webhook end-to-end in staging with test event
+        </li>
+        <li>
+          <div class="check-box"></div>
+          Seed super admin account before go-live
+        </li>
+        <li>
+          <div class="check-box"></div>
+          CORS: origin whitelist set to production domain only — no wildcard
+        </li>
+      </ul>
+
+      <hr />
+
+      <!-- SECTION 8: AI PROMPT LIBRARY -->
+      <h2 class="section-title" id="s8">
+        8. AI Prompt Library for Fast Development
+      </h2>
+      <p>
+        Copy these exact prompts (with your code pasted in) to Claude, GPT-4, or
+        Deepseek to get high-quality output fast.
+      </p>
+
+      <div class="ai-box">
+        <strong>Prompt — Generate a complete repository file</strong>
+        "You are writing a Node.js repository module for a multi-tenant school
+        safety app. The pattern is: repository functions accept filters and
+        return Prisma results. No business logic in the repository — just DB
+        access. Prisma client is imported from
+        <code>../../config/prisma.js</code> as <code>prisma</code>. Tenant
+        isolation: every query must include <code>where: { school_id }</code>.
+        Generate <code>[module].repository.js</code> with functions: [list all
+        CRUD + filter functions you need]. Use only async/await. Throw custom
+        errors using <code>ApiError</code> from
+        <code>../../utils/response/ApiError.js</code>. Output only the code
+        file."
+      </div>
+
+      <div class="ai-box">
+        <strong
+          >Prompt — Generate Zod validation schema from Prisma model</strong
+        >
+        "Convert this Prisma model to a Zod v3 validation schema for an Express
+        API. Create: (1) createSchema for POST, (2) updateSchema for PATCH with
+        all fields optional, (3) querySchema for GET list with pagination (page,
+        limit, search, filters). Phone numbers must match E.164 format. Monetary
+        amounts are in paise (positive integers only). Output only the
+        <code>[module].validation.js</code> file using
+        <code>export const</code>. Prisma model: [paste model]"
+      </div>
+
+      <div class="ai-box">
+        <strong>Prompt — Generate BullMQ worker</strong>
+        "Write a BullMQ worker in Node.js for the queue named '[queue-name]'.
+        The worker must: (1) use concurrency 5, (2) implement exponential
+        backoff retry (attempts: 3, backoff: exponential starting 2000ms), (3)
+        log job start/complete/fail to console with job.id and data.order_id,
+        (4) check idempotency at start — if result already exists in DB, return
+        early, (5) update OrderStepExecution.status to RUNNING at start and
+        COMPLETED or FAILED at end, (6) handle partial failure by setting
+        StepStatus.PARTIAL_FAILED if some items fail. Prisma client:
+        <code>src/config/prisma.js</code>. Job payload shape: [describe your
+        payload]. Output complete worker file."
+      </div>
+
+      <div class="ai-box">
+        <strong>Prompt — Security review</strong>
+        "Review the following Node.js Express middleware/controller for security
+        vulnerabilities. Check specifically for: IDOR (can user access other
+        tenants' data?), missing auth checks, unsafe direct object reference,
+        lack of input validation, timing attacks in comparisons, any place where
+        error details leak to client, any place where school_id comes from
+        request instead of JWT. Suggest fixes as code diffs. Code: [paste file]"
+      </div>
+
+      <div class="ai-box">
+        <strong>Prompt — Test generation</strong>
+        "Write Vitest unit tests for this pipeline step function. The test must:
+        (1) mock the Prisma client using the pattern in
+        <code>tests/__mocks__/prisma.js</code>, (2) test the happy path (step
+        completes successfully), (3) test idempotency (calling twice returns
+        same result without duplicate DB writes), (4) test failure path (DB
+        error → step status set to FAILED), (5) test that OrderStepExecution is
+        updated correctly. Function: [paste step file]"
+      </div>
+
+      <div class="ai-box">
+        <strong>Prompt — Fix schema migration after model change</strong>
+        "I changed this Prisma model: [paste before/after diff]. Generate the
+        raw SQL migration that: (1) adds/changes the column, (2) backfills any
+        existing rows correctly, (3) adds the index, (4) is safe to run on a
+        production database with zero downtime (use CONCURRENTLY for indexes).
+        Output only the SQL."
+      </div>
+
+      <hr />
+
+      <div class="alert alert-green" style="margin-top: 40px">
+        <strong>Final note from the architect</strong>
+        Your schema is genuinely solid — most teams would not have this level of
+        schema clarity before writing module code. The gaps above are mostly
+        operational (idempotency keys, denorm fields) not architectural. Your
+        biggest risk is not missing features — it is unreviewed security logic
+        in auth and tenant scope middleware. Make Day 1 about locking those down
+        before anyone writes new module code on top of them. Good luck with the
+        sprint.
+      </div>
+
+      <div
+        style="
+          margin-top: 48px;
+          padding-top: 24px;
+          border-top: 1px solid var(--border);
+          font-size: 12px;
+          color: var(--muted);
+          text-align: center;
+        "
+      >
+        RESQID Backend Sprint Plan · Generated March 2026 · coreZ Technologies
+        Pvt. Ltd. · Confidential
+      </div>
+    </div>
+  </body>
+</html>

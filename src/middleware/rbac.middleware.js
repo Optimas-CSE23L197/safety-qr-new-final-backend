@@ -2,14 +2,6 @@
 // rbac.middleware.js — RESQID
 // Role-Based Access Control — strict, no implicit permissions
 // Every action must be explicitly allowed — deny by default
-//
-// SCHOOL_USER sub-roles:
-//   ADMIN  → full school-scoped permissions (the only active role)
-//   STAFF  → hard-blocked, no permissions, immediate 403
-//   VIEWER → hard-blocked, no permissions, immediate 403
-//
-// Only SCHOOL_ADMIN has access to the dashboard. STAFF and VIEWER accounts
-// can be created in the DB but cannot authenticate into any protected route.
 // =============================================================================
 
 import { ApiError } from "../utils/response/ApiError.js";
@@ -86,9 +78,6 @@ const PERMISSIONS = {
     "super_admin:read",
   ]),
 
-  // SCHOOL_ADMIN — the ONLY school sub-role with any permissions.
-  // STAFF and VIEWER are defined in the SchoolRole enum but have zero
-  // permissions in this system — they are hard-blocked at resolvePermissionSet.
   SCHOOL_ADMIN: new Set([
     // Students
     "student:read",
@@ -149,18 +138,6 @@ const PERMISSIONS = {
 
 // ─── Role Resolution ──────────────────────────────────────────────────────────
 
-/**
- * resolvePermissionSet
- *
- * For SCHOOL_USER, reads req.user.role (SchoolRole enum: ADMIN | STAFF | VIEWER)
- * which is populated by auth.middleware's loadUser query.
- *
- * DEPENDENCY: auth.middleware must select `role` in the SCHOOL_USER query.
- * If req.user.role is undefined here it means auth.middleware is not selecting
- * the field — this is a configuration bug, not a permissions bug. We default
- * to SCHOOL_VIEWER (most restrictive) rather than SCHOOL_USER (ADMIN) to
- * fail-safe on the side of least privilege.
- */
 function resolvePermissionSet(req) {
   const { role } = req;
 
@@ -171,34 +148,25 @@ function resolvePermissionSet(req) {
     const schoolRole = req.user?.role;
 
     if (!schoolRole) {
-      // Should never happen — means auth.middleware isn't selecting `role`
       req.log?.error(
         { userId: req.userId },
         "RBAC: req.user.role is undefined for SCHOOL_USER — hard blocking. Check auth.middleware loadUser select.",
       );
-      return new Set(); // no permissions — fail closed
+      return new Set();
     }
 
-    // ONLY ADMIN has permissions in this system.
-    // STAFF and VIEWER are intentionally blocked — they have no access.
     if (schoolRole === "ADMIN") return PERMISSIONS.SCHOOL_ADMIN;
 
-    // STAFF or VIEWER — hard block with a clear 403
     throw ApiError.forbidden(
       `School role '${schoolRole}' does not have access to this system`,
     );
   }
 
-  return new Set(); // Unknown role = no permissions
+  return new Set();
 }
 
 // ─── Core RBAC Middleware ─────────────────────────────────────────────────────
 
-/**
- * can(permission)
- * Usage: router.patch('/student/:id', authenticate, can('student:update_own'), handler)
- * Single permission check — hard deny if not in allowed set
- */
 export const can = (permission) =>
   asyncHandler(async (req, _res, next) => {
     if (!req.role) {
@@ -216,11 +184,6 @@ export const can = (permission) =>
     next();
   });
 
-/**
- * canAny(...permissions)
- * Allows if user has AT LEAST ONE of the listed permissions
- * Used for endpoints accessible by multiple roles
- */
 export const canAny = (...permissions) =>
   asyncHandler(async (req, _res, next) => {
     if (!req.role) {
@@ -239,11 +202,6 @@ export const canAny = (...permissions) =>
     next();
   });
 
-/**
- * canAll(...permissions)
- * Allows only if user has ALL listed permissions
- * Used for sensitive compound operations
- */
 export const canAll = (...permissions) =>
   asyncHandler(async (req, _res, next) => {
     if (!req.role) {
@@ -262,14 +220,6 @@ export const canAll = (...permissions) =>
     next();
   });
 
-/**
- * requireSchoolRole(...schoolRoles)
- * For SCHOOL_USER routes — check their sub-role (ADMIN/STAFF/VIEWER)
- * Must come after authenticate.
- *
- * In this system, only ADMIN has any access. Passing "ADMIN" here is the
- * only valid usage. STAFF and VIEWER are hard-blocked.
- */
 export const requireSchoolRole = (...schoolRoles) =>
   asyncHandler(async (req, _res, next) => {
     if (req.role !== "SCHOOL_USER") {
@@ -283,7 +233,6 @@ export const requireSchoolRole = (...schoolRoles) =>
       );
     }
 
-    // Hard-block STAFF and VIEWER regardless of what schoolRoles was passed
     if (userSchoolRole !== "ADMIN") {
       throw ApiError.forbidden(
         `School role '${userSchoolRole}' does not have access to this system`,
@@ -298,3 +247,33 @@ export const requireSchoolRole = (...schoolRoles) =>
 
     next();
   });
+
+// ✅ ADD THIS - Super Admin middleware
+export const requireSuperAdmin = asyncHandler(async (req, _res, next) => {
+  if (!req.role) {
+    throw ApiError.unauthorized("Not authenticated");
+  }
+
+  if (req.role !== "SUPER_ADMIN") {
+    throw ApiError.forbidden("Access denied. Super admin privileges required.");
+  }
+
+  next();
+});
+
+// Add this to rbac.middleware.js at the bottom
+export const rbac = (allowedRoles) => {
+  return asyncHandler(async (req, _res, next) => {
+    if (!req.role) {
+      throw ApiError.unauthorized("Not authenticated");
+    }
+
+    if (!allowedRoles.includes(req.role)) {
+      throw ApiError.forbidden(
+        `Access denied. Required roles: ${allowedRoles.join(", ")}`,
+      );
+    }
+
+    next();
+  });
+};

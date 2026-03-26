@@ -32,6 +32,7 @@ router.use("/auth", authRoute);
 router.use("/orders", orderRoutes);
 router.use("/school-admin", schoolAdminRouter);
 router.use("/parents", parentRoutes);
+
 // router.use("/super-admin",  superAdminRouter);
 // router.use("/parents",      parentRouter);
 

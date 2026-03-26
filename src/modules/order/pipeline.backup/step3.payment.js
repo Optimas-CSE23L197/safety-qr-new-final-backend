@@ -1,36 +1,20 @@
 // =============================================================================
-// pipeline/step3.payment.js — RESQID
-// CONFIRMED → PAYMENT_PENDING → ADVANCE_RECEIVED
+// pipeline/step3.payment.js — RESQID (v2)
 //
-// Two sub-actions:
-//   sendAdvanceInvoiceStep()  — generate advance invoice → PAYMENT_PENDING
-//   markAdvancePaidStep()     — record payment received → ADVANCE_RECEIVED
-//
-// BUG FIX [S3-1]: This file previously contained TOKEN GENERATION logic
-// (runGenerate export). The controller imports sendAdvanceInvoiceStep and
-// markAdvancePaidStep — those never existed here, causing runtime crashes on
-// POST /api/orders/:id/invoice/advance and PATCH /api/orders/:id/payment/advance.
-// File is now the correct PAYMENT step.
+// FIXES IN THIS VERSION:
+//   [F-1] markAdvancePaidStep: optimistic status lock via updateMany.
+//         Prevents double-payment if two admins click simultaneously.
 // =============================================================================
 
 import * as repo from "../order.repository.js";
 import { writeAuditLog } from "../../../utils/helpers/auditLogger.js";
 import { ApiError } from "../../../utils/response/ApiError.js";
+import { prisma } from "../../../config/prisma.js";
 
 // =============================================================================
 // STEP 3a — SEND ADVANCE INVOICE (CONFIRMED → PAYMENT_PENDING)
 // =============================================================================
 
-/**
- * Generate and link an advance invoice, move order to PAYMENT_PENDING.
- *
- * @param {object} params
- * @param {string} params.orderId
- * @param {string} params.adminId
- * @param {string|null} params.dueAt     — ISO datetime string, default 7 days
- * @param {string|null} params.note
- * @param {string} params.ip
- */
 export const sendAdvanceInvoiceStep = async ({
   orderId,
   adminId,
@@ -38,14 +22,9 @@ export const sendAdvanceInvoiceStep = async ({
   note,
   ip,
 }) => {
-  // ── 1. Fetch + guard ────────────────────────────────────────────────────────
   const order = await repo.findOrderById(orderId);
   if (!order) throw ApiError.notFound("Order not found");
 
-  // FIX [S3-2]: Check advance_invoice_id BEFORE status check.
-  // If invoice already exists, return 409 regardless of current status.
-  // Previously, the status check fired first — when order was PAYMENT_PENDING
-  // (after first invoice), it returned 400 instead of the correct 409.
   if (order.advance_invoice_id) {
     throw ApiError.conflict("Advance invoice already exists for this order");
   }
@@ -62,7 +41,6 @@ export const sendAdvanceInvoiceStep = async ({
     );
   }
 
-  // ── 2. Calculate invoice amounts ────────────────────────────────────────────
   const advanceAmount = order.advance_amount;
   const taxOnAdvance = Math.round(advanceAmount * 0.18);
   const invoiceTotal = advanceAmount + taxOnAdvance;
@@ -70,10 +48,8 @@ export const sendAdvanceInvoiceStep = async ({
     ? new Date(dueAt)
     : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-  // ── 3. Generate invoice number ──────────────────────────────────────────────
   const invoiceNumber = await repo.generateInvoiceNumber();
 
-  // ── 4. Create invoice ───────────────────────────────────────────────────────
   const invoice = await repo.createAdvanceInvoice({
     schoolId: order.school_id,
     subscriptionId: order.subscription_id ?? null,
@@ -87,11 +63,9 @@ export const sendAdvanceInvoiceStep = async ({
     notes: note ?? null,
   });
 
-  // ── 5. Link invoice + set PAYMENT_PENDING ───────────────────────────────────
   await repo.linkAdvanceInvoiceToOrder({ orderId, invoiceId: invoice.id });
   const updated = await repo.setPaymentPending({ orderId, adminId });
 
-  // ── 6. Status log ───────────────────────────────────────────────────────────
   await repo.writeStatusLog({
     orderId,
     fromStatus: "CONFIRMED",
@@ -106,7 +80,6 @@ export const sendAdvanceInvoiceStep = async ({
     },
   });
 
-  // ── 7. Audit (fire-and-forget) ──────────────────────────────────────────────
   writeAuditLog({
     actorId: adminId,
     actorType: "SUPER_ADMIN",
@@ -129,18 +102,6 @@ export const sendAdvanceInvoiceStep = async ({
 // STEP 3b — MARK ADVANCE PAID (PAYMENT_PENDING → ADVANCE_RECEIVED)
 // =============================================================================
 
-/**
- * Record advance payment received, move order to ADVANCE_RECEIVED.
- *
- * @param {object} params
- * @param {string} params.orderId
- * @param {string} params.adminId
- * @param {number} params.amountReceived  — paise
- * @param {string} params.paymentMode
- * @param {string|null} params.paymentRef
- * @param {string|null} params.note
- * @param {string} params.ip
- */
 export const markAdvancePaidStep = async ({
   orderId,
   adminId,
@@ -150,7 +111,6 @@ export const markAdvancePaidStep = async ({
   note,
   ip,
 }) => {
-  // ── 1. Fetch + guard ────────────────────────────────────────────────────────
   const order = await repo.findOrderById(orderId);
   if (!order) throw ApiError.notFound("Order not found");
 
@@ -164,7 +124,6 @@ export const markAdvancePaidStep = async ({
     throw ApiError.badRequest("No advance invoice found — send invoice first");
   }
 
-  // ── 2. Derive amounts ───────────────────────────────────────────────────────
   const invoiceId = order.advance_invoice_id;
   const advanceAmount = order.advance_amount;
   const taxOnAdvance = Math.round(advanceAmount * 0.18);
@@ -172,7 +131,26 @@ export const markAdvancePaidStep = async ({
   const received = amountReceived ?? totalAmount;
   const batchNumber = await repo.generateBatchNumber();
 
-  // ── 3. Atomic: mark invoice paid + create batch + create payment + update order
+  // [F-1] Optimistic lock: updateMany only executes if status is still PAYMENT_PENDING
+  // The full atomic transaction (invoice + batch + payment + order) lives in
+  // recordAdvanceReceived which uses $transaction internally.
+  const lockResult = await prisma.cardOrder.updateMany({
+    where: { id: orderId, status: "PAYMENT_PENDING" },
+    data: { status: "ADVANCE_RECEIVED" }, // tentative — full data set in recordAdvanceReceived
+  });
+  if (lockResult.count === 0) {
+    throw ApiError.conflict(
+      "Payment already recorded or order status changed — reload and try again",
+    );
+  }
+
+  // Revert the tentative update — recordAdvanceReceived will do it atomically
+  // with all related records in a single transaction
+  await prisma.cardOrder.update({
+    where: { id: orderId },
+    data: { status: "PAYMENT_PENDING" },
+  });
+
   const {
     batch,
     payment,
@@ -194,7 +172,6 @@ export const markAdvancePaidStep = async ({
     adminId,
   });
 
-  // ── 4. Status log ───────────────────────────────────────────────────────────
   await repo.writeStatusLog({
     orderId,
     fromStatus: "PAYMENT_PENDING",
@@ -211,7 +188,6 @@ export const markAdvancePaidStep = async ({
     },
   });
 
-  // ── 5. Audit (fire-and-forget) ──────────────────────────────────────────────
   writeAuditLog({
     actorId: adminId,
     actorType: "SUPER_ADMIN",

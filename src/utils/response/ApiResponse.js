@@ -1,17 +1,8 @@
 // =============================================================================
-// ApiResponse.js — RESQID
-// Standardized success response — every successful API response looks identical
-// Never send raw res.json({}) — always use ApiResponse
+// ApiResponse.js — RESQID (FIXED)
 // =============================================================================
 
 export class ApiResponse {
-  /**
-   * @param {number} statusCode
-   * @param {string} message
-   * @param {*}      [data]
-   * @param {object} [meta]      - pagination, counts, extra context
-   */
-
   constructor(statusCode, message, data = null, meta = null) {
     this.success = true;
     this.statusCode = statusCode;
@@ -20,36 +11,32 @@ export class ApiResponse {
     if (meta !== null) this.meta = meta;
   }
 
-  // ─── Static Factories ──────────────────────────────────────────────────────
-
-  static ok(data = null, message = "Success") {
-    return new ApiResponse(200, message, data);
+  // Static factories — send response directly
+  static ok(res, data = null, message = "Success") {
+    return new ApiResponse(200, message, data).send(res);
   }
 
-  static created(data = null, message = "Created successfully") {
-    return new ApiResponse(201, message, data);
+  static created(res, data = null, message = "Created successfully") {
+    return new ApiResponse(201, message, data).send(res);
   }
 
-  static accepted(data = null, message = "Request accepted") {
-    return new ApiResponse(202, message, data);
+  static accepted(res, data = null, message = "Accepted") {
+    return new ApiResponse(202, message, data).send(res);
   }
 
-  static noContent(message = "Deleted successfully") {
-    // 204 has no body — use 200 with no data for consistency
-    return new ApiResponse(200, message, null);
+  static noContent(res, message = "Deleted successfully") {
+    return new ApiResponse(200, message, null).send(res);
   }
 
-  static paginated(data, paginationMeta, message = "Success") {
-    return new ApiResponse(200, message, data, paginationMeta);
+  static paginated(res, data, meta, message = "Success") {
+    return new ApiResponse(200, message, data, meta).send(res);
   }
 
-  // ─── Send ──────────────────────────────────────────────────────────────────
-
-  /**
-   * send(res)
-   * Usage: return ApiResponse.ok(user).send(res)
-   */
+  // Send method
   send(res) {
+    if (!res || typeof res.status !== "function") {
+      throw new Error("Invalid response object passed to ApiResponse.send()");
+    }
     return res.status(this.statusCode).json(this.toJSON());
   }
 

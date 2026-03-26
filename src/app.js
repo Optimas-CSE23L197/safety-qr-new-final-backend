@@ -1,5 +1,5 @@
 // =============================================================================
-// app.js — RESQID (UPDATED with Behavioral Security & Full Logging)
+// app.js — RESQID (UPDATED with Order Orchestrator)
 // =============================================================================
 
 import express from "express";
@@ -41,7 +41,6 @@ import scanRoute from "./modules/scan/scan.routes.js";
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 import router from "./routes/index.js";
-import morgan from "morgan";
 import { accessLogger } from "./middleware/morgan.middleware.js";
 
 function validateCloudflareRequest(req, res, next) {
@@ -169,9 +168,7 @@ export function createApp() {
   app.use(sanitizeXss);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // ║  [NEW] BEHAVIORAL SECURITY MIDDLEWARE                                   ║
-  // ║  Place AFTER sanitization (clean data) but BEFORE rate limiting        ║
-  // ║  Analyzes patterns, blocks malicious IPs, adds delays for suspicious   ║
+  // ║  BEHAVIORAL SECURITY MIDDLEWARE                                         ║
   // ═══════════════════════════════════════════════════════════════════════════
   logger.info("✅ Loading behavioral security middleware");
   app.use(behavioralSecurity);
@@ -249,6 +246,16 @@ function registerHealthEndpoints(app) {
     const { getBehavioralReport } =
       await import("./middleware/behavioralSecurity.middleware.js");
 
+    // Check queue health
+    let queueHealth = { status: "unknown" };
+    try {
+      const { getQueueHealth } =
+        await import("./modules/order_orchestrator/queues/queue.manager.js");
+      queueHealth = await getQueueHealth();
+    } catch (err) {
+      queueHealth = { status: "error", error: err.message };
+    }
+
     const [db, cache, behavioral] = await Promise.allSettled([
       checkPrismaHealth(),
       checkRedisHealth(),
@@ -276,6 +283,7 @@ function registerHealthEndpoints(app) {
         health: allHealthy ? "healthy" : "degraded",
         database: dbResult.status,
         redis: cacheResult.status,
+        queues: queueHealth,
         responseTimeMs: responseTime,
         suspiciousIps: behavioralResult.totalSuspicious || 0,
         blockedIps: behavioralResult.totalBlocked || 0,
@@ -289,7 +297,7 @@ function registerHealthEndpoints(app) {
       uptime: Math.floor(process.uptime()),
       responseTimeMs: responseTime,
       version: process.env.npm_package_version ?? "unknown",
-      services: { database: dbResult, cache: cacheResult },
+      services: { database: dbResult, cache: cacheResult, queues: queueHealth },
       security: {
         suspiciousIps: behavioralResult.totalSuspicious || 0,
         blockedIps: behavioralResult.totalBlocked || 0,
@@ -313,4 +321,32 @@ function registerHealthEndpoints(app) {
       timestamp: new Date().toISOString(),
     });
   });
+}
+
+// Graceful shutdown handler
+export async function gracefulShutdown(app) {
+  logger.info("🛑 Graceful shutdown initiated...");
+
+  try {
+    const { stopAllWorkers } =
+      await import("./modules/order_orchestrator/workers/index.js");
+    const { closeQueues } =
+      await import("./modules/order_orchestrator/queues/queue.manager.js");
+
+    await stopAllWorkers();
+    await closeQueues();
+    logger.info("✅ Order orchestrator workers stopped");
+  } catch (err) {
+    logger.error({ error: err.message }, "Error stopping orchestrator workers");
+  }
+
+  // Close server
+  if (app) {
+    app.close(() => {
+      logger.info("✅ HTTP server closed");
+      process.exit(0);
+    });
+  } else {
+    process.exit(0);
+  }
 }

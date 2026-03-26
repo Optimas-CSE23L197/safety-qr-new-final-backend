@@ -139,6 +139,13 @@ export class ApiError extends Error {
     return err;
   }
 
+  // In ApiError.js, add this static method:
+
+  // 500
+  static internal(message = "Internal server error") {
+    return new ApiError(500, message, null, "INTERNAL_ERROR");
+  }
+
   // 503
   static serviceUnavailable(service = "Service") {
     return new ApiError(

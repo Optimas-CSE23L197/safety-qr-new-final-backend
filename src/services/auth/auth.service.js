@@ -307,7 +307,7 @@ export const sendOtp = async ({ phone, ipAddress, deviceId }) => {
 };
 
 // =============================================================================
-// PARENT LOGIN: VERIFY OTP
+// PARENT LOGIN: VERIFY OTP (FIXED - No automatic user creation)
 // =============================================================================
 
 export const verifyOtp = async ({ phone, otp, ipAddress, deviceInfo }) => {
@@ -357,18 +357,16 @@ export const verifyOtp = async ({ phone, otp, ipAddress, deviceInfo }) => {
   ]);
 
   const phoneIndex = hashForLookup(phone);
+
+  // ✅ FIX: Find existing parent ONLY - do NOT create
   let parent = await repo.findParentByPhoneIndex(phoneIndex);
 
-  let isNewUser = false;
-
+  // ✅ FIX: If user doesn't exist, throw error to redirect to registration
   if (!parent) {
-    parent = await repo.createParentUser({
-      encryptedPhone: encryptField(phone),
-      phoneIndex,
-      language: deviceInfo?.language,
-    });
-    isNewUser = true;
-    console.log(`👤 [NEW USER] Created parent account for ${phone}`);
+    console.log(`❌ [LOGIN FAILED] User not found for phone: ${phone}`);
+    throw ApiError.notFound(
+      "Account not found. Please register first using your RESQID card.",
+    );
   }
 
   if (parent.status !== "ACTIVE") {
@@ -416,7 +414,7 @@ export const verifyOtp = async ({ phone, otp, ipAddress, deviceInfo }) => {
     refresh_token: refreshToken,
     expires_at: expiresAt,
     token_type: "Bearer",
-    is_new_user: isNewUser,
+    is_new_user: false, // ✅ Always false for login
     parent_id: parent.id,
     has_children: children.length > 0,
   };

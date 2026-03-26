@@ -141,3 +141,178 @@ export async function findStudents({
 
   return { students, total };
 }
+
+/**
+ * getStudentById(schoolId, studentId)
+ * Returns complete student data with:
+ * - Basic info
+ * - Current token with status
+ * - Linked parents (with contact info)
+ * - Emergency profile (blood group, allergies, conditions, contacts)
+ * - Recent scan logs (last 20)
+ * - Card details
+ * - Location events (last 10)
+ */
+export async function getStudentById(schoolId, studentId) {
+  const student = await prisma.student.findFirst({
+    where: {
+      id: studentId,
+      school_id: schoolId,
+      deleted_at: null,
+    },
+    select: {
+      id: true,
+      first_name: true,
+      last_name: true,
+      photo_url: true,
+      class: true,
+      section: true,
+      roll_number: true,
+      admission_number: true,
+      is_active: true,
+      created_at: true,
+
+      // Current token
+      tokens: {
+        where: { status: { in: ["ACTIVE", "ISSUED"] } },
+        select: {
+          id: true,
+          status: true,
+          token_hash: true,
+          activated_at: true,
+          assigned_at: true,
+          expires_at: true,
+          created_at: true,
+          qrAsset: {
+            select: { public_url: true },
+          },
+        },
+        orderBy: { created_at: "desc" },
+        take: 1,
+      },
+
+      // Linked parents with their details
+      parents: {
+        select: {
+          relationship: true,
+          is_primary: true,
+          parent: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+              email: true,
+              is_phone_verified: true,
+              is_email_verified: true,
+              status: true,
+            },
+          },
+        },
+      },
+
+      // Emergency profile
+      emergency: {
+        select: {
+          id: true,
+          blood_group: true,
+          allergies: true,
+          conditions: true,
+          medications: true,
+          doctor_name: true,
+          doctor_phone_encrypted: true,
+          notes: true,
+          visibility: true,
+          is_visible: true,
+          contacts: {
+            where: { is_active: true },
+            select: {
+              id: true,
+              name: true,
+              phone_encrypted: true,
+              relationship: true,
+              priority: true,
+              display_order: true,
+              call_enabled: true,
+              whatsapp_enabled: true,
+            },
+            orderBy: { priority: "asc" },
+          },
+        },
+      },
+
+      // Recent scan logs (last 20)
+      scans: {
+        select: {
+          id: true,
+          result: true,
+          ip_address: true,
+          latitude: true,
+          longitude: true,
+          location_derived: true,
+          created_at: true,
+        },
+        orderBy: { created_at: "desc" },
+        take: 20,
+      },
+
+      // Card details
+      cards: {
+        where: {
+          token: { status: { in: ["ACTIVE", "ISSUED"] } },
+        },
+        select: {
+          id: true,
+          card_number: true,
+          file_url: true,
+          print_status: true,
+          printed_at: true,
+          created_at: true,
+          token: {
+            select: { status: true, expires_at: true },
+          },
+        },
+        take: 1,
+        orderBy: { created_at: "desc" },
+      },
+
+      // Recent location events (last 10)
+      locationEvents: {
+        select: {
+          id: true,
+          latitude: true,
+          longitude: true,
+          accuracy: true,
+          source: true,
+          created_at: true,
+        },
+        orderBy: { created_at: "desc" },
+        take: 10,
+      },
+
+      school: {
+        select: {
+          id: true,
+          name: true,
+          code: true,
+        },
+      },
+    },
+  });
+
+  if (!student) return null;
+
+  // Transform response to match frontend expectations
+  return {
+    ...student,
+    current_token: student.tokens[0] || null,
+    parent_details: student.parents.map((p) => ({
+      ...p.parent,
+      relationship: p.relationship,
+      is_primary: p.is_primary,
+    })),
+    recent_scans: student.scans,
+    current_card: student.cards[0] || null,
+    recent_locations: student.locationEvents,
+    emergency_profile: student.emergency,
+  };
+}

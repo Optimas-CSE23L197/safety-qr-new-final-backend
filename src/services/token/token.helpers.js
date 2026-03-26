@@ -511,3 +511,13 @@ export const resolveBranding = (school) => {
     showSchoolName: isPaid,
   };
 };
+
+export const batchGenerateCardNumbers = (schoolSerial, count) => {
+  const serial = String(schoolSerial).padStart(4, "0");
+  const cardNumbers = [];
+  for (let i = 0; i < count; i++) {
+    const randomHex = crypto.randomBytes(4).toString("hex").toUpperCase();
+    cardNumbers.push(`RQ-${serial}-${randomHex}`);
+  }
+  return cardNumbers;
+};

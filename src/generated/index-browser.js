@@ -404,15 +404,15 @@ exports.Prisma.CardOrderScalarFieldEnum = {
   subscription_id: 'subscription_id',
   order_number: 'order_number',
   order_type: 'order_type',
-  order_mode: 'order_mode',
-  channel: 'channel',
   card_count: 'card_count',
   status: 'status',
-  payment_status: 'payment_status',
+  order_channel: 'order_channel',
+  unit_price: 'unit_price',
+  grand_total: 'grand_total',
   advance_amount: 'advance_amount',
-  advance_paid_at: 'advance_paid_at',
   balance_amount: 'balance_amount',
-  balance_due_at: 'balance_due_at',
+  payment_status: 'payment_status',
+  advance_paid_at: 'advance_paid_at',
   balance_paid_at: 'balance_paid_at',
   advance_invoice_id: 'advance_invoice_id',
   balance_invoice_id: 'balance_invoice_id',
@@ -422,12 +422,6 @@ exports.Prisma.CardOrderScalarFieldEnum = {
   delivery_city: 'delivery_city',
   delivery_state: 'delivery_state',
   delivery_pincode: 'delivery_pincode',
-  delivery_notes: 'delivery_notes',
-  caller_name: 'caller_name',
-  caller_phone: 'caller_phone',
-  call_notes: 'call_notes',
-  notes: 'notes',
-  admin_notes: 'admin_notes',
   confirmed_by: 'confirmed_by',
   confirmed_at: 'confirmed_at',
   tokens_generated_by: 'tokens_generated_by',
@@ -444,6 +438,11 @@ exports.Prisma.CardOrderScalarFieldEnum = {
   status_changed_by: 'status_changed_by',
   status_changed_at: 'status_changed_at',
   status_note: 'status_note',
+  notes: 'notes',
+  admin_notes: 'admin_notes',
+  caller_name: 'caller_name',
+  caller_phone: 'caller_phone',
+  call_notes: 'call_notes',
   created_at: 'created_at',
   updated_at: 'updated_at'
 };
@@ -572,47 +571,14 @@ exports.Prisma.SubscriptionScalarFieldEnum = {
   school_id: 'school_id',
   plan: 'plan',
   status: 'status',
-  provider: 'provider',
-  provider_sub_id: 'provider_sub_id',
-  school_type: 'school_type',
   pricing_tier: 'pricing_tier',
   student_count: 'student_count',
   unit_price: 'unit_price',
-  renewal_price: 'renewal_price',
-  total_amount: 'total_amount',
-  tax_amount: 'tax_amount',
   grand_total: 'grand_total',
-  advance_paid: 'advance_paid',
-  balance_due: 'balance_due',
-  fully_paid_at: 'fully_paid_at',
   current_period_start: 'current_period_start',
   current_period_end: 'current_period_end',
   trial_ends_at: 'trial_ends_at',
-  cancel_reason: 'cancel_reason',
-  cancelled_at: 'cancelled_at',
-  created_at: 'created_at',
-  updated_at: 'updated_at'
-};
-
-exports.Prisma.SchoolPaymentBatchScalarFieldEnum = {
-  id: 'id',
-  school_id: 'school_id',
-  subscription_id: 'subscription_id',
-  batch_number: 'batch_number',
-  student_count: 'student_count',
-  unit_price: 'unit_price',
-  subtotal: 'subtotal',
-  tax_amount: 'tax_amount',
-  total_amount: 'total_amount',
-  amount_received: 'amount_received',
-  payment_ref: 'payment_ref',
-  payment_mode: 'payment_mode',
-  status: 'status',
-  is_advance: 'is_advance',
-  notes: 'notes',
-  received_at: 'received_at',
-  verified_by: 'verified_by',
-  verified_at: 'verified_at',
+  fully_paid_at: 'fully_paid_at',
   created_at: 'created_at',
   updated_at: 'updated_at'
 };
@@ -620,6 +586,7 @@ exports.Prisma.SchoolPaymentBatchScalarFieldEnum = {
 exports.Prisma.InvoiceScalarFieldEnum = {
   id: 'id',
   school_id: 'school_id',
+  order_id: 'order_id',
   subscription_id: 'subscription_id',
   invoice_number: 'invoice_number',
   invoice_type: 'invoice_type',
@@ -632,28 +599,21 @@ exports.Prisma.InvoiceScalarFieldEnum = {
   issued_at: 'issued_at',
   due_at: 'due_at',
   paid_at: 'paid_at',
-  pdf_url: 'pdf_url',
-  notes: 'notes',
-  created_at: 'created_at',
-  updated_at: 'updated_at'
+  pdf_url: 'pdf_url'
 };
 
 exports.Prisma.PaymentScalarFieldEnum = {
   id: 'id',
   school_id: 'school_id',
-  subscription_id: 'subscription_id',
   order_id: 'order_id',
   invoice_id: 'invoice_id',
+  subscription_id: 'subscription_id',
   amount: 'amount',
-  tax_amount: 'tax_amount',
-  currency: 'currency',
   status: 'status',
   provider: 'provider',
   provider_ref: 'provider_ref',
   payment_mode: 'payment_mode',
   is_advance: 'is_advance',
-  is_renewal: 'is_renewal',
-  failure_reason: 'failure_reason',
   metadata: 'metadata',
   created_at: 'created_at'
 };
@@ -971,6 +931,69 @@ exports.Prisma.IpBlocklistScalarFieldEnum = {
   is_active: 'is_active'
 };
 
+exports.Prisma.OrderPipelineScalarFieldEnum = {
+  id: 'id',
+  order_id: 'order_id',
+  current_step: 'current_step',
+  overall_progress: 'overall_progress',
+  is_stalled: 'is_stalled',
+  stalled_at: 'stalled_at',
+  stalled_reason: 'stalled_reason',
+  started_at: 'started_at',
+  completed_at: 'completed_at',
+  updated_at: 'updated_at'
+};
+
+exports.Prisma.OrderStepExecutionScalarFieldEnum = {
+  id: 'id',
+  pipeline_id: 'pipeline_id',
+  order_id: 'order_id',
+  step: 'step',
+  attempt_number: 'attempt_number',
+  status: 'status',
+  started_at: 'started_at',
+  completed_at: 'completed_at',
+  duration_ms: 'duration_ms',
+  progress: 'progress',
+  progress_detail: 'progress_detail',
+  result_summary: 'result_summary',
+  error_log: 'error_log',
+  triggered_by: 'triggered_by',
+  triggered_at: 'triggered_at'
+};
+
+exports.Prisma.JobExecutionScalarFieldEnum = {
+  id: 'id',
+  step_execution_id: 'step_execution_id',
+  order_id: 'order_id',
+  queue_name: 'queue_name',
+  bullmq_job_id: 'bullmq_job_id',
+  job_name: 'job_name',
+  status: 'status',
+  payload: 'payload',
+  queued_at: 'queued_at',
+  started_at: 'started_at',
+  completed_at: 'completed_at',
+  duration_ms: 'duration_ms',
+  progress: 'progress',
+  attempt_number: 'attempt_number',
+  max_attempts: 'max_attempts',
+  last_error: 'last_error',
+  error_log: 'error_log',
+  result: 'result'
+};
+
+exports.Prisma.StepLogScalarFieldEnum = {
+  id: 'id',
+  step_execution_id: 'step_execution_id',
+  order_id: 'order_id',
+  job_execution_id: 'job_execution_id',
+  level: 'level',
+  message: 'message',
+  context: 'context',
+  created_at: 'created_at'
+};
+
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -1021,9 +1044,7 @@ exports.ProfileVisibility = exports.$Enums.ProfileVisibility = {
 };
 
 exports.SchoolRole = exports.$Enums.SchoolRole = {
-  ADMIN: 'ADMIN',
-  STAFF: 'STAFF',
-  VIEWER: 'VIEWER'
+  ADMIN: 'ADMIN'
 };
 
 exports.AppTheme = exports.$Enums.AppTheme = {
@@ -1141,16 +1162,6 @@ exports.OrderType = exports.$Enums.OrderType = {
   PRE_DETAILS: 'PRE_DETAILS'
 };
 
-exports.OrderMode = exports.$Enums.OrderMode = {
-  BULK: 'BULK',
-  SINGLE: 'SINGLE'
-};
-
-exports.OrderChannel = exports.$Enums.OrderChannel = {
-  DASHBOARD: 'DASHBOARD',
-  CALL: 'CALL'
-};
-
 exports.OrderStatus = exports.$Enums.OrderStatus = {
   PENDING: 'PENDING',
   CONFIRMED: 'CONFIRMED',
@@ -1172,6 +1183,11 @@ exports.OrderStatus = exports.$Enums.OrderStatus = {
   COMPLETED: 'COMPLETED',
   CANCELLED: 'CANCELLED',
   REFUNDED: 'REFUNDED'
+};
+
+exports.OrderChannel = exports.$Enums.OrderChannel = {
+  DASHBOARD: 'DASHBOARD',
+  CALL: 'CALL'
 };
 
 exports.OrderPaymentStatus = exports.$Enums.OrderPaymentStatus = {
@@ -1249,22 +1265,6 @@ exports.SubscriptionStatus = exports.$Enums.SubscriptionStatus = {
   EXPIRED: 'EXPIRED'
 };
 
-exports.PaymentMode = exports.$Enums.PaymentMode = {
-  BANK_TRANSFER: 'BANK_TRANSFER',
-  UPI: 'UPI',
-  CHEQUE: 'CHEQUE',
-  RAZORPAY: 'RAZORPAY',
-  CASH: 'CASH'
-};
-
-exports.BatchPaymentStatus = exports.$Enums.BatchPaymentStatus = {
-  PENDING: 'PENDING',
-  PARTIALLY_PAID: 'PARTIALLY_PAID',
-  PAID: 'PAID',
-  OVERDUE: 'OVERDUE',
-  CANCELLED: 'CANCELLED'
-};
-
 exports.InvoiceType = exports.$Enums.InvoiceType = {
   ADVANCE: 'ADVANCE',
   BALANCE: 'BALANCE',
@@ -1285,6 +1285,14 @@ exports.PaymentStatus = exports.$Enums.PaymentStatus = {
   SUCCESS: 'SUCCESS',
   FAILED: 'FAILED',
   REFUNDED: 'REFUNDED'
+};
+
+exports.PaymentMode = exports.$Enums.PaymentMode = {
+  BANK_TRANSFER: 'BANK_TRANSFER',
+  UPI: 'UPI',
+  CHEQUE: 'CHEQUE',
+  RAZORPAY: 'RAZORPAY',
+  CASH: 'CASH'
 };
 
 exports.SessionRevokeReason = exports.$Enums.SessionRevokeReason = {
@@ -1365,6 +1373,43 @@ exports.NotificationStatus = exports.$Enums.NotificationStatus = {
   SUPPRESSED: 'SUPPRESSED'
 };
 
+exports.PipelineStepName = exports.$Enums.PipelineStepName = {
+  CREATE: 'CREATE',
+  CONFIRM: 'CONFIRM',
+  ADVANCE_INVOICE: 'ADVANCE_INVOICE',
+  ADVANCE_PAYMENT: 'ADVANCE_PAYMENT',
+  TOKEN_GENERATION: 'TOKEN_GENERATION',
+  CARD_DESIGN: 'CARD_DESIGN',
+  VENDOR_DISPATCH: 'VENDOR_DISPATCH',
+  PRINTING_START: 'PRINTING_START',
+  PRINTING_DONE: 'PRINTING_DONE',
+  SHIPMENT_CREATE: 'SHIPMENT_CREATE',
+  SHIPMENT_SHIPPED: 'SHIPMENT_SHIPPED',
+  DELIVERY: 'DELIVERY',
+  BALANCE_INVOICE: 'BALANCE_INVOICE',
+  BALANCE_PAYMENT: 'BALANCE_PAYMENT',
+  CANCEL: 'CANCEL',
+  REFUND: 'REFUND'
+};
+
+exports.StepStatus = exports.$Enums.StepStatus = {
+  PENDING: 'PENDING',
+  RUNNING: 'RUNNING',
+  COMPLETED: 'COMPLETED',
+  FAILED: 'FAILED',
+  PARTIAL_FAILED: 'PARTIAL_FAILED',
+  SKIPPED: 'SKIPPED'
+};
+
+exports.JobStatus = exports.$Enums.JobStatus = {
+  QUEUED: 'QUEUED',
+  RUNNING: 'RUNNING',
+  COMPLETED: 'COMPLETED',
+  FAILED: 'FAILED',
+  RETRYING: 'RETRYING',
+  DEAD: 'DEAD'
+};
+
 exports.Prisma.ModelName = {
   School: 'School',
   SchoolSettings: 'SchoolSettings',
@@ -1391,7 +1436,6 @@ exports.Prisma.ModelName = {
   Card: 'Card',
   CardRenewal: 'CardRenewal',
   Subscription: 'Subscription',
-  SchoolPaymentBatch: 'SchoolPaymentBatch',
   Invoice: 'Invoice',
   Payment: 'Payment',
   FeatureFlag: 'FeatureFlag',
@@ -1417,7 +1461,11 @@ exports.Prisma.ModelName = {
   IdempotencyKey: 'IdempotencyKey',
   FeatureFlagOverride: 'FeatureFlagOverride',
   AuthAttempt: 'AuthAttempt',
-  IpBlocklist: 'IpBlocklist'
+  IpBlocklist: 'IpBlocklist',
+  OrderPipeline: 'OrderPipeline',
+  OrderStepExecution: 'OrderStepExecution',
+  JobExecution: 'JobExecution',
+  StepLog: 'StepLog'
 };
 
 /**

@@ -6,12 +6,19 @@
 
 import slowDown from "express-slow-down";
 import { RedisStore } from "rate-limit-redis";
-import { redis } from "../config/redis.js";
+// ✅ FIX: was `redis` (enableOfflineQueue: false) — crashes at startup because
+// RedisStore runs EVAL in its constructor before the connection is ready.
+// middlewareRedis has enableOfflineQueue: true so the Lua script queues safely.
+import { middlewareRedis } from "../config/redis.js";
 import { extractIp } from "../utils/network/extractIp.js";
 
 function makeStore(prefix) {
   return new RedisStore({
-    sendCommand: (...args) => redis.call(...args),
+    // ✅ FIX: was `redis.call(...args)` — two bugs:
+    //   a) wrong client (redis instead of middlewareRedis)
+    //   b) wrong method shape — rate-limit-redis v4 calls sendCommand(command, ...args)
+    //      ioredis exposes this via .call(command, ...args)
+    sendCommand: (command, ...args) => middlewareRedis.call(command, ...args),
     prefix,
   });
 }
@@ -23,10 +30,10 @@ function makeStore(prefix) {
  * Runs BEFORE publicEmergencyLimiter
  */
 export const publicEmergencySlowDown = slowDown({
-  windowMs: 60 * 1000, // 1 minute
-  delayAfter: 5, // start slowing after 5 req
-  delayMs: (hits) => (hits - 5) * 500, // 500ms per extra req
-  maxDelayMs: 3000, // cap at 3 seconds
+  windowMs: 60 * 1000,
+  delayAfter: 5,
+  delayMs: (hits) => (hits - 5) * 500,
+  maxDelayMs: 3000,
   store: makeStore("sd:emergency:"),
   keyGenerator: (req) => extractIp(req),
   skip: (req) => false,
@@ -38,10 +45,10 @@ export const publicEmergencySlowDown = slowDown({
  * Works WITH authLimiter for layered brute-force protection
  */
 export const authSlowDown = slowDown({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   delayAfter: 3,
   delayMs: (hits) => (hits - 3) * 1000,
-  maxDelayMs: 10_000, // max 10 seconds
+  maxDelayMs: 10_000,
   store: makeStore("sd:auth:"),
   keyGenerator: (req) => extractIp(req),
 });
