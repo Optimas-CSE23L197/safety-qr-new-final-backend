@@ -14,11 +14,11 @@
 import crypto from 'crypto';
 import * as repo from './parent.repository.js';
 import { cacheAside, cacheDel } from '#utils/cache/cache.js';
-import { encryptField, decryptField, hashForLookup } from '#utils/security/encryption.js';
+import { encryptField, decryptField, hashForLookup } from '#shared/security/encryption.js';
 import { writeAuditLog } from '#utils/helpers/auditLogger.js';
-import { prisma } from '#config/database/prisma.js';
-import { redis } from '#config/database/redis.js';
-import { hashOtp } from '#services/otp/otp.service.js';
+import { prisma } from '#config/prisma.js';
+import { redis } from '#config/redis.js';
+import { hashOtp } from '#services/otp.service.js';
 import { logger } from '#config/logger.js';
 import { ENV } from '#config/env.js';
 

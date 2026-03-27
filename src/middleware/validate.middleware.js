@@ -11,8 +11,8 @@
 // =============================================================================
 
 import { ZodError } from 'zod';
-import { ApiError } from '#utils/response/ApiError.js';
-import { asyncHandler } from '#utils/response/asyncHandler.js';
+import { ApiError } from '#shared/response/ApiError.js';
+import { asyncHandler } from '#shared/response/asyncHandler.js';
 
 // ─── Validation Targets ───────────────────────────────────────────────────────
 

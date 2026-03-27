@@ -5,7 +5,7 @@
 // =============================================================================
 
 import crypto from 'crypto';
-import { prisma } from '#config/database/prisma.js';
+import { prisma } from '#config/prisma.js';
 import { ENV } from '#config/env.js';
 import { logger } from '#config/logger.js';
 import { uploadFile } from './storage/storage.service.js';

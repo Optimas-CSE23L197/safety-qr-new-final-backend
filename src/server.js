@@ -12,10 +12,64 @@
 import { createApp, printMiddlewareTable } from './app.js';
 import { ENV } from './config/env.js';
 import { logger } from './config/logger.js';
-import { prisma } from './config/database/prisma.js';
-import { redis } from './config/database/redis.js';
-import { jobScheduler } from '#services/jobs/scheduler.service.js';
+import { prisma } from './config/prisma.js';
+import { redis } from './config/redis.js';
+import { jobScheduler } from '../src/jobs/scheduler.service.js';
+import {
+  initializeInfrastructure,
+  getInfrastructure,
+} from './infrastructure/infrastructure.index.js';
+
 import os from 'os';
+
+// =============================================================================
+// SAFELY PARSE FIREBASE SERVICE ACCOUNT
+// =============================================================================
+
+let firebaseServiceAccount = null;
+
+try {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    firebaseServiceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    console.log('✅ Firebase service account loaded successfully');
+  } else {
+    console.warn('⚠️ FIREBASE_SERVICE_ACCOUNT not set. Push notifications will be disabled.');
+  }
+} catch (error) {
+  console.error('❌ Failed to parse FIREBASE_SERVICE_ACCOUNT:', error.message);
+  console.warn('⚠️ Push notifications will be disabled.');
+}
+
+// =============================================================================
+// INITIALIZE INFRASTRUCTURE WITH FALLBACKS
+// =============================================================================
+
+try {
+  await initializeInfrastructure({
+    cache: {
+      REDIS_URL: process.env.REDIS_URL,
+    },
+    email: {
+      API_KEY: process.env.RESEND_API_KEY,
+    },
+    push: firebaseServiceAccount
+      ? {
+          serviceAccount: firebaseServiceAccount,
+        }
+      : null, // Skip push if not configured
+    sms: {
+      AUTH_KEY: process.env.MSG91_AUTH_KEY,
+    },
+    storage: {
+      BUCKET: process.env.AWS_S3_BUCKET,
+    },
+  });
+
+  console.log('✅ Infrastructure initialized successfully');
+} catch (error) {
+  console.error('❌ Infrastructure initialization failed:', error.message);
+  // Don't exit - let the server start without some features
+}
 
 // ── ANSI helpers ───────────────────────────────────────────────────────────
 const c = {
@@ -41,6 +95,7 @@ const ENV_COLOR = {
 };
 
 process.stdout.setEncoding('utf8');
+
 // ── Banner ─────────────────────────────────────────────────────────────────
 function printBanner() {
   const ENVColor = ENV_COLOR[ENV.NODE_ENV] ?? c.white;
@@ -72,11 +127,15 @@ function printServerInfo(port) {
     ['Memory', `${Math.round(os.totalmem() / 1024 / 1024)} MB total`],
     ['Hostname', os.hostname()],
     ['Started', new Date().toISOString()],
+    ['Push Notifications', firebaseServiceAccount ? '✅ Enabled' : '⚠️ Disabled'],
+    ['Email', process.env.RESEND_API_KEY ? '✅ Configured' : '⚠️ Not configured'],
+    ['SMS', process.env.MSG91_AUTH_KEY ? '✅ Configured' : '⚠️ Not configured'],
+    ['Storage', process.env.AWS_S3_BUCKET ? '✅ Configured' : '⚠️ Not configured'],
   ];
 
   const ENVColor = ENV_COLOR[ENV.NODE_ENV] ?? c.white;
-  const w1 = 14;
-  const separator = `${c.gray}  ${'─'.repeat(46)}${c.reset}`;
+  const w1 = 18;
+  const separator = `${c.gray}  ${'─'.repeat(52)}${c.reset}`;
 
   console.log(separator);
   console.log(`  ${c.bold}${c.cyan}Server Info${c.reset}`);
@@ -84,12 +143,24 @@ function printServerInfo(port) {
 
   rows.forEach(([key, val]) => {
     const label = c.dim + key.padEnd(w1) + c.reset;
-    const value =
-      key === 'ENVironment'
-        ? `${ENVColor}${c.bold}${val}${c.reset}`
-        : key === 'Process'
-          ? `${c.green}${val}${c.reset}`
-          : `${c.white}${val}${c.reset}`;
+    let value;
+
+    if (key === 'ENVironment') {
+      value = `${ENVColor}${c.bold}${val}${c.reset}`;
+    } else if (key === 'Process') {
+      value = `${c.green}${val}${c.reset}`;
+    } else if (key.includes('Enabled') || key.includes('Configured')) {
+      if (val.includes('✅')) {
+        value = `${c.green}${val}${c.reset}`;
+      } else if (val.includes('⚠️')) {
+        value = `${c.yellow}${val}${c.reset}`;
+      } else {
+        value = `${c.white}${val}${c.reset}`;
+      }
+    } else {
+      value = `${c.white}${val}${c.reset}`;
+    }
+
     console.log(`  ${label}${value}`);
   });
 

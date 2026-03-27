@@ -30,7 +30,7 @@ import {
   checkIpBlocked,
   publicEmergencyLimiter,
   perTokenScanLimit,
-} from '#middleware/rateLimit.middleware.js';
+} from '#middleware/security/rateLimit.middleware.js';
 import { scanCodeSchema } from './scan.validation.js';
 
 const router = Router();

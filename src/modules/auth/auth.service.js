@@ -11,13 +11,13 @@
 
 import crypto from 'crypto';
 import bcrypt from 'bcrypt';
-import { redis } from '#config/database/redis.js';
-import { ApiError } from '#utils/response/ApiError.js';
-import { verifyPassword, hashToken } from '#utils/security/hashUtil.js';
-import { encryptField, hashForLookup } from '#utils/security/encryption.js';
-import { issueTokenPair } from '#utils/security/jwt.js';
-import { generateOtp, hashOtp } from '#services/otp/otp.service.js';
-import { generateDeviceFingerprint } from '#utils/security/deviceFingerprint.js';
+import { redis } from '#config/redis.js';
+import { ApiError } from '#shared/response/ApiError.js';
+import { verifyPassword, hashToken } from '#shared/security/hashUtil.js';
+import { encryptField, hashForLookup } from '#shared/security/encryption.js';
+import { issueTokenPair } from '#shared/security/jwt.js';
+import { generateOtp, hashOtp } from '#services/otp.service.js';
+import { generateDeviceFingerprint } from '#shared/security/deviceFingerprint.js';
 import { logger } from '#config/logger.js';
 import { ENV } from '#config/env.js';
 
@@ -25,7 +25,7 @@ import { ENV } from '#config/env.js';
 import {
   recordFailedAuth,
   recordSuccessfulAuth,
-} from '#middleware/behavioralSecurity.middleware.js';
+} from '#middleware/security/behavioralSecurity.middleware.js';
 
 // Repository imports
 import * as repo from './auth.repository.js';

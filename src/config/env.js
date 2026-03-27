@@ -274,6 +274,10 @@ if (IS_PROD && _env.REDIS_TLS && !_env.REDIS_PASSWORD) {
   errors.push('  ✗ REDIS_TLS is true but REDIS_PASSWORD is missing — TLS requires authentication');
 }
 
+if (_env.SMTP_PORT && (_env.SMTP_PORT < 1 || _env.SMTP_PORT > 65535)) {
+  errors.push('  ✗ SMTP_PORT must be between 1 and 65535');
+}
+
 // ─── Cross-Field Validation ───────────────────────────────────────────────────
 
 if (

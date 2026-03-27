@@ -7,7 +7,7 @@
 import * as service from './parent.service.js';
 import { requireOwnParent } from './parent.validation.js';
 import { logger } from '#config/logger.js';
-import { extractIp } from '#utils/network/extractIp.js'; // ✅ ADD THIS
+import { extractIp } from '#shared/network/extractIp.js'; // ✅ ADD THIS
 
 // For sendSms - you need to implement or import
 // import { sendSms } from '#services/communication/sms.service.js';

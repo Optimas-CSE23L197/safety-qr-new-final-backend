@@ -5,7 +5,7 @@
 // =============================================================================
 
 import { Router } from 'express';
-import { authenticate, requireParent } from '#middleware/auth.middleware.js';
+import { authenticate, requireParent } from '#middleware/auth/auth.middleware.js';
 
 import {
   getMe,

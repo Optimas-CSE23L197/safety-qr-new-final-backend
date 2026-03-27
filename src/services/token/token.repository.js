@@ -4,7 +4,7 @@
 // No business logic here — only Prisma calls
 // =============================================================================
 
-import { prisma } from '#config/database/prisma.js';
+import { prisma } from '#config/prisma.js';
 
 // =============================================================================
 // SCHOOL

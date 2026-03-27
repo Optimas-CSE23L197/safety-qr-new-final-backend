@@ -35,7 +35,7 @@
 
 import { logger } from '#config/logger.js';
 import * as repo from './token.repository.js';
-import { ApiError } from '#utils/response/ApiError.js';
+import { ApiError } from '#shared/response/ApiError.js';
 import {
   generateRawToken,
   hashRawToken,

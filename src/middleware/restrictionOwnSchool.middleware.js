@@ -12,10 +12,10 @@
 // blocking all school users in production.
 // =============================================================================
 
-import { prisma } from '#config/database/prisma.js';
-import { redis } from '#config/database/redis.js';
-import { ApiError } from '#utils/response/ApiError.js';
-import { asyncHandler } from '#utils/response/asyncHandler.js';
+import { prisma } from '#config/prisma.js';
+import { redis } from '#config/redis.js';
+import { ApiError } from '#shared/response/ApiError.js';
+import { asyncHandler } from '#shared/response/asyncHandler.js';
 
 const PARENT_CHILDREN_TTL = 2 * 60; // 2 minutes
 

@@ -16,10 +16,10 @@
 // Header: X-Device-ID  (FCM/APNS device token or stable device fingerprint)
 // =============================================================================
 
-import { prisma } from '#config/database/prisma.js';
-import { redis } from '#config/database/redis.js';
-import { ApiError } from '#utils/response/ApiError.js';
-import { asyncHandler } from '#utils/response/asyncHandler.js';
+import { prisma } from '#config/prisma.js';
+import { redis } from '#config/redis.js';
+import { ApiError } from '#shared/response/ApiError.js';
+import { asyncHandler } from '#shared/response/asyncHandler.js';
 
 const DEVICE_CACHE_TTL = 60; // 1 minute — hot path, cache aggressively
 const DEVICE_HEADER = 'x-device-id';

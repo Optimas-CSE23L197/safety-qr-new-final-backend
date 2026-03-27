@@ -18,8 +18,8 @@
 // =============================================================================
 
 import mongoSanitize from 'express-mongo-sanitize';
-import { asyncHandler } from '#utils/response/asyncHandler.js';
-import { ApiError } from '#utils/response/ApiError.js';
+import { asyncHandler } from '#shared/response/asyncHandler.js';
+import { ApiError } from '#shared/response/ApiError.js';
 
 // ─── NoSQL Injection Sanitizer ────────────────────────────────────────────────
 

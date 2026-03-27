@@ -8,7 +8,7 @@ import {
   isValidEmail,
   isValidOtp,
   zodRefine,
-} from '#utils/helpers/validator.js';
+} from '#shared/helpers/validator.js';
 
 // ─── Email + Password (Super Admin + School User login) ───────────────────────
 

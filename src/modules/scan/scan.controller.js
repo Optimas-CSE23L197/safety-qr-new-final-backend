@@ -13,9 +13,9 @@
 // =============================================================================
 
 import { resolveScan } from './scan.service.js';
-import { ApiResponse } from '#utils/response/ApiResponse.js';
-import { asyncHandler } from '#utils/response/asyncHandler.js';
-import { extractIp } from '#utils/network/extractIp.js';
+import { ApiResponse } from '#shared/response/ApiResponse.js';
+import { asyncHandler } from '#shared/response/asyncHandler.js';
+import { extractIp } from '#shared/network/extractIp.js';
 import crypto from 'crypto';
 
 export const scanQr = asyncHandler(async (req, res) => {

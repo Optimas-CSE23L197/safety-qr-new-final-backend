@@ -23,7 +23,7 @@
 //           the same null-safe sentinel UUID used for the token_id case.
 // =============================================================================
 
-import { prisma } from '#config/database/prisma.js';
+import { prisma } from '#config/prisma.js';
 import crypto from 'crypto'; // [FIX-1] was missing — createRegistrationNonce crashed
 
 // =============================================================================

@@ -3,7 +3,7 @@
 // ALL Prisma calls for the parent app. Nothing else.
 // =============================================================================
 
-import { prisma } from '#config/database/prisma.js';
+import { prisma } from '#config/prisma.js';
 
 // ─── /me — Home data ──────────────────────────────────────────────────────────
 

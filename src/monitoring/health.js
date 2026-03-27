@@ -15,8 +15,8 @@
 
 import { Router } from 'express';
 import os from 'os';
-import { prisma } from '#config/database/prisma.js';
-import { redis } from '#config/database/redis.js';
+import { prisma } from '#config/prisma.js';
+import { redis } from '#config/redis.js';
 import { ENV } from '#config/env.js';
 import { logger } from '#config/logger.js';
 

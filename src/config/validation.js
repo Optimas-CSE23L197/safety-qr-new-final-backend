@@ -14,7 +14,6 @@ import { ENV } from './env.js';
 import { logger } from './logger.js';
 import { prisma } from './prisma.js';
 import { redis, middlewareRedis, workerRedis } from './redis.js';
-import { s3, BUCKET } from './s3.js';
 
 // ─── Additional Constants (not in constants.js) ─────────────────────────────
 

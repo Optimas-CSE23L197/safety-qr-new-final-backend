@@ -3,8 +3,8 @@
 // =============================================================================
 
 import * as orderService from './order.service.js';
-import { ApiResponse } from '#utils/response/ApiResponse.js';
-import { asyncHandler } from '#utils/response/asyncHandler.js';
+import { ApiResponse } from '#shared/response/ApiResponse.js';
+import { asyncHandler } from '#shared/response/asyncHandler.js';
 
 // =============================================================================
 // ORDER CRUD

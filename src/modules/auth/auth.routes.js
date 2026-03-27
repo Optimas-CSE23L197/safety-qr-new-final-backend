@@ -6,9 +6,9 @@
 import { Router } from 'express';
 
 import { validate } from '#middleware/validate.middleware.js';
-import { authenticate } from '#middleware/auth.middleware.js';
-import { authLimiter } from '#middleware/rateLimit.middleware.js';
-import { authSlowDown } from '#middleware/slowDown.middleware.js';
+import { authenticate } from '#middleware/auth/auth.middleware.js';
+import { authLimiter } from '#middleware/security/rateLimit.middleware.js';
+import { authSlowDown } from '#middleware/security/slowDown.middleware.js';
 
 import {
   emailPasswordValidation,

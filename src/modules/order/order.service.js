@@ -8,9 +8,9 @@ import {
   isCancellable,
   requiresRefund,
 } from './order.helpers.js';
-import { ApiError } from '#utils/response/ApiError.js';
+import { ApiError } from '#shared/response/ApiError.js';
 import { notificationService } from '#services/communication/notification.service.js';
-import { prisma } from '#config/database/prisma.js';
+import { prisma } from '#config/prisma.js';
 
 // =============================================================================
 // HELPER — Get school with contact details for notifications

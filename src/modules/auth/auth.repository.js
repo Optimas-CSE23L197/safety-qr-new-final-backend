@@ -3,7 +3,7 @@
 // PURE DATABASE ACCESS LAYER — NO BUSINESS LOGIC
 // =============================================================================
 
-import { prisma } from '#config/database/prisma.js';
+import { prisma } from '#config/prisma.js';
 
 // =============================================================================
 // SUPER ADMIN

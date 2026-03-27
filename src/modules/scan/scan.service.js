@@ -57,7 +57,7 @@
 // =============================================================================
 
 import { decodeScanCode, ScanCodeError } from '#services/token/token.helpers.js';
-import { decryptField } from '#utils/security/encryption.js'; // [FIX-6] was capital S
+import { decryptField } from '#shared/security/encryption.js'; // [FIX-6] was capital S
 import * as repo from './scan.repository.js';
 
 // =============================================================================

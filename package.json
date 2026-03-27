@@ -36,7 +36,12 @@
     "#utils/*": "./src/utils/*",
     "#integrations/*": "./src/integrations/*",
     "#jobs/*": "./src/jobs/*",
-    "#prisma/*": "./prisma/*"
+    "#prisma/*": "./prisma/*",
+    "#infrastructure/*": "./src/infrastructure/*",
+    "#shared/*": "./src/shared/*",
+    "#monitoring/*": "./src/monitoring/*",
+    "#orchestrator/*": "./src/orchestrator/*",
+    "#workers/*": "./src/workers/*"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
@@ -52,9 +57,9 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.848.0",
+    "@aws-sdk/client-s3": "^3.1018.0",
     "@aws-sdk/client-ses": "^3.1018.0",
-    "@aws-sdk/s3-request-presigner": "^3.848.0",
+    "@aws-sdk/s3-request-presigner": "^3.1018.0",
     "@prisma/adapter-pg": "^7.4.2",
     "@prisma/client": "^7.5.0",
     "@sendgrid/mail": "^8.1.6",
@@ -91,6 +96,8 @@
     "qrcode": "^1.5.4",
     "rate-limit-redis": "^4.3.1",
     "razorpay": "^2.9.6",
+    "redis": "^5.11.0",
+    "resend": "^6.9.4",
     "rotating-file-stream": "^3.2.9",
     "sharp": "^0.34.5",
     "slugify": "^1.6.6",

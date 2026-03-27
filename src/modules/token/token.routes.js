@@ -15,9 +15,9 @@
 // =============================================================================
 
 import { Router } from 'express';
-import { asyncHandler } from '#utils/response/asyncHandler.js';
+import { asyncHandler } from '#shared/response/asyncHandler.js';
 import { validate } from '#middleware/validate.middleware.js';
-import { authenticateSuperAdmin } from '#middleware/auth.middleware.js';
+import { authenticateSuperAdmin } from '#middleware/auth/auth.middleware.js';
 import {
   generateSingleBlank,
   generateBulkBlank,

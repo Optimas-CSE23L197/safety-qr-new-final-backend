@@ -6,29 +6,29 @@ import { logger } from './config/logger.js'; // Remove morganMiddleware import
 
 // ── Middleware imports ─────────────────────────────────────────────────────
 // helmet.middleware.js exports apiHelmet as default
-import { apiHelmet as helmet } from './middleware/helmet.middleware.js';
+import { apiHelmet as helmet } from './middleware/security/helmet.middleware.js';
 
 // cors.middleware.js exports corsMiddleware as default
-import { corsMiddleware as cors } from './middleware/cors.middleware.js';
+import { corsMiddleware as cors } from './middleware/security/cors.middleware';
 
 import { requestId } from './middleware/requestId.middleware.js';
-import { tenantScope } from './middleware/tenantScope.middleware.js';
+import { tenantScope } from './middleware/auth/tenantScope.middleware.js';
 import { enforceContentType as contentType } from './middleware/contentType.middleware.js';
 import { sanitizeNoSql as sanitize } from './middleware/sanitize.middleware.js';
-import { sanitizeXss as xss } from './middleware/xss.middleware.js';
-import { hppProtection as hpp } from './middleware/hpp.middleware.js';
-import { enforceRequestSize as requestSize } from './middleware/requestSize.middleware.js';
-import { apiLimiter as rateLimit } from './middleware/rateLimit.middleware.js';
-import { apiSlowDown as slowDown } from './middleware/slowDown.middleware.js';
-import { ipBlockMiddleware as ipBlock } from './middleware/ipBlock.middleware.js';
-import { geoBlock } from './middleware/geoBlock.middleware.js';
+import { sanitizeXss as xss } from './middleware/security/xss.middleware.js';
+import { hppProtection as hpp } from './middleware/security/hpp.middleware.js';
+import { enforceRequestSize as requestSize } from './middleware/security/requestSize.middleware.js';
+import { apiLimiter as rateLimit } from './middleware/security/rateLimit.middleware.js';
+import { apiSlowDown as slowDown } from './middleware/security/slowDown.middleware.js';
+import { ipBlockMiddleware as ipBlock } from './middleware/security/ipBlock.middleware.js';
+import { geoBlock } from './middleware/security/geoBlock.middleware.js';
 import { maintenanceMode } from './middleware/maintenanceMode.middleware.js';
 import { verifyDevice as deviceFingerprint } from './middleware/deviceFingerprint.middleware.js';
-import { behavioralSecurity } from './middleware/behavioralSecurity.middleware.js';
-import { attackLogger } from './middleware/attackLogger.middleware.js';
-import { auditLog } from './middleware/auditLog.middleware.js';
+import { behavioralSecurity } from './middleware/security/behavioralSecurity.middleware.js';
+import { attackLogger } from './middleware/logging/attackLogger.middleware.js';
+import { auditLog } from './middleware/logging/auditLog.middleware.js';
 import { apiVersion } from './middleware/apiVersion.middleware.js';
-import { httpLogger } from './middleware/httpLogger.middleware.js'; // Import httpLogger directly
+import { httpLogger } from './middleware/logging/httpLogger.middleware.js'; // Import httpLogger directly
 import { globalErrorHandler as errorHandler } from './middleware/error.middleware.js';
 
 // ── Route imports ──────────────────────────────────────────────────────────

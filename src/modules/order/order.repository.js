@@ -2,8 +2,8 @@
 // order.repository.js — RESQID (FIXED — using correct field names)
 // =============================================================================
 
-import { prisma } from '#config/database/prisma.js';
-import { encryptField, decryptField } from '#utils/security/encryption.js';
+import { prisma } from '#config/prisma.js';
+import { encryptField, decryptField } from '#shared/security/encryption.js';
 import { calculateOrderFinancials, calculateBalanceDueDate } from './order.helpers.js';
 
 // =============================================================================

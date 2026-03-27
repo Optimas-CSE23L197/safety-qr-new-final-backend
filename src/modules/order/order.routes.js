@@ -3,7 +3,7 @@
 // =============================================================================
 
 import { Router } from 'express';
-import { authenticate } from '#middleware/auth.middleware.js';
+import { authenticate } from '#middleware/auth/auth.middleware.js';
 import { validate } from '#middleware/validate.middleware.js';
 import { ownSchoolOnly } from '#middleware/restrictionOwnSchool.middleware.js';
 import { rbac } from '#middleware/rbac.middleware.js';
