@@ -8,32 +8,32 @@
 // server.js → app.js → routes/index.js (/api/path) → /sub-path
 // =============================================================================
 
-import { Router } from "express";
+import { Router } from 'express';
 
 // ── Module routers ────────────────────────────────────────────────────────────
-import authRoute from "../modules/auth/auth.routes.js";
-import orderRoutes from "../modules/order/order.routes.js";
+import authRoute from '#modules/auth/auth.routes.js';
+// import orderRoutes from '#modules/order/order.routes.js';
 
 // parent route
-import parentRoutes from "../modules/parents/parent.routes.js";
+// import parentRoutes from '#modules/parents/parent.routes.js';
 
 // ── School admin sub-router ───────────────────────────────────────────────────
-import schoolAdminRouter from "./schoolAdmin.routes.js";
+// import schoolAdminRouter from './schoolAdmin.routes.js';
 
 // ── Super admin sub-router (future) ──────────────────────────────────────────
-// import superAdminRouter from "./superAdmin.routes.js";
+// import superAdminRouter from './superAdmin.routes.js';
 
 // ── Parent sub-router (future) ────────────────────────────────────────────────
-// import parentRouter from "./parent.routes.js";
+// import parentRouter from './parent.routes.js';
 
 const router = Router();
 
-router.use("/auth", authRoute);
-router.use("/orders", orderRoutes);
-router.use("/school-admin", schoolAdminRouter);
-router.use("/parents", parentRoutes);
+router.use('/auth', authRoute);
+// router.use("/orders", orderRoutes);
+// router.use("/school-admin", schoolAdminRouter);
+// router.use("/parents", parentRoutes);
 
 // router.use("/super-admin",  superAdminRouter);
-// router.use("/parents",      parentRouter);
+// router.use("/parents',      parentRouter);
 
 export default router;

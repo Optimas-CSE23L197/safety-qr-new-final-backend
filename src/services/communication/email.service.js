@@ -3,22 +3,22 @@
 // Environment-aware email service (DEV logs only, PROD sends real emails)
 // =============================================================================
 
-import { logger } from "../../config/logger.js";
+import { logger } from '#config/logger.js';
 
-const NODE_ENV = process.env.NODE_ENV || "development";
-const IS_PRODUCTION = NODE_ENV === "production";
+const NODE_ENV = process.env.NODE_ENV || 'development';
+const IS_PRODUCTION = NODE_ENV === 'production';
 
 // Email configuration (from env)
 const EMAIL_CONFIG = {
-  host: process.env.SMTP_HOST || "smtp.gmail.com",
-  port: parseInt(process.env.SMTP_PORT || "587"),
-  secure: process.env.SMTP_SECURE === "true",
+  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  port: parseInt(process.env.SMTP_PORT || '587'),
+  secure: process.env.SMTP_SECURE === 'true',
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
-  from: process.env.EMAIL_FROM || "noreply@resqid.com",
-  fromName: process.env.EMAIL_FROM_NAME || "ResQID",
+  from: process.env.EMAIL_FROM || 'noreply@resqid.com',
+  fromName: process.env.EMAIL_FROM_NAME || 'ResQID',
 };
 
 // Lazy load nodemailer only in production (optimization)
@@ -29,13 +29,13 @@ const getTransporter = async () => {
   if (transporter) return transporter;
 
   try {
-    const nodemailer = await import("nodemailer");
+    const nodemailer = await import('nodemailer');
     transporter = nodemailer.default.createTransport(EMAIL_CONFIG);
-    logger.info({ msg: "Email transporter initialized" });
+    logger.info({ msg: 'Email transporter initialized' });
     return transporter;
   } catch (error) {
     logger.error({
-      msg: "Failed to initialize email transporter",
+      msg: 'Failed to initialize email transporter',
       error: error.message,
     });
     return null;
@@ -53,7 +53,7 @@ const getTransporter = async () => {
 export const sendEmail = async (to, subject, html, text = null) => {
   // Validate input
   if (!to || !subject || !html) {
-    throw new Error("Missing required email parameters: to, subject, html");
+    throw new Error('Missing required email parameters: to, subject, html');
   }
 
   // Email format validation
@@ -63,12 +63,12 @@ export const sendEmail = async (to, subject, html, text = null) => {
   }
 
   // Sanitize subject (prevent injection)
-  const sanitizedSubject = subject.replace(/[\r\n]/g, "").slice(0, 200);
+  const sanitizedSubject = subject.replace(/[\r\n]/g, '').slice(0, 200);
 
   // DEVELOPMENT MODE: Log only
   if (!IS_PRODUCTION) {
     logger.info({
-      msg: "[DEV] Email would send:",
+      msg: '[DEV] Email would send:',
       to,
       subject: sanitizedSubject,
       htmlLength: html.length,
@@ -87,11 +87,11 @@ export const sendEmail = async (to, subject, html, text = null) => {
   try {
     const transporterInstance = await getTransporter();
     if (!transporterInstance) {
-      throw new Error("Email transporter not available");
+      throw new Error('Email transporter not available');
     }
 
     const mailOptions = {
-      from: `"${EMAIL_CONFIG.fromName}" <${EMAIL_CONFIG.from}>`,
+      from: `'${EMAIL_CONFIG.fromName}' <${EMAIL_CONFIG.from}>`,
       to,
       subject: sanitizedSubject,
       html,
@@ -101,7 +101,7 @@ export const sendEmail = async (to, subject, html, text = null) => {
     const info = await transporterInstance.sendMail(mailOptions);
 
     logger.info({
-      msg: "Email sent successfully",
+      msg: 'Email sent successfully',
       to,
       subject: sanitizedSubject,
       messageId: info.messageId,
@@ -115,7 +115,7 @@ export const sendEmail = async (to, subject, html, text = null) => {
     };
   } catch (error) {
     logger.error({
-      msg: "Failed to send email",
+      msg: 'Failed to send email',
       to,
       subject: sanitizedSubject,
       error: error.message,
@@ -136,32 +136,32 @@ export const sendTemplatedEmail = async (to, template, data = {}) => {
   // For now, we'll use a simple placeholder
   const templates = {
     ORDER_CREATED: {
-      subject: "Order Created - #{orderNumber}",
-      html: "<h1>Order Created</h1><p>Your order #{orderNumber} has been created.</p>",
+      subject: 'Order Created - #{orderNumber}',
+      html: '<h1>Order Created</h1><p>Your order #{orderNumber} has been created.</p>',
     },
     ORDER_APPROVED: {
-      subject: "Order Approved - #{orderNumber}",
-      html: "<h1>Order Approved</h1><p>Your order #{orderNumber} has been approved.</p>",
+      subject: 'Order Approved - #{orderNumber}',
+      html: '<h1>Order Approved</h1><p>Your order #{orderNumber} has been approved.</p>',
     },
     ADVANCE_INVOICE_READY: {
-      subject: "Advance Invoice Ready - #{orderNumber}",
-      html: "<h1>Advance Invoice Ready</h1><p>Invoice #{invoiceNumber} for ₹#{amount} is ready.</p>",
+      subject: 'Advance Invoice Ready - #{orderNumber}',
+      html: '<h1>Advance Invoice Ready</h1><p>Invoice #{invoiceNumber} for ₹#{amount} is ready.</p>',
     },
     PAYMENT_RECEIVED: {
-      subject: "Payment Received - #{orderNumber}",
-      html: "<h1>Payment Received</h1><p>Payment of ₹#{amount} received for order #{orderNumber}.</p>",
+      subject: 'Payment Received - #{orderNumber}',
+      html: '<h1>Payment Received</h1><p>Payment of ₹#{amount} received for order #{orderNumber}.</p>',
     },
     SHIPPED: {
-      subject: "Order Shipped - #{orderNumber}",
-      html: "<h1>Order Shipped</h1><p>Your order #{orderNumber} has been shipped. Track: #{trackingUrl}</p>",
+      subject: 'Order Shipped - #{orderNumber}',
+      html: '<h1>Order Shipped</h1><p>Your order #{orderNumber} has been shipped. Track: #{trackingUrl}</p>',
     },
     DELIVERED: {
-      subject: "Order Delivered - #{orderNumber}",
-      html: "<h1>Order Delivered</h1><p>Your order #{orderNumber} has been delivered.</p>",
+      subject: 'Order Delivered - #{orderNumber}',
+      html: '<h1>Order Delivered</h1><p>Your order #{orderNumber} has been delivered.</p>',
     },
     ORDER_COMPLETED: {
-      subject: "Order Completed - #{orderNumber}",
-      html: "<h1>Order Completed</h1><p>Thank you for your order #{orderNumber}.</p>",
+      subject: 'Order Completed - #{orderNumber}',
+      html: '<h1>Order Completed</h1><p>Thank you for your order #{orderNumber}.</p>',
     },
   };
 
@@ -175,7 +175,7 @@ export const sendTemplatedEmail = async (to, template, data = {}) => {
   let html = templateDef.html;
 
   for (const [key, value] of Object.entries(data)) {
-    const regex = new RegExp(`#{${key}}`, "g");
+    const regex = new RegExp(`#{${key}}`, 'g');
     subject = subject.replace(regex, value);
     html = html.replace(regex, value);
   }
@@ -188,7 +188,7 @@ export const sendTemplatedEmail = async (to, template, data = {}) => {
  * @param {Array<{to: string, subject: string, html: string}>} emails
  * @returns {Promise<Array<{to: string, success: boolean, error?: string}>>}
  */
-export const sendBulkEmails = async (emails) => {
+export const sendBulkEmails = async emails => {
   const results = [];
 
   for (const email of emails) {
@@ -212,18 +212,18 @@ export const sendBulkEmails = async (emails) => {
  */
 export const checkEmailHealth = async () => {
   if (!IS_PRODUCTION) {
-    return { status: "ok", mode: "development", simulated: true };
+    return { status: 'ok', mode: 'development', simulated: true };
   }
 
   try {
     const transporterInstance = await getTransporter();
     if (!transporterInstance) {
-      return { status: "error", error: "Transporter not initialized" };
+      return { status: 'error', error: 'Transporter not initialized' };
     }
     await transporterInstance.verify();
-    return { status: "ok", mode: "production" };
+    return { status: 'ok', mode: 'production' };
   } catch (error) {
-    return { status: "error", error: error.message };
+    return { status: 'error', error: error.message };
   }
 };
 

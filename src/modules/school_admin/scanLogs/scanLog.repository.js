@@ -30,27 +30,19 @@
 //   Token   → @@index([school_id])               — token → school guard
 // =============================================================================
 
-import { prisma } from "../../../config/prisma.js";
+import { prisma } from '#config/database/prisma.js';
 
 /**
  * findScanLogs({ schoolId, result, search, from, to, skip, take })
  * Returns: { logs, total }
  */
-export async function findScanLogs({
-  schoolId,
-  result,
-  search,
-  from,
-  to,
-  skip,
-  take,
-}) {
+export async function findScanLogs({ schoolId, result, search, from, to, skip, take }) {
   const where = buildWhere({ schoolId, result, search, from, to });
 
   const [rows, total] = await Promise.all([
     prisma.scanLog.findMany({
       where,
-      orderBy: { created_at: "desc" },
+      orderBy: { created_at: 'desc' },
       skip,
       take,
       select: {
@@ -95,7 +87,7 @@ export async function findScanLogs({
  *   Q2: aggregate(_avg, _count)  → avgResponseTime + total
  *
  * Cached in service layer — stats don't change per filter/search/page.
- * Date range is part of the cache key so "today" vs "all time" are separate.
+ * Date range is part of the cache key so "today" vs 'all time' are separate.
  *
  * Returns: { total, SUCCESS, INVALID, REVOKED, EXPIRED, INACTIVE, RATE_LIMITED, ERROR, avgResponseMs }
  */
@@ -105,7 +97,7 @@ export async function getScanLogStats({ schoolId, from, to }) {
 
   const [grouped, agg] = await Promise.all([
     prisma.scanLog.groupBy({
-      by: ["result"],
+      by: ['result'],
       where: statsWhere,
       _count: { result: true },
     }),
@@ -146,9 +138,7 @@ export async function getScanLogStats({ schoolId, from, to }) {
     total,
     failed,
     // Round to nearest ms, null if no scans yet
-    avgResponseMs: agg._avg.response_time_ms
-      ? Math.round(agg._avg.response_time_ms)
-      : null,
+    avgResponseMs: agg._avg.response_time_ms ? Math.round(agg._avg.response_time_ms) : null,
   };
 }
 
@@ -157,7 +147,7 @@ export async function getScanLogStats({ schoolId, from, to }) {
 function buildWhere({ schoolId, result, search, from, to }) {
   const where = {
     school_id: schoolId,
-    ...(result && result !== "ALL" && { result }),
+    ...(result && result !== 'ALL' && { result }),
     ...buildDateRange(from, to),
   };
 
@@ -168,18 +158,18 @@ function buildWhere({ schoolId, result, search, from, to }) {
   //   2. Token.token_hash startsWith search (indexed prefix match)
   //   3. Student first_name / last_name contains search (nested via token)
   where.OR = [
-    { ip_city: { contains: search, mode: "insensitive" } },
+    { ip_city: { contains: search, mode: 'insensitive' } },
     {
       token: {
-        token_hash: { startsWith: search, mode: "insensitive" },
+        token_hash: { startsWith: search, mode: 'insensitive' },
       },
     },
     {
       token: {
         student: {
           OR: [
-            { first_name: { contains: search, mode: "insensitive" } },
-            { last_name: { contains: search, mode: "insensitive" } },
+            { first_name: { contains: search, mode: 'insensitive' } },
+            { last_name: { contains: search, mode: 'insensitive' } },
           ],
         },
       },
@@ -208,7 +198,7 @@ function buildDateRange(from, to) {
 // ─── Shape ────────────────────────────────────────────────────────────────────
 
 function shapeLog(log) {
-  // Parse device from user_agent string — e.g. "Mozilla/5.0 (Android …) Chrome/…"
+  // Parse device from user_agent string — e.g. 'Mozilla/5.0 (Android …) Chrome/…'
   const { browser, platform } = parseUserAgent(log.user_agent);
 
   return {
@@ -216,13 +206,12 @@ function shapeLog(log) {
     token_hash: log.token?.token_hash ?? null,
     result: log.result,
     student_name: log.token?.student
-      ? `${log.token.student.first_name ?? ""} ${log.token.student.last_name ?? ""}`.trim() ||
-        null
+      ? `${log.token.student.first_name ?? ''} ${log.token.student.last_name ?? ''}`.trim() || null
       : null,
     ip_address: log.ip_address,
     ip_city: log.ip_city,
     ip_country: log.ip_country,
-    // "Chrome/Android" format — matches what frontend splits on "/"
+    // "Chrome/Android" format — matches what frontend splits on '/'
     device: browser && platform ? `${browser}/${platform}` : null,
     scan_purpose: log.scan_purpose,
     response_time_ms: log.response_time_ms,
@@ -239,28 +228,28 @@ function parseUserAgent(ua) {
   if (!ua) return { browser: null, platform: null };
 
   const browser = /Edg\//.test(ua)
-    ? "Edge"
+    ? 'Edge'
     : /OPR\//.test(ua)
-      ? "Opera"
+      ? 'Opera'
       : /Chrome\//.test(ua)
-        ? "Chrome"
+        ? 'Chrome'
         : /Firefox\//.test(ua)
-          ? "Firefox"
+          ? 'Firefox'
           : /Safari\//.test(ua)
-            ? "Safari"
-            : "Browser";
+            ? 'Safari'
+            : 'Browser';
 
   const platform = /Android/.test(ua)
-    ? "Android"
+    ? 'Android'
     : /iPhone|iPad/.test(ua)
-      ? "iOS"
+      ? 'iOS'
       : /Windows/.test(ua)
-        ? "Windows"
+        ? 'Windows'
         : /Linux/.test(ua)
-          ? "Linux"
+          ? 'Linux'
           : /Mac/.test(ua)
-            ? "macOS"
-            : "Unknown";
+            ? 'macOS'
+            : 'Unknown';
 
   return { browser, platform };
 }

@@ -14,10 +14,10 @@
  */
 export function sanitizePhone(phone) {
   if (!phone) return null;
-  let cleaned = String(phone).replace(/[\s\-().]/g, "");
+  let cleaned = String(phone).replace(/[\s\-().]/g, '');
 
   // Already E.164
-  if (cleaned.startsWith("+")) return cleaned;
+  if (cleaned.startsWith('+')) return cleaned;
 
   // 10-digit Indian number — add +91
   if (/^\d{10}$/.test(cleaned)) return `+91${cleaned}`;
@@ -48,8 +48,8 @@ export function sanitizeName(name) {
   if (!name) return null;
   return String(name)
     .trim()
-    .replace(/\s+/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+    .replace(/\s+/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase());
 }
 
 /**
@@ -67,7 +67,7 @@ export function sanitizeText(text, maxLength = 1000) {
  */
 export function sanitizePin(pin) {
   if (!pin) return null;
-  return String(pin).replace(/\D/g, "").slice(0, 6);
+  return String(pin).replace(/\D/g, '').slice(0, 6);
 }
 
 /**
@@ -90,11 +90,11 @@ export function sanitizeAmount(amount) {
  * Safe search string — strips special regex/SQL characters
  */
 export function sanitizeSearchQuery(q, maxLength = 100) {
-  if (!q) return "";
+  if (!q) return '';
   return String(q)
     .trim()
     .slice(0, maxLength)
-    .replace(/[<>'"`;\\]/g, "");
+    .replace(/[<>''`;\\]/g, '');
 }
 
 /**
@@ -104,7 +104,7 @@ export function sanitizeSearchQuery(q, maxLength = 100) {
 export function stripHtml(str) {
   if (!str) return null;
   return String(str)
-    .replace(/<[^>]*>/g, "")
+    .replace(/<[^>]*>/g, '')
     .trim();
 }
 
@@ -114,5 +114,5 @@ export function stripHtml(str) {
  */
 export function sanitizeOrderNumber(raw) {
   if (!raw) return null;
-  return String(raw).toUpperCase().trim().replace(/\s+/g, "");
+  return String(raw).toUpperCase().trim().replace(/\s+/g, '');
 }

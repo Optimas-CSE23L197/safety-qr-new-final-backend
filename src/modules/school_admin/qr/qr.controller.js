@@ -2,8 +2,8 @@
 // modules/school_admin/qr/qr.controller.js — RESQID
 // =============================================================================
 
-import { listStudentsWithQr, getStudentQr, assignToken } from "./qr.service.js";
-import { logger } from "../../../config/logger.js";
+import { listStudentsWithQr, getStudentQr, assignToken } from './qr.service.js';
+import { logger } from '#config/logger.js';
 
 /**
  * GET /api/school-admin/:schoolId/qr
@@ -17,11 +17,11 @@ export async function listQr(req, res) {
     const result = await listStudentsWithQr(schoolId, req.validatedQuery);
     return res.status(200).json({ success: true, data: result });
   } catch (err) {
-    logger.error({ schoolId, err: err.message }, "QR list fetch failed");
+    logger.error({ schoolId, err: err.message }, 'QR list fetch failed');
     return res.status(500).json({
       success: false,
-      code: "INTERNAL_ERROR",
-      message: "Failed to fetch students",
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch students',
     });
   }
 }
@@ -40,21 +40,18 @@ export async function getQrDetail(req, res) {
     if (!student) {
       return res.status(404).json({
         success: false,
-        code: "NOT_FOUND",
-        message: "Student not found",
+        code: 'NOT_FOUND',
+        message: 'Student not found',
       });
     }
 
     return res.status(200).json({ success: true, data: student });
   } catch (err) {
-    logger.error(
-      { schoolId, studentId, err: err.message },
-      "QR detail fetch failed",
-    );
+    logger.error({ schoolId, studentId, err: err.message }, 'QR detail fetch failed');
     return res.status(500).json({
       success: false,
-      code: "INTERNAL_ERROR",
-      message: "Failed to fetch QR detail",
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch QR detail',
     });
   }
 }
@@ -77,7 +74,7 @@ export async function assignTokenToStudent(req, res) {
     const result = await assignToken(schoolId, studentId, token_id);
     return res.status(200).json({
       success: true,
-      message: "Token assigned successfully",
+      message: 'Token assigned successfully',
       data: result,
     });
   } catch (err) {
@@ -90,14 +87,11 @@ export async function assignTokenToStudent(req, res) {
       });
     }
 
-    logger.error(
-      { schoolId, studentId, token_id, err: err.message },
-      "Token assign failed",
-    );
+    logger.error({ schoolId, studentId, token_id, err: err.message }, 'Token assign failed');
     return res.status(500).json({
       success: false,
-      code: "INTERNAL_ERROR",
-      message: "Failed to assign token",
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to assign token',
     });
   }
 }

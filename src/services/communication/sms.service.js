@@ -3,23 +3,23 @@
 // Environment-aware SMS service (DEV logs only, PROD sends via MSG91/other)
 // =============================================================================
 
-import { logger } from "../../config/logger.js";
+import { logger } from '#config/logger.js';
 
-const NODE_ENV = process.env.NODE_ENV || "development";
-const IS_PRODUCTION = NODE_ENV === "production";
+const NODE_ENV = process.env.NODE_ENV || 'development';
+const IS_PRODUCTION = NODE_ENV === 'production';
 
 // SMS configuration
 const SMS_CONFIG = {
-  provider: process.env.SMS_PROVIDER || "msg91", // "msg91", "twilio", "aws-sns"
+  provider: process.env.SMS_PROVIDER || 'msg91', // "msg91", "twilio", 'aws-sns'
   apiKey: process.env.SMS_API_KEY,
-  senderId: process.env.SMS_SENDER_ID || "RESQID",
+  senderId: process.env.SMS_SENDER_ID || 'RESQID',
   templateId: process.env.SMS_TEMPLATE_ID,
-  countryCode: process.env.SMS_COUNTRY_CODE || "91",
+  countryCode: process.env.SMS_COUNTRY_CODE || '91',
 };
 
 // Phone number validation (Indian format)
-const isValidIndianPhone = (phone) => {
-  const cleaned = String(phone).replace(/\D/g, "");
+const isValidIndianPhone = phone => {
+  const cleaned = String(phone).replace(/\D/g, '');
   return cleaned.length === 10 && /^[6-9]\d{9}$/.test(cleaned);
 };
 
@@ -28,8 +28,8 @@ const isValidIndianPhone = (phone) => {
  * @param {string} phone - Raw phone number
  * @returns {string} Formatted phone number
  */
-export const formatPhoneNumber = (phone) => {
-  const cleaned = String(phone).replace(/\D/g, "");
+export const formatPhoneNumber = phone => {
+  const cleaned = String(phone).replace(/\D/g, '');
   if (cleaned.length === 10) {
     return `+${SMS_CONFIG.countryCode}${cleaned}`;
   }
@@ -49,19 +49,19 @@ const sendViaMsg91 = async (phone, message) => {
   // This would use MSG91 API
   // For now, simulate with placeholder
   if (!SMS_CONFIG.apiKey) {
-    throw new Error("MSG91 API key not configured");
+    throw new Error('MSG91 API key not configured');
   }
 
   // MSG91 API endpoint
-  const url = "https://api.msg91.com/api/v5/flow/";
+  const url = 'https://api.msg91.com/api/v5/flow/';
   const response = await fetch(url, {
-    method: "POST",
+    method: 'POST',
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       authkey: SMS_CONFIG.apiKey,
     },
     body: JSON.stringify({
-      mobiles: phone.replace("+", ""),
+      mobiles: phone.replace('+', ''),
       sender: SMS_CONFIG.senderId,
       message: message.slice(0, 160), // SMS length limit
       ...(SMS_CONFIG.templateId && { template_id: SMS_CONFIG.templateId }),
@@ -84,7 +84,7 @@ const sendViaMsg91 = async (phone, message) => {
  */
 const sendViaTwilio = async (phone, message) => {
   // Placeholder for Twilio implementation
-  throw new Error("Twilio not configured");
+  throw new Error('Twilio not configured');
 };
 
 /**
@@ -96,14 +96,14 @@ const sendViaTwilio = async (phone, message) => {
 export const sendSms = async (phone, message) => {
   // Validate input
   if (!phone || !message) {
-    throw new Error("Missing required SMS parameters: phone, message");
+    throw new Error('Missing required SMS parameters: phone, message');
   }
 
   // Validate phone number
-  const cleanedPhone = String(phone).replace(/\D/g, "");
+  const cleanedPhone = String(phone).replace(/\D/g, '');
   if (!isValidIndianPhone(cleanedPhone) && cleanedPhone.length !== 12) {
     logger.warn({
-      msg: "Invalid phone number format",
+      msg: 'Invalid phone number format',
       phone,
       cleaned: cleanedPhone,
     });
@@ -116,7 +116,7 @@ export const sendSms = async (phone, message) => {
   // DEVELOPMENT MODE: Log only
   if (!IS_PRODUCTION) {
     logger.info({
-      msg: "[DEV] SMS would send:",
+      msg: '[DEV] SMS would send:',
       phone: formattedPhone,
       message: truncatedMessage,
       length: truncatedMessage.length,
@@ -133,10 +133,10 @@ export const sendSms = async (phone, message) => {
   try {
     let result;
     switch (SMS_CONFIG.provider) {
-      case "msg91":
+      case 'msg91':
         result = await sendViaMsg91(formattedPhone, truncatedMessage);
         break;
-      case "twilio":
+      case 'twilio':
         result = await sendViaTwilio(formattedPhone, truncatedMessage);
         break;
       default:
@@ -144,7 +144,7 @@ export const sendSms = async (phone, message) => {
     }
 
     logger.info({
-      msg: "SMS sent successfully",
+      msg: 'SMS sent successfully',
       phone: formattedPhone,
       messageId: result.messageId,
     });
@@ -152,7 +152,7 @@ export const sendSms = async (phone, message) => {
     return result;
   } catch (error) {
     logger.error({
-      msg: "Failed to send SMS",
+      msg: 'Failed to send SMS',
       phone: formattedPhone,
       error: error.message,
     });
@@ -178,7 +178,7 @@ export const sendOtp = async (phone, otp, expiryMinutes = 10) => {
  * @param {Array<{phone: string, message: string}>} messages
  * @returns {Promise<Array<{phone: string, success: boolean, error?: string}>>}
  */
-export const sendBulkSms = async (messages) => {
+export const sendBulkSms = async messages => {
   const results = [];
 
   for (const { phone, message } of messages) {
@@ -198,14 +198,14 @@ export const sendBulkSms = async (messages) => {
  */
 export const checkSmsHealth = async () => {
   if (!IS_PRODUCTION) {
-    return { status: "ok", mode: "development", simulated: true };
+    return { status: 'ok', mode: 'development', simulated: true };
   }
 
   if (!SMS_CONFIG.apiKey) {
-    return { status: "error", error: "SMS API key not configured" };
+    return { status: 'error', error: 'SMS API key not configured' };
   }
 
-  return { status: "ok", mode: "production", provider: SMS_CONFIG.provider };
+  return { status: 'ok', mode: 'production', provider: SMS_CONFIG.provider };
 };
 
 export default {

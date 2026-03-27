@@ -20,11 +20,11 @@
 //       - new tokens assigned to students
 // =============================================================================
 
-import * as repo from "./token.repository.js";
-import { cacheAside, cacheDel } from "../../../utils/cache/cache.js";
-import { buildOffsetMeta } from "../../../utils/response/paginate.js";
+import * as repo from './token.repository.js';
+import { cacheAside, cacheDel } from '#utils/cache/cache.js';
+import { buildOffsetMeta } from '#utils/response/paginate.js';
 
-const STATS_KEY = (schoolId) => `token_stats:${schoolId}`;
+const STATS_KEY = schoolId => `token_stats:${schoolId}`;
 const STATS_TTL = 2 * 60; // 2 minutes
 
 export async function getTokenInventory(schoolId, query) {
@@ -46,9 +46,7 @@ export async function getTokenInventory(schoolId, query) {
 }
 
 async function getStatsCached(schoolId) {
-  return cacheAside(STATS_KEY(schoolId), STATS_TTL, () =>
-    repo.getTokenStats(schoolId),
-  );
+  return cacheAside(STATS_KEY(schoolId), STATS_TTL, () => repo.getTokenStats(schoolId));
 }
 
 export async function invalidateTokenStats(schoolId) {

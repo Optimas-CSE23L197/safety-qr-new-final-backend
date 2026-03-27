@@ -50,18 +50,15 @@
 //   [FIX-4] school_id sentinel on token-not-found path — "unknown" is not a
 //           valid UUID; replaced with null-UUID sentinel to avoid FK violation.
 //   [FIX-5] import path fix — was "../../services/token/token.helpers.js",
-//           correct path is "../../services/token/token.helpers.js" per folder
+//           correct path is "../../services/token/token.helpers.js' per folder
 //           structure. Verify against your actual layout.
-//   [FIX-6] import path fix — was "../../utils/Security/encryption.js"
-//           (capital S), corrected to "../../utils/security/encryption.js".
+//   [FIX-6] import path fix — was '../../utils/Security/encryption.js'
+//           (capital S), corrected to '../../utils/security/encryption.js'.
 // =============================================================================
 
-import {
-  decodeScanCode,
-  ScanCodeError,
-} from "../../services/token/token.helpers.js";
-import { decryptField } from "../../utils/security/encryption.js"; // [FIX-6] was capital S
-import * as repo from "./scan.repository.js";
+import { decodeScanCode, ScanCodeError } from '#services/token/token.helpers.js';
+import { decryptField } from '#utils/security/encryption.js'; // [FIX-6] was capital S
+import * as repo from './scan.repository.js';
 
 // =============================================================================
 // CONSTANTS
@@ -75,10 +72,10 @@ import * as repo from "./scan.repository.js";
 const MIN_RESPONSE_MS = 100;
 
 // Sentinel school UUID used in ScanLog writes when school is unknown.
-// Must be a valid UUID format (not "unknown") to avoid FK constraint failure.
-// [FIX-4] was "unknown" which caused a Prisma FK validation error.
-const SENTINEL_SCHOOL_ID = "00000000-0000-0000-0000-000000000000";
-const SENTINEL_TOKEN_ID = "00000000-0000-0000-0000-000000000000";
+// Must be a valid UUID format (not "unknown') to avoid FK constraint failure.
+// [FIX-4] was 'unknown' which caused a Prisma FK validation error.
+const SENTINEL_SCHOOL_ID = '00000000-0000-0000-0000-000000000000';
+const SENTINEL_TOKEN_ID = '00000000-0000-0000-0000-000000000000';
 
 // =============================================================================
 // MAIN — resolveScan
@@ -114,7 +111,7 @@ export const resolveScan = async ({
     repo.writeScanLog({
       tokenId: SENTINEL_TOKEN_ID,
       schoolId: SENTINEL_SCHOOL_ID,
-      result: "INVALID",
+      result: 'INVALID',
       ip,
       userAgent,
       deviceHash,
@@ -122,11 +119,11 @@ export const resolveScan = async ({
     });
 
     return respond(startTime, {
-      state: "INVALID",
+      state: 'INVALID',
       message:
         err instanceof ScanCodeError
-          ? "This QR code is not valid."
-          : "Something went wrong. Please try again.",
+          ? 'This QR code is not valid.'
+          : 'Something went wrong. Please try again.',
     });
   }
 
@@ -137,16 +134,16 @@ export const resolveScan = async ({
     // Valid crypto but UUID not in DB — counterfeit or deleted token.
     repo.writeScanLog({
       tokenId,
-      schoolId: SENTINEL_SCHOOL_ID, // [FIX-4] was "unknown"
-      result: "INVALID",
+      schoolId: SENTINEL_SCHOOL_ID, // [FIX-4] was 'unknown'
+      result: 'INVALID',
       ip,
       userAgent,
       deviceHash,
       responseTimeMs: Date.now() - startTime,
     });
     return respond(startTime, {
-      state: "INVALID",
-      message: "This QR code is not recognised.",
+      state: 'INVALID',
+      message: 'This QR code is not recognised.',
     });
   }
 
@@ -160,55 +157,55 @@ export const resolveScan = async ({
     repo.writeScanLog({
       tokenId,
       schoolId,
-      result: "EXPIRED",
+      result: 'EXPIRED',
       ip,
       userAgent,
       deviceHash,
       responseTimeMs: Date.now() - startTime,
     });
     return respond(startTime, {
-      state: "EXPIRED",
+      state: 'EXPIRED',
       school: safeSchoolMinimal(token.school), // [FIX-3] name only on dead cards
-      message: "This card has expired. Please contact the school to renew.",
+      message: 'This card has expired. Please contact the school to renew.',
     });
   }
 
-  if (token.status === "REVOKED") {
+  if (token.status === 'REVOKED') {
     repo.writeScanLog({
       tokenId,
       schoolId,
-      result: "REVOKED",
+      result: 'REVOKED',
       ip,
       userAgent,
       deviceHash,
       responseTimeMs: Date.now() - startTime,
     });
     return respond(startTime, {
-      state: "REVOKED",
+      state: 'REVOKED',
       school: safeSchoolMinimal(token.school), // [FIX-3] name only on dead cards
-      message: "This card has been deactivated.",
+      message: 'This card has been deactivated.',
     });
   }
 
-  if (token.status === "INACTIVE") {
+  if (token.status === 'INACTIVE') {
     repo.writeScanLog({
       tokenId,
       schoolId,
-      result: "INACTIVE",
+      result: 'INACTIVE',
       ip,
       userAgent,
       deviceHash,
       responseTimeMs: Date.now() - startTime,
     });
     return respond(startTime, {
-      state: "INACTIVE",
+      state: 'INACTIVE',
       school: safeSchoolFull(token.school),
-      message: "This card is currently inactive.",
+      message: 'This card is currently inactive.',
     });
   }
 
   // ── 4. UNASSIGNED — card exists, parent hasn't registered yet ─────────────
-  if (token.status === "UNASSIGNED" || !token.student_id) {
+  if (token.status === 'UNASSIGNED' || !token.student_id) {
     // [FIX-2] Deduplication — reuse existing live nonce rather than creating
     // a new one on every scan. Prevents RegistrationNonce table flooding when
     // someone repeatedly scans an unregistered card.
@@ -220,60 +217,58 @@ export const resolveScan = async ({
     repo.writeScanLog({
       tokenId,
       schoolId,
-      result: "SUCCESS",
+      result: 'SUCCESS',
       ip,
       userAgent,
       deviceHash,
       responseTimeMs: Date.now() - startTime,
     });
     return respond(startTime, {
-      state: "UNREGISTERED",
+      state: 'UNREGISTERED',
       school: safeSchoolFull(token.school),
       nonce,
       nonceExpiresAt: expiresAt,
-      message:
-        "This card hasn't been registered yet. Scan to register your child.",
+      message: "This card hasn't been registered yet. Scan to register your child.",
     });
   }
 
   // ── 5. ISSUED — delivered but not yet activated ───────────────────────────
-  if (token.status === "ISSUED") {
+  if (token.status === 'ISSUED') {
     repo.writeScanLog({
       tokenId,
       schoolId,
-      result: "SUCCESS",
+      result: 'SUCCESS',
       ip,
       userAgent,
       deviceHash,
       responseTimeMs: Date.now() - startTime,
     });
     return respond(startTime, {
-      state: "ISSUED",
+      state: 'ISSUED',
       school: safeSchoolFull(token.school),
-      message: "This card has been issued but not yet activated by the family.",
+      message: 'This card has been issued but not yet activated by the family.',
     });
   }
 
   // ── 6. ACTIVE — build full profile response ───────────────────────────────
   const student = token.student;
   const emergency = student?.emergency;
-  const visibility =
-    emergency?.visibility ?? student?.cardVisibility?.visibility ?? "PUBLIC";
+  const visibility = emergency?.visibility ?? student?.cardVisibility?.visibility ?? 'PUBLIC';
 
   if (!student || !student.is_active) {
     repo.writeScanLog({
       tokenId,
       schoolId,
-      result: "SUCCESS",
+      result: 'SUCCESS',
       ip,
       userAgent,
       deviceHash,
       responseTimeMs: Date.now() - startTime,
     });
     return respond(startTime, {
-      state: "NO_PROFILE",
+      state: 'NO_PROFILE',
       school: safeSchoolFull(token.school),
-      message: "Profile not available.",
+      message: 'Profile not available.',
     });
   }
 
@@ -282,7 +277,7 @@ export const resolveScan = async ({
   repo.writeScanLog({
     tokenId,
     schoolId,
-    result: "SUCCESS",
+    result: 'SUCCESS',
     ip,
     userAgent,
     deviceHash,
@@ -290,7 +285,7 @@ export const resolveScan = async ({
   });
 
   return respond(startTime, {
-    state: "ACTIVE",
+    state: 'ACTIVE',
     profile,
     school: safeSchoolFull(token.school),
   });
@@ -319,7 +314,7 @@ const respond = (startTime, result) => {
   const elapsed = Date.now() - startTime;
   const pad = Math.max(0, MIN_RESPONSE_MS - elapsed);
   if (pad === 0) return Promise.resolve(result);
-  return new Promise((resolve) => setTimeout(() => resolve(result), pad));
+  return new Promise(resolve => setTimeout(() => resolve(result), pad));
 };
 
 // =============================================================================
@@ -333,7 +328,7 @@ const respond = (startTime, result) => {
 const buildProfile = ({ student, emergency, visibility }) => {
   // Base fields — always shown regardless of visibility setting
   const base = {
-    name: [student.first_name, student.last_name].filter(Boolean).join(" "),
+    name: [student.first_name, student.last_name].filter(Boolean).join(' '),
     photo_url: student.photo_url ?? null, // S3 key; presigned URL TBD if needed
     class: student.class ?? null,
     section: student.section ?? null,
@@ -341,16 +336,16 @@ const buildProfile = ({ student, emergency, visibility }) => {
   };
 
   // HIDDEN — responder sees name + class only; no medical, no contacts
-  if (visibility === "HIDDEN") {
-    return { ...base, visibility: "HIDDEN" };
+  if (visibility === 'HIDDEN') {
+    return { ...base, visibility: 'HIDDEN' };
   }
 
   // MINIMAL — name + photo + single primary contact only
-  if (visibility === "MINIMAL") {
+  if (visibility === 'MINIMAL') {
     const primaryContact = getPrimaryContact(emergency?.contacts ?? []);
     return {
       ...base,
-      visibility: "MINIMAL",
+      visibility: 'MINIMAL',
       primary_contact: primaryContact,
     };
   }
@@ -360,7 +355,7 @@ const buildProfile = ({ student, emergency, visibility }) => {
 
   return {
     ...base,
-    visibility: "PUBLIC",
+    visibility: 'PUBLIC',
     blood_group: formatBloodGroup(emergency?.blood_group),
     allergies: emergency?.allergies ?? null,
     conditions: emergency?.conditions ?? null,
@@ -381,8 +376,8 @@ const buildProfile = ({ student, emergency, visibility }) => {
  * Single contact decryption failure → phone: null for that contact.
  * Does NOT abort the entire response — responder still sees other contacts.
  */
-const buildContacts = (contacts) =>
-  contacts.map((c) => ({
+const buildContacts = contacts =>
+  contacts.map(c => ({
     id: c.id,
     name: c.name,
     relationship: c.relationship ?? null,
@@ -396,7 +391,7 @@ const buildContacts = (contacts) =>
  * Get the single highest-priority (lowest priority number) active contact.
  * Used for MINIMAL visibility — one contact only, no medical data.
  */
-const getPrimaryContact = (contacts) => {
+const getPrimaryContact = contacts => {
   if (!contacts.length) return null;
   const primary = [...contacts].sort((a, b) => a.priority - b.priority)[0];
   return {
@@ -409,7 +404,7 @@ const getPrimaryContact = (contacts) => {
 };
 
 /** Decrypt an AES-256-GCM encrypted field — returns null on failure */
-const safeDecrypt = (encrypted) => {
+const safeDecrypt = encrypted => {
   if (!encrypted) return null;
   try {
     return decryptField(encrypted);
@@ -423,7 +418,7 @@ const safeDecrypt = (encrypted) => {
  * ACTIVE, INACTIVE, ISSUED, UNREGISTERED:
  *   emergency responders and parents need phone + address to contact school.
  */
-const safeSchoolFull = (school) => {
+const safeSchoolFull = school => {
   if (!school) return null;
   return {
     name: school.name,
@@ -435,18 +430,18 @@ const safeSchoolFull = (school) => {
 
 /**
  * [FIX-3] Minimal school payload — used for dead card states (REVOKED, EXPIRED).
- * A revoked/expired card doesn't need to expose school phone or address.
+ * A revoked/expired card doesn"t need to expose school phone or address.
  * Name is enough for the responder to know which school the card was from.
  */
-const safeSchoolMinimal = (school) => {
+const safeSchoolMinimal = school => {
   if (!school) return null;
   return {
     name: school.name,
   };
 };
 
-/** Convert DB enum e.g. "A_POS" → "A+", "AB_NEG" → "AB-" */
-const formatBloodGroup = (bg) => {
+/** Convert DB enum e.g. "A_POS" → "A+", "AB_NEG' → 'AB-' */
+const formatBloodGroup = bg => {
   if (!bg) return null;
-  return bg.replace("_POS", "+").replace("_NEG", "-");
+  return bg.replace('_POS', '+').replace('_NEG', '-');
 };

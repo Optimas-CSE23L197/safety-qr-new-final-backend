@@ -6,7 +6,7 @@
 // Rule: any time you UPDATE a DB record, call the matching invalidator
 // =============================================================================
 
-import { cacheDel, cacheDelPattern, CacheKey } from "./cache.js";
+import { cacheDel, cacheDelPattern, CacheKey } from './cache.js';
 
 // ─── School ───────────────────────────────────────────────────────────────────
 
@@ -33,10 +33,7 @@ export async function invalidateAllParentSessions(parentId) {
 // ─── Parent ───────────────────────────────────────────────────────────────────
 
 export async function invalidateParent(parentId) {
-  await cacheDel(
-    CacheKey.parentProfile(parentId),
-    CacheKey.parentChildren(parentId),
-  );
+  await cacheDel(CacheKey.parentProfile(parentId), CacheKey.parentChildren(parentId));
 }
 
 export async function invalidateParentChildren(parentId) {
@@ -46,10 +43,7 @@ export async function invalidateParentChildren(parentId) {
 // ─── Token / Emergency Page ───────────────────────────────────────────────────
 
 export async function invalidateToken(tokenHash) {
-  await cacheDel(
-    CacheKey.tokenStatus(tokenHash),
-    CacheKey.emergencyPage(tokenHash),
-  );
+  await cacheDel(CacheKey.tokenStatus(tokenHash), CacheKey.emergencyPage(tokenHash));
 }
 
 /**
@@ -70,17 +64,17 @@ export async function invalidateEmergencyPage(tokenHash) {
  */
 export async function invalidateAllStudentEmergencyPages(studentId, prisma) {
   const tokens = await prisma.token.findMany({
-    where: { student_id: studentId, status: { in: ["ACTIVE", "ISSUED"] } },
+    where: { student_id: studentId, status: { in: ['ACTIVE', 'ISSUED'] } },
     select: { token_hash: true },
   });
 
-  const keys = tokens.map((t) => CacheKey.emergencyPage(t.token_hash));
+  const keys = tokens.map(t => CacheKey.emergencyPage(t.token_hash));
   if (keys.length) await cacheDel(...keys);
 }
 
 // ─── Blacklist ────────────────────────────────────────────────────────────────
 
 export async function addToBlacklist(tokenHash, ttlSeconds) {
-  const { cacheSet } = await import("./cache.js");
+  const { cacheSet } = await import('./cache.js');
   await cacheSet(CacheKey.blacklist(tokenHash), 1, ttlSeconds);
 }

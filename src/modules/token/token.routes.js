@@ -14,22 +14,22 @@
 //   POST /api/tokens/preloaded/bulk     → N tokens linked to students
 // =============================================================================
 
-import { Router } from "express";
-import { asyncHandler } from "../../utils/response/asyncHandler.js";
-import { validate } from "../../middleware/validate.middleware.js";
-import { authenticateSuperAdmin } from "../../middleware/auth.middleware.js";
+import { Router } from 'express';
+import { asyncHandler } from '#utils/response/asyncHandler.js';
+import { validate } from '#middleware/validate.middleware.js';
+import { authenticateSuperAdmin } from '#middleware/auth.middleware.js';
 import {
   generateSingleBlank,
   generateBulkBlank,
   generateSinglePreloaded,
   generateBulkPreloaded,
-} from "./token.controller.js";
+} from './token.controller.js';
 import {
   singleBlankTokenSchema,
   bulkBlankTokensSchema,
   singlePreloadedTokenSchema,
   bulkPreloadedTokensSchema,
-} from "./token.validation.js";
+} from './token.validation.js';
 
 const router = Router();
 
@@ -37,27 +37,19 @@ const router = Router();
 router.use(authenticateSuperAdmin);
 
 // ── Blank tokens (no student attached) ───────────────────────────────────────
-router.post(
-  "/blank/single",
-  validate(singleBlankTokenSchema),
-  asyncHandler(generateSingleBlank),
-);
-router.post(
-  "/blank/bulk",
-  validate(bulkBlankTokensSchema),
-  asyncHandler(generateBulkBlank),
-);
+router.post('/blank/single', validate(singleBlankTokenSchema), asyncHandler(generateSingleBlank));
+router.post('/blank/bulk', validate(bulkBlankTokensSchema), asyncHandler(generateBulkBlank));
 
 // ── Pre-details tokens (student attached from day 1) ─────────────────────────
 router.post(
-  "/preloaded/single",
+  '/preloaded/single',
   validate(singlePreloadedTokenSchema),
-  asyncHandler(generateSinglePreloaded),
+  asyncHandler(generateSinglePreloaded)
 );
 router.post(
-  "/preloaded/bulk",
+  '/preloaded/bulk',
   validate(bulkPreloadedTokensSchema),
-  asyncHandler(generateBulkPreloaded),
+  asyncHandler(generateBulkPreloaded)
 );
 
 export default router;

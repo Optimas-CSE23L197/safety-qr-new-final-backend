@@ -4,21 +4,20 @@
 // Every validator rejects bad input before it reaches service/DB.
 // =============================================================================
 
-import { z } from "zod";
+import { z } from 'zod';
 
-const UUID_REGEX =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const PHONE_REGEX = /^\+[1-9]\d{9,14}$/; // E.164 format
 
 // ─── Shared guard ─────────────────────────────────────────────────────────────
 
 export function requireOwnParent(req, res) {
-  if (!req.userId || req.role !== "PARENT_USER") {
+  if (!req.userId || req.role !== 'PARENT_USER') {
     res.status(403).json({
       success: false,
-      code: "FORBIDDEN",
-      message: "Access denied",
+      code: 'FORBIDDEN',
+      message: 'Access denied',
     });
     return null;
   }
@@ -27,13 +26,13 @@ export function requireOwnParent(req, res) {
 
 // ─── Normalise phone to E.164 ─────────────────────────────────────────────────
 // Accepts: "+919876543210", "9876543210", "09876543210"
-// Rejects: "abc", "123", empty after normalisation
+// Rejects: "abc', '123', empty after normalisation
 
 function normalisePhone(v) {
-  if (!v || v.trim() === "") return undefined;
+  if (!v || v.trim() === '') return undefined;
   const t = v.trim();
-  if (t.startsWith("+")) return t;
-  return `+91${t.replace(/^0+/, "")}`;
+  if (t.startsWith('+')) return t;
+  return `+91${t.replace(/^0+/, '')}`;
 }
 
 // ─── GET /me/scans ────────────────────────────────────────────────────────────
@@ -41,7 +40,7 @@ function normalisePhone(v) {
 const scanHistorySchema = z.object({
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(50).default(20),
-  filter: z.enum(["all", "emergency", "success", "flagged"]).default("all"),
+  filter: z.enum(['all', 'emergency', 'success', 'flagged']).default('all'),
 });
 
 export function validateScanHistoryQuery(req, res, next) {
@@ -49,7 +48,7 @@ export function validateScanHistoryQuery(req, res, next) {
   if (!result.success) {
     return res.status(400).json({
       success: false,
-      code: "VALIDATION_ERROR",
+      code: 'VALIDATION_ERROR',
       errors: result.error.flatten().fieldErrors,
     });
   }
@@ -61,35 +60,35 @@ export function validateScanHistoryQuery(req, res, next) {
 
 // DB enum values
 const BLOOD_GROUPS = [
-  "A_POS",
-  "A_NEG",
-  "B_POS",
-  "B_NEG",
-  "O_POS",
-  "O_NEG",
-  "AB_POS",
-  "AB_NEG",
-  "UNKNOWN",
+  'A_POS',
+  'A_NEG',
+  'B_POS',
+  'B_NEG',
+  'O_POS',
+  'O_NEG',
+  'AB_POS',
+  'AB_NEG',
+  'UNKNOWN',
 ];
 
-// Normalise display format ("O+", "AB-") → DB enum ("O_POS", "AB_NEG")
+// Normalise display format ("O+", "AB-") → DB enum ("O_POS', 'AB_NEG')
 // So either format from the app is accepted
 const BLOOD_GROUP_MAP = {
-  "A+": "A_POS",
-  "A-": "A_NEG",
-  "A−": "A_NEG",
-  "B+": "B_POS",
-  "B-": "B_NEG",
-  "B−": "B_NEG",
-  "O+": "O_POS",
-  "O-": "O_NEG",
-  "O−": "O_NEG",
-  "AB+": "AB_POS",
-  "AB-": "AB_NEG",
-  "AB−": "AB_NEG",
-  Unknown: "UNKNOWN",
-  unknown: "UNKNOWN",
-  UNKNOWN: "UNKNOWN",
+  'A+': 'A_POS',
+  'A-': 'A_NEG',
+  'A−': 'A_NEG',
+  'B+': 'B_POS',
+  'B-': 'B_NEG',
+  'B−': 'B_NEG',
+  'O+': 'O_POS',
+  'O-': 'O_NEG',
+  'O−': 'O_NEG',
+  'AB+': 'AB_POS',
+  'AB-': 'AB_NEG',
+  'AB−': 'AB_NEG',
+  Unknown: 'UNKNOWN',
+  unknown: 'UNKNOWN',
+  UNKNOWN: 'UNKNOWN',
 };
 
 const contactSchema = z.object({
@@ -102,32 +101,28 @@ const contactSchema = z.object({
     .string()
     .min(1)
     .max(100)
-    .transform((v) => v.trim()),
+    .transform(v => v.trim()),
 
   // Accepts plain Indian numbers (9876543210) or full E.164 (+919876543210)
   phone: z
     .string()
-    .min(1, "Contact phone is required")
+    .min(1, 'Contact phone is required')
     .transform(normalisePhone)
-    .pipe(
-      z
-        .string()
-        .regex(PHONE_REGEX, "Phone must be a valid number e.g. +919876543210"),
-    ),
+    .pipe(z.string().regex(PHONE_REGEX, 'Phone must be a valid number e.g. +919876543210')),
 
   relationship: z
     .string()
     .max(50)
     .optional()
-    .transform((v) => v?.trim()),
+    .transform(v => v?.trim()),
 
   priority: z.number().int().min(1).max(10),
 });
 
 const updateProfileSchema = z.object({
   student_id: z
-    .string({ required_error: "student_id is required" })
-    .regex(UUID_REGEX, "student_id must be a valid UUID"),
+    .string({ required_error: 'student_id is required' })
+    .regex(UUID_REGEX, 'student_id must be a valid UUID'),
 
   student: z
     .object({
@@ -135,25 +130,25 @@ const updateProfileSchema = z.object({
         .string()
         .min(1)
         .max(100)
-        .transform((v) => v.trim())
+        .transform(v => v.trim())
         .optional(),
       last_name: z
         .string()
         .min(1)
         .max(100)
-        .transform((v) => v.trim())
+        .transform(v => v.trim())
         .optional(),
       // class accepts any format: "6", "Class 9", "4th Year", "3rd Sem B.Tech"
       class: z
         .string()
         .max(50)
-        .transform((v) => v.trim())
+        .transform(v => v.trim())
         .optional(),
       // section accepts: "A", "B", "CS-E", "Morning Batch", "Computer Science"
       section: z
         .string()
         .max(30)
-        .transform((v) => v.trim())
+        .transform(v => v.trim())
         .optional(),
     })
     .optional(),
@@ -163,33 +158,31 @@ const updateProfileSchema = z.object({
       blood_group: z
         .string()
         .optional()
-        .transform((v) => {
+        .transform(v => {
           if (!v) return undefined;
-          // Normalise "O+" → "O_POS" etc, pass through if already enum format
-          return (
-            BLOOD_GROUP_MAP[v] ?? (BLOOD_GROUPS.includes(v) ? v : undefined)
-          );
+          // Normalise "O+" → "O_POS' etc, pass through if already enum format
+          return BLOOD_GROUP_MAP[v] ?? (BLOOD_GROUPS.includes(v) ? v : undefined);
         })
         .pipe(z.enum(BLOOD_GROUPS).optional()),
       allergies: z
         .string()
         .max(500)
-        .transform((v) => v.trim() || undefined)
+        .transform(v => v.trim() || undefined)
         .optional(),
       conditions: z
         .string()
         .max(500)
-        .transform((v) => v.trim())
+        .transform(v => v.trim())
         .optional(),
       medications: z
         .string()
         .max(500)
-        .transform((v) => v.trim())
+        .transform(v => v.trim())
         .optional(),
       doctor_name: z
         .string()
         .max(100)
-        .transform((v) => v.trim() || undefined) // "" → undefined → null in DB
+        .transform(v => v.trim() || undefined) // '' → undefined → null in DB
         .optional(),
 
       // doctor_phone is completely optional — not everyone has a family doctor.
@@ -202,17 +195,14 @@ const updateProfileSchema = z.object({
         .pipe(
           z
             .string()
-            .regex(
-              PHONE_REGEX,
-              "Doctor phone must be a valid number e.g. +919876543210",
-            )
-            .optional(),
+            .regex(PHONE_REGEX, 'Doctor phone must be a valid number e.g. +919876543210')
+            .optional()
         ),
 
       notes: z
         .string()
         .max(1000)
-        .transform((v) => v.trim())
+        .transform(v => v.trim())
         .optional(),
     })
     .optional(),
@@ -225,14 +215,11 @@ export function validateUpdateProfile(req, res, next) {
   const result = updateProfileSchema.safeParse(req.body);
   if (!result.success) {
     // DEBUG — logs exact failing fields to server console
-    console.error("[VALIDATION FAIL] body:", JSON.stringify(req.body, null, 2));
-    console.error(
-      "[VALIDATION FAIL] errors:",
-      JSON.stringify(result.error.flatten(), null, 2),
-    );
+    console.error('[VALIDATION FAIL] body:', JSON.stringify(req.body, null, 2));
+    console.error('[VALIDATION FAIL] errors:', JSON.stringify(result.error.flatten(), null, 2));
     return res.status(400).json({
       success: false,
-      code: "VALIDATION_ERROR",
+      code: 'VALIDATION_ERROR',
       errors: result.error.flatten().fieldErrors,
     });
   }
@@ -243,19 +230,19 @@ export function validateUpdateProfile(req, res, next) {
 // ─── PATCH /me/visibility ─────────────────────────────────────────────────────
 
 const VALID_FIELDS = [
-  "blood_group",
-  "allergies",
-  "conditions",
-  "medications",
-  "doctor_name",
-  "doctor_phone",
-  "notes",
-  "contacts",
+  'blood_group',
+  'allergies',
+  'conditions',
+  'medications',
+  'doctor_name',
+  'doctor_phone',
+  'notes',
+  'contacts',
 ];
 
 const updateVisibilitySchema = z.object({
   student_id: z.string().regex(UUID_REGEX),
-  visibility: z.enum(["PUBLIC", "MINIMAL", "HIDDEN"]),
+  visibility: z.enum(['PUBLIC', 'MINIMAL', 'HIDDEN']),
   hidden_fields: z.array(z.enum(VALID_FIELDS)).default([]),
 });
 
@@ -264,7 +251,7 @@ export function validateUpdateVisibility(req, res, next) {
   if (!result.success) {
     return res.status(400).json({
       success: false,
-      code: "VALIDATION_ERROR",
+      code: 'VALIDATION_ERROR',
       errors: result.error.flatten().fieldErrors,
     });
   }
@@ -297,7 +284,7 @@ export function validateUpdateNotifications(req, res, next) {
   if (!result.success) {
     return res.status(400).json({
       success: false,
-      code: "VALIDATION_ERROR",
+      code: 'VALIDATION_ERROR',
       errors: result.error.flatten().fieldErrors,
     });
   }
@@ -317,7 +304,7 @@ export function validateUpdateLocationConsent(req, res, next) {
   if (!result.success) {
     return res.status(400).json({
       success: false,
-      code: "VALIDATION_ERROR",
+      code: 'VALIDATION_ERROR',
       errors: result.error.flatten().fieldErrors,
     });
   }
@@ -329,8 +316,8 @@ export function validateUpdateLocationConsent(req, res, next) {
 
 const lockCardSchema = z.object({
   student_id: z.string().regex(UUID_REGEX),
-  confirmation: z.literal("LOCK", {
-    errorMap: () => ({ message: 'Type "LOCK" to confirm' }),
+  confirmation: z.literal('LOCK', {
+    errorMap: () => ({ message: "Type 'LOCK' to confirm" }),
   }),
 });
 
@@ -339,7 +326,7 @@ export function validateLockCard(req, res, next) {
   if (!result.success) {
     return res.status(400).json({
       success: false,
-      code: "VALIDATION_ERROR",
+      code: 'VALIDATION_ERROR',
       errors: result.error.flatten().fieldErrors,
     });
   }
@@ -355,7 +342,7 @@ const requestReplaceSchema = z.object({
     .string()
     .min(5)
     .max(500)
-    .transform((v) => v.trim()),
+    .transform(v => v.trim()),
 });
 
 export function validateRequestReplace(req, res, next) {
@@ -363,7 +350,7 @@ export function validateRequestReplace(req, res, next) {
   if (!result.success) {
     return res.status(400).json({
       success: false,
-      code: "VALIDATION_ERROR",
+      code: 'VALIDATION_ERROR',
       errors: result.error.flatten().fieldErrors,
     });
   }
@@ -379,7 +366,7 @@ export function validateRequestReplace(req, res, next) {
 // ─── GET /me/location-history ─────────────────────────────────────────────────
 
 const locationHistorySchema = z.object({
-  student_id: z.string().regex(UUID_REGEX, "student_id must be a valid UUID"),
+  student_id: z.string().regex(UUID_REGEX, 'student_id must be a valid UUID'),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   from_date: z.string().datetime().optional(),
@@ -391,7 +378,7 @@ export function validateLocationHistoryQuery(req, res, next) {
   if (!result.success) {
     return res.status(400).json({
       success: false,
-      code: "VALIDATION_ERROR",
+      code: 'VALIDATION_ERROR',
       errors: result.error.flatten().fieldErrors,
     });
   }
@@ -404,8 +391,8 @@ export function validateLocationHistoryQuery(req, res, next) {
 const anomaliesSchema = z.object({
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
-  severity: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional(),
-  resolved: z.enum(["true", "false"]).optional(),
+  severity: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).optional(),
+  resolved: z.enum(['true', 'false']).optional(),
 });
 
 export function validateAnomaliesQuery(req, res, next) {
@@ -413,7 +400,7 @@ export function validateAnomaliesQuery(req, res, next) {
   if (!result.success) {
     return res.status(400).json({
       success: false,
-      code: "VALIDATION_ERROR",
+      code: 'VALIDATION_ERROR',
       errors: result.error.flatten().fieldErrors,
     });
   }
@@ -425,7 +412,7 @@ export function validateAnomaliesQuery(req, res, next) {
 
 const requestRenewalSchema = z.object({
   card_id: z.string().regex(UUID_REGEX),
-  payment_method: z.enum(["UPI", "CARD", "NETBANKING", "WALLET"]),
+  payment_method: z.enum(['UPI', 'CARD', 'NETBANKING', 'WALLET']),
 });
 
 export function validateRequestRenewal(req, res, next) {
@@ -433,7 +420,7 @@ export function validateRequestRenewal(req, res, next) {
   if (!result.success) {
     return res.status(400).json({
       success: false,
-      code: "VALIDATION_ERROR",
+      code: 'VALIDATION_ERROR',
       errors: result.error.flatten().fieldErrors,
     });
   }
@@ -447,12 +434,8 @@ const changePhoneSchema = z.object({
   new_phone: z
     .string()
     .transform(normalisePhone)
-    .pipe(
-      z
-        .string()
-        .regex(PHONE_REGEX, "Phone must be a valid number e.g. +919876543210"),
-    ),
-  otp: z.string().length(6, "OTP must be 6 digits"),
+    .pipe(z.string().regex(PHONE_REGEX, 'Phone must be a valid number e.g. +919876543210')),
+  otp: z.string().length(6, 'OTP must be 6 digits'),
 });
 
 export function validateChangePhone(req, res, next) {
@@ -460,7 +443,7 @@ export function validateChangePhone(req, res, next) {
   if (!result.success) {
     return res.status(400).json({
       success: false,
-      code: "VALIDATION_ERROR",
+      code: 'VALIDATION_ERROR',
       errors: result.error.flatten().fieldErrors,
     });
   }
@@ -474,11 +457,7 @@ const sendPhoneOtpSchema = z.object({
   new_phone: z
     .string()
     .transform(normalisePhone)
-    .pipe(
-      z
-        .string()
-        .regex(PHONE_REGEX, "Phone must be a valid number e.g. +919876543210"),
-    ),
+    .pipe(z.string().regex(PHONE_REGEX, 'Phone must be a valid number e.g. +919876543210')),
 });
 
 export function validateSendPhoneOtp(req, res, next) {
@@ -486,7 +465,7 @@ export function validateSendPhoneOtp(req, res, next) {
   if (!result.success) {
     return res.status(400).json({
       success: false,
-      code: "VALIDATION_ERROR",
+      code: 'VALIDATION_ERROR',
       errors: result.error.flatten().fieldErrors,
     });
   }

@@ -4,22 +4,19 @@
 // Full path:  GET /api/v1/school-admin/:schoolId/students
 // =============================================================================
 
-import { Router } from "express";
-import {
-  authenticate,
-  requireSchoolUser,
-} from "../../../middleware/auth.middleware.js";
-import { validateStudentsQuery } from "./students.validation.js";
-import { listStudents } from "./students.controller.js";
+import { Router } from 'express';
+import { authenticate, requireSchoolUser } from '#middleware/auth.middleware.js';
+import { validateStudentsQuery } from './students.validation.js';
+import { listStudents } from './students.controller.js';
 
 const router = Router();
 
 router.get(
-  "/:schoolId/students",
+  '/:schoolId/students',
   authenticate, // verify JWT → attach req.user, req.role
   requireSchoolUser, // must be SCHOOL_USER
   validateStudentsQuery, // validate + sanitize all query params + tenant check
-  listStudents, // handle
+  listStudents // handle
 );
 
 export default router;

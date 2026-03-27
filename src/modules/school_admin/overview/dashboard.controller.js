@@ -3,8 +3,8 @@
 // Responsibility: HTTP in → call service → HTTP out. Nothing else.
 // =============================================================================
 
-import { getDashboardData } from "./dashboard.service.js";
-import { logger } from "../../../config/logger.js";
+import { getDashboardData } from './dashboard.service.js';
+import { logger } from '#config/logger.js';
 
 /**
  * GET /api/school/:schoolId/dashboard
@@ -31,14 +31,11 @@ export async function getDashboard(req, res) {
     const data = await getDashboardData(schoolId);
     return res.status(200).json({ success: true, data });
   } catch (err) {
-    logger.error(
-      { schoolId, err: err.message, stack: err.stack },
-      "Dashboard fetch failed",
-    );
+    logger.error({ schoolId, err: err.message, stack: err.stack }, 'Dashboard fetch failed');
     return res.status(500).json({
       success: false,
-      code: "INTERNAL_ERROR",
-      message: "Failed to load dashboard data",
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to load dashboard data',
     });
   }
 }

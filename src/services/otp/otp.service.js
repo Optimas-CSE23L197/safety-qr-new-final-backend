@@ -11,9 +11,9 @@
 // - Automatic cleanup
 // =============================================================================
 
-import crypto from "crypto";
-import { redis } from "../../config/redis.js";
-import { logger } from "../../config/logger.js";
+import crypto from 'crypto';
+import { redis } from '#config/database/redis.js';
+import { logger } from '#config/logger.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
@@ -26,9 +26,9 @@ const OTP_MAX_ATTEMPTS = 3;
 const OTP_RESEND_COOLDOWN = 60;
 
 // Redis keys
-const otpKey = (phone) => `otp:${phone}`;
-const attemptsKey = (phone) => `otp:attempts:${phone}`;
-const cooldownKey = (phone) => `otp:cooldown:${phone}`;
+const otpKey = phone => `otp:${phone}`;
+const attemptsKey = phone => `otp:attempts:${phone}`;
+const cooldownKey = phone => `otp:cooldown:${phone}`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GENERATE OTP
@@ -39,7 +39,7 @@ export function generateOtp() {
 }
 
 export function hashOtp(otp) {
-  return crypto.createHash("sha256").update(otp).digest("hex");
+  return crypto.createHash('sha256').update(otp).digest('hex');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -65,11 +65,11 @@ export async function sendOtp(phone) {
   await redis.del(attemptsKey(phone));
 
   // Set cooldown
-  await redis.setex(cooldownKey(phone), OTP_RESEND_COOLDOWN, "1");
+  await redis.setex(cooldownKey(phone), OTP_RESEND_COOLDOWN, '1');
 
   // DEV logging only
-  if (process.env.NODE_ENV !== "production") {
-    logger.debug({ phone, otp }, "DEV OTP generated");
+  if (process.env.NODE_ENV !== 'production') {
+    logger.debug({ phone, otp }, 'DEV OTP generated');
   }
 
   return {
@@ -85,29 +85,26 @@ export async function verifyOtp(phone, otp) {
   const storedHash = await redis.get(otpKey(phone));
 
   if (!storedHash) {
-    throw new Error("OTP_EXPIRED");
+    throw new Error('OTP_EXPIRED');
   }
 
-  const attempts = parseInt((await redis.get(attemptsKey(phone))) ?? "0", 10);
+  const attempts = parseInt((await redis.get(attemptsKey(phone))) ?? '0', 10);
 
   if (attempts >= OTP_MAX_ATTEMPTS) {
     await redis.del(otpKey(phone));
     await redis.del(attemptsKey(phone));
-    throw new Error("OTP_MAX_ATTEMPTS");
+    throw new Error('OTP_MAX_ATTEMPTS');
   }
 
   const inputHash = hashOtp(otp);
 
-  const isValid = crypto.timingSafeEqual(
-    Buffer.from(inputHash),
-    Buffer.from(storedHash),
-  );
+  const isValid = crypto.timingSafeEqual(Buffer.from(inputHash), Buffer.from(storedHash));
 
   if (!isValid) {
     await redis.incr(attemptsKey(phone));
     await redis.expire(attemptsKey(phone), OTP_TTL_SECONDS);
 
-    throw new Error("OTP_INVALID");
+    throw new Error('OTP_INVALID');
   }
 
   // Valid OTP → cleanup

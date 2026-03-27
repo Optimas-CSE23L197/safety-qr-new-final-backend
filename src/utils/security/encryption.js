@@ -13,13 +13,13 @@
 // Format stored in DB: "iv:authTag:ciphertext" (all hex)
 // =============================================================================
 
-import crypto from "crypto";
-import { ENV } from "../../config/env.js";
+import crypto from 'crypto';
+import { ENV } from '#config/env.js';
 
-const ALGORITHM = "aes-256-gcm";
+const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12; // 96-bit IV — GCM standard
 const TAG_LENGTH = 16; // 128-bit auth tag
-const SEPARATOR = ":";
+const SEPARATOR = ':';
 
 // ─── Key Derivation ───────────────────────────────────────────────────────────
 // Derive a 32-byte key from the env secret using HKDF
@@ -27,9 +27,9 @@ const SEPARATOR = ":";
 
 function deriveKey() {
   if (!ENV.ENCRYPTION_KEY) {
-    throw new Error("ENCRYPTION_KEY environment variable is not set");
+    throw new Error('ENCRYPTION_KEY environment variable is not set');
   }
-  return crypto.createHash("sha256").update(ENV.ENCRYPTION_KEY).digest(); // returns Buffer of 32 bytes
+  return crypto.createHash('sha256').update(ENV.ENCRYPTION_KEY).digest(); // returns Buffer of 32 bytes
 }
 
 const KEY = deriveKey(); // Derived once at startup
@@ -38,7 +38,7 @@ const KEY = deriveKey(); // Derived once at startup
 
 /**
  * encryptField(plaintext)
- * Encrypts a string — stores as "iv:authTag:ciphertext" hex
+ * Encrypts a string — stores as 'iv:authTag:ciphertext' hex
  * Returns null if plaintext is null/undefined
  *
  * @param   {string|null} plaintext
@@ -46,8 +46,8 @@ const KEY = deriveKey(); // Derived once at startup
  */
 export function encryptField(plaintext) {
   if (plaintext == null) return null;
-  if (typeof plaintext !== "string") {
-    throw new TypeError("encryptField: plaintext must be a string");
+  if (typeof plaintext !== 'string') {
+    throw new TypeError('encryptField: plaintext must be a string');
   }
 
   const iv = crypto.randomBytes(IV_LENGTH);
@@ -55,25 +55,18 @@ export function encryptField(plaintext) {
     authTagLength: TAG_LENGTH,
   });
 
-  const encrypted = Buffer.concat([
-    cipher.update(plaintext, "utf8"),
-    cipher.final(),
-  ]);
+  const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
 
   const authTag = cipher.getAuthTag();
 
-  return [
-    iv.toString("hex"),
-    authTag.toString("hex"),
-    encrypted.toString("hex"),
-  ].join(SEPARATOR);
+  return [iv.toString('hex'), authTag.toString('hex'), encrypted.toString('hex')].join(SEPARATOR);
 }
 
 // ─── Decrypt ──────────────────────────────────────────────────────────────────
 
 /**
  * decryptField(ciphertext)
- * Decrypts a "iv:authTag:ciphertext" hex string
+ * Decrypts a 'iv:authTag:ciphertext' hex string
  * Returns null if ciphertext is null/undefined
  * Throws if data is tampered with (GCM auth tag mismatch)
  *
@@ -82,19 +75,19 @@ export function encryptField(plaintext) {
  */
 export function decryptField(ciphertext) {
   if (ciphertext == null) return null;
-  if (typeof ciphertext !== "string") {
-    throw new TypeError("decryptField: ciphertext must be a string");
+  if (typeof ciphertext !== 'string') {
+    throw new TypeError('decryptField: ciphertext must be a string');
   }
 
   const parts = ciphertext.split(SEPARATOR);
   if (parts.length !== 3) {
-    throw new Error("decryptField: invalid ciphertext format");
+    throw new Error('decryptField: invalid ciphertext format');
   }
 
   const [ivHex, authTagHex, encryptedHex] = parts;
-  const iv = Buffer.from(ivHex, "hex");
-  const authTag = Buffer.from(authTagHex, "hex");
-  const encrypted = Buffer.from(encryptedHex, "hex");
+  const iv = Buffer.from(ivHex, 'hex');
+  const authTag = Buffer.from(authTagHex, 'hex');
+  const encrypted = Buffer.from(encryptedHex, 'hex');
 
   const decipher = crypto.createDecipheriv(ALGORITHM, KEY, iv, {
     authTagLength: TAG_LENGTH,
@@ -102,16 +95,11 @@ export function decryptField(ciphertext) {
   decipher.setAuthTag(authTag);
 
   try {
-    const decrypted = Buffer.concat([
-      decipher.update(encrypted),
-      decipher.final(),
-    ]);
-    return decrypted.toString("utf8");
+    const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
+    return decrypted.toString('utf8');
   } catch {
     // GCM auth tag failed — data was tampered with or wrong key
-    throw new Error(
-      "decryptField: decryption failed — data may be corrupted or tampered",
-    );
+    throw new Error('decryptField: decryption failed — data may be corrupted or tampered');
   }
 }
 
@@ -167,10 +155,10 @@ export function decryptFields(obj, fields) {
 export function hashForLookup(value) {
   if (!value) return null;
   if (!ENV.LOOKUP_HASH_SECRET) {
-    throw new Error("LOOKUP_HASH_SECRET environment variable is not set");
+    throw new Error('LOOKUP_HASH_SECRET environment variable is not set');
   }
   return crypto
-    .createHmac("sha256", ENV.LOOKUP_HASH_SECRET)
+    .createHmac('sha256', ENV.LOOKUP_HASH_SECRET)
     .update(value.toLowerCase().trim())
-    .digest("hex");
+    .digest('hex');
 }

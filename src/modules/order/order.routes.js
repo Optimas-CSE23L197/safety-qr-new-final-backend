@@ -2,15 +2,15 @@
 // order.routes.js — RESQID
 // =============================================================================
 
-import { Router } from "express";
-import { authenticate } from "../../middleware/auth.middleware.js";
-import { validate } from "../../middleware/validate.middleware.js";
-import { ownSchoolOnly } from "../../middleware/restrictionOwnSchool.middleware.js";
-import { rbac } from "../../middleware/rbac.middleware.js";
+import { Router } from 'express';
+import { authenticate } from '#middleware/auth.middleware.js';
+import { validate } from '#middleware/validate.middleware.js';
+import { ownSchoolOnly } from '#middleware/restrictionOwnSchool.middleware.js';
+import { rbac } from '#middleware/rbac.middleware.js';
 
-import * as controller from "./order.controller.js";
-import * as validation from "./order.validation.js";
-import { getQueueHealth } from "../order_orchestrator/queues/queue.manager.js";
+import * as controller from './order.controller.js';
+import * as validation from './order.validation.js';
+import { getQueueHealth } from './order_orchestrator/queues/queue.manager.js';
 
 const router = Router();
 
@@ -18,108 +18,81 @@ const router = Router();
 router.use(authenticate);
 
 // Role shortcuts
-const superAdmin = rbac(["SUPER_ADMIN"]);
-const schoolAdmin = rbac(["SCHOOL_ADMIN", "SUPER_ADMIN"]);
+const superAdmin = rbac(['SUPER_ADMIN']);
+const schoolAdmin = rbac(['SCHOOL_ADMIN', 'SUPER_ADMIN']);
 
 // =============================================================================
 // ORDER CRUD
 // =============================================================================
 
-router.post(
-  "/",
-  schoolAdmin,
-  validate(validation.createOrderSchema),
-  controller.createOrder,
-);
+router.post('/', schoolAdmin, validate(validation.createOrderSchema), controller.createOrder);
 
-router.get(
-  "/",
-  validate(validation.listOrdersSchema, "query"),
-  controller.listOrders,
-);
+router.get('/', validate(validation.listOrdersSchema, 'query'), controller.listOrders);
 
-router.get("/:orderId", schoolAdmin, ownSchoolOnly, controller.getOrderDetails);
+router.get('/:orderId', schoolAdmin, ownSchoolOnly, controller.getOrderDetails);
 
-router.get(
-  "/:orderId/status",
-  schoolAdmin,
-  ownSchoolOnly,
-  controller.getOrderStatus,
-);
+router.get('/:orderId/status', schoolAdmin, ownSchoolOnly, controller.getOrderStatus);
 
 // =============================================================================
 // CONFIRM & INVOICE
 // =============================================================================
 
 router.patch(
-  "/:orderId/confirm",
+  '/:orderId/confirm',
   superAdmin,
   validate(validation.confirmOrderSchema),
-  controller.confirmOrder,
+  controller.confirmOrder
 );
 
-router.post(
-  "/:orderId/invoice/advance",
-  superAdmin,
-  controller.generateAdvanceInvoice,
-);
+router.post('/:orderId/invoice/advance', superAdmin, controller.generateAdvanceInvoice);
 
 // =============================================================================
 // INVOICE — DOWNLOAD
 // =============================================================================
 
-router.get(
-  "/:orderId/invoice/:type",
-  schoolAdmin,
-  ownSchoolOnly,
-  controller.downloadInvoice,
-);
+router.get('/:orderId/invoice/:type', schoolAdmin, ownSchoolOnly, controller.downloadInvoice);
 
-router.get("/invoice/:invoiceId", schoolAdmin, controller.getInvoiceById);
+router.get('/invoice/:invoiceId', schoolAdmin, controller.getInvoiceById);
 
 // =============================================================================
 // PAYMENT
 // =============================================================================
 
 router.patch(
-  "/:orderId/payment/advance",
+  '/:orderId/payment/advance',
   superAdmin,
   validate(validation.paymentSchema),
-  controller.recordAdvancePayment,
+  controller.recordAdvancePayment
 );
 
 router.patch(
-  "/:orderId/payment/balance",
+  '/:orderId/payment/balance',
   superAdmin,
   validate(validation.paymentSchema),
-  controller.recordBalancePayment,
+  controller.recordBalancePayment
 );
 
 // =============================================================================
 // TOKEN GENERATION
 // =============================================================================
 
-router.post("/:orderId/tokens/generate", superAdmin, controller.generateTokens);
+router.post('/:orderId/tokens/generate', superAdmin, controller.generateTokens);
 
 // =============================================================================
 // CARD DESIGN
 // =============================================================================
 
-router.post(
-  "/:orderId/design/generate",
-  superAdmin,
-  controller.generateCardDesigns,
-);
+router.post('/:orderId/design/generate', superAdmin, controller.generateCardDesigns);
 
 // =============================================================================
 // VENDOR
 // =============================================================================
 
 router.patch(
-  "/:orderId/vendor",
+  '/:orderId/vendor',
   superAdmin,
   validate(validation.assignVendorSchema),
-  controller.assignVendor,
+  controller.assignVendor
 );
 
 // =============================================================================
@@ -127,10 +100,10 @@ router.patch(
 // =============================================================================
 
 router.patch(
-  "/:orderId/printing",
+  '/:orderId/printing',
   superAdmin,
   validate(validation.printingStatusSchema),
-  controller.updatePrintingStatus,
+  controller.updatePrintingStatus
 );
 
 // =============================================================================
@@ -138,17 +111,17 @@ router.patch(
 // =============================================================================
 
 router.post(
-  "/:orderId/shipment",
+  '/:orderId/shipment',
   superAdmin,
   validate(validation.createShipmentSchema),
-  controller.createShipment,
+  controller.createShipment
 );
 
 router.patch(
-  "/:orderId/shipment/shipped",
+  '/:orderId/shipment/shipped',
   superAdmin,
   validate(validation.markShippedSchema),
-  controller.markShipmentShipped,
+  controller.markShipmentShipped
 );
 
 // =============================================================================
@@ -156,10 +129,10 @@ router.patch(
 // =============================================================================
 
 router.patch(
-  "/:orderId/shipment/delivered",
+  '/:orderId/shipment/delivered',
   superAdmin,
   validate(validation.deliverySchema),
-  controller.confirmDelivery,
+  controller.confirmDelivery
 );
 
 // =============================================================================
@@ -167,17 +140,17 @@ router.patch(
 // =============================================================================
 
 router.post(
-  "/:orderId/cancel",
+  '/:orderId/cancel',
   superAdmin,
   validate(validation.cancelOrderSchema),
-  controller.cancelOrder,
+  controller.cancelOrder
 );
 
 // =============================================================================
 // HEALTH
 // =============================================================================
 
-router.get("/orchestrator/health", async (req, res) => {
+router.get('/orchestrator/health', async (req, res) => {
   const health = await getQueueHealth();
   res.json({ success: true, data: health });
 });

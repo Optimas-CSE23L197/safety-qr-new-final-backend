@@ -4,10 +4,10 @@
 // DEV logs only, PROD sends via Firebase Cloud Messaging
 // =============================================================================
 
-import { logger } from "../../config/logger.js";
+import { logger } from '#config/logger.js';
 
-const NODE_ENV = process.env.NODE_ENV || "development";
-const IS_PRODUCTION = NODE_ENV === "production";
+const NODE_ENV = process.env.NODE_ENV || 'development';
+const IS_PRODUCTION = NODE_ENV === 'production';
 
 // Push notification configuration
 const PUSH_CONFIG = {
@@ -27,7 +27,7 @@ const initFirebase = async () => {
   if (fcmMessaging) return fcmMessaging;
 
   try {
-    const admin = await import("firebase-admin");
+    const admin = await import('firebase-admin');
 
     if (!admin.apps.length) {
       // For production, use service account
@@ -35,14 +35,14 @@ const initFirebase = async () => {
         fcmApp = admin.initializeApp({
           credential: admin.credential.cert({
             projectId: PUSH_CONFIG.projectId,
-            privateKey: PUSH_CONFIG.privateKey.replace(/\\n/g, "\n"),
+            privateKey: PUSH_CONFIG.privateKey.replace(/\\n/g, '\n'),
             clientEmail: PUSH_CONFIG.clientEmail,
           }),
         });
       } else {
         // For development with Firebase emulator
         fcmApp = admin.initializeApp({
-          projectId: "resqid-dev",
+          projectId: 'resqid-dev',
         });
       }
     } else {
@@ -50,11 +50,11 @@ const initFirebase = async () => {
     }
 
     fcmMessaging = fcmApp.messaging();
-    logger.info({ msg: "Firebase Cloud Messaging initialized" });
+    logger.info({ msg: 'Firebase Cloud Messaging initialized' });
     return fcmMessaging;
   } catch (error) {
     logger.error({
-      msg: "Failed to initialize Firebase",
+      msg: 'Failed to initialize Firebase',
       error: error.message,
     });
     return null;
@@ -64,8 +64,8 @@ const initFirebase = async () => {
 /**
  * Validate device token format
  */
-const isValidToken = (token) => {
-  return token && typeof token === "string" && token.length > 10;
+const isValidToken = token => {
+  return token && typeof token === 'string' && token.length > 10;
 };
 
 /**
@@ -79,17 +79,15 @@ const isValidToken = (token) => {
 export const sendPush = async (deviceToken, title, body, data = {}) => {
   // Validate input
   if (!deviceToken || !title || !body) {
-    throw new Error(
-      "Missing required push parameters: deviceToken, title, body",
-    );
+    throw new Error('Missing required push parameters: deviceToken, title, body');
   }
 
   if (!isValidToken(deviceToken)) {
     logger.warn({
-      msg: "Invalid device token format",
+      msg: 'Invalid device token format',
       token: deviceToken.slice(0, 10),
     });
-    throw new Error("Invalid device token");
+    throw new Error('Invalid device token');
   }
 
   // Sanitize input
@@ -99,7 +97,7 @@ export const sendPush = async (deviceToken, title, body, data = {}) => {
   // DEVELOPMENT MODE: Log only
   if (!IS_PRODUCTION) {
     logger.info({
-      msg: "[DEV] Push notification would send:",
+      msg: '[DEV] Push notification would send:',
       deviceToken: `${deviceToken.slice(0, 10)}...`,
       title: sanitizedTitle,
       body: sanitizedBody,
@@ -116,7 +114,7 @@ export const sendPush = async (deviceToken, title, body, data = {}) => {
   try {
     const messaging = await initFirebase();
     if (!messaging) {
-      throw new Error("Firebase Messaging not initialized");
+      throw new Error('Firebase Messaging not initialized');
     }
 
     const message = {
@@ -125,20 +123,18 @@ export const sendPush = async (deviceToken, title, body, data = {}) => {
         title: sanitizedTitle,
         body: sanitizedBody,
       },
-      data: Object.fromEntries(
-        Object.entries(data).map(([k, v]) => [k, String(v)]),
-      ),
+      data: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])),
       android: {
-        priority: "high",
+        priority: 'high',
         notification: {
-          sound: "default",
-          channelId: "resqid_default",
+          sound: 'default',
+          channelId: 'resqid_default',
         },
       },
       apns: {
         payload: {
           aps: {
-            sound: "default",
+            sound: 'default',
             badge: 1,
           },
         },
@@ -148,7 +144,7 @@ export const sendPush = async (deviceToken, title, body, data = {}) => {
     const response = await messaging.send(message);
 
     logger.info({
-      msg: "Push notification sent successfully",
+      msg: 'Push notification sent successfully',
       deviceToken: `${deviceToken.slice(0, 10)}...`,
       messageId: response,
     });
@@ -159,17 +155,17 @@ export const sendPush = async (deviceToken, title, body, data = {}) => {
     };
   } catch (error) {
     logger.error({
-      msg: "Failed to send push notification",
+      msg: 'Failed to send push notification',
       deviceToken: `${deviceToken.slice(0, 10)}...`,
       error: error.message,
     });
 
     // Handle specific FCM errors
-    if (error.code === "messaging/registration-token-not-registered") {
+    if (error.code === 'messaging/registration-token-not-registered') {
       // Token is invalid - should be removed from database
       return {
         success: false,
-        error: "Invalid device token",
+        error: 'Invalid device token',
         invalidToken: true,
       };
     }
@@ -186,12 +182,7 @@ export const sendPush = async (deviceToken, title, body, data = {}) => {
  * @param {object} data - Additional data payload
  * @returns {Promise<Array<{token: string, success: boolean, error?: string}>>}
  */
-export const sendMulticastPush = async (
-  deviceTokens,
-  title,
-  body,
-  data = {},
-) => {
+export const sendMulticastPush = async (deviceTokens, title, body, data = {}) => {
   if (!deviceTokens || deviceTokens.length === 0) {
     return [];
   }
@@ -200,11 +191,11 @@ export const sendMulticastPush = async (
   const validTokens = deviceTokens.filter(isValidToken);
 
   if (validTokens.length === 0) {
-    logger.warn({ msg: "No valid device tokens provided" });
-    return deviceTokens.map((token) => ({
+    logger.warn({ msg: 'No valid device tokens provided' });
+    return deviceTokens.map(token => ({
       token,
       success: false,
-      error: "Invalid token",
+      error: 'Invalid token',
     }));
   }
 
@@ -213,12 +204,12 @@ export const sendMulticastPush = async (
   // DEVELOPMENT MODE: Log only
   if (!IS_PRODUCTION) {
     logger.info({
-      msg: "[DEV] Multicast push would send:",
+      msg: '[DEV] Multicast push would send:',
       tokenCount: validTokens.length,
       title,
       body,
     });
-    return validTokens.map((token) => ({
+    return validTokens.map(token => ({
       token,
       success: true,
       simulated: true,
@@ -229,7 +220,7 @@ export const sendMulticastPush = async (
   try {
     const messaging = await initFirebase();
     if (!messaging) {
-      throw new Error("Firebase Messaging not initialized");
+      throw new Error('Firebase Messaging not initialized');
     }
 
     const message = {
@@ -238,9 +229,7 @@ export const sendMulticastPush = async (
         title: title.slice(0, 100),
         body: body.slice(0, 200),
       },
-      data: Object.fromEntries(
-        Object.entries(data).map(([k, v]) => [k, String(v)]),
-      ),
+      data: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])),
     };
 
     const response = await messaging.sendEachForMulticast(message);
@@ -253,21 +242,20 @@ export const sendMulticastPush = async (
         success: result.success,
         messageId: result.messageId,
         error: result.error?.message,
-        invalidToken:
-          result.error?.code === "messaging/registration-token-not-registered",
+        invalidToken: result.error?.code === 'messaging/registration-token-not-registered',
       });
     }
 
     logger.info({
-      msg: "Multicast push sent",
+      msg: 'Multicast push sent',
       total: validTokens.length,
-      successCount: results.filter((r) => r.success).length,
+      successCount: results.filter(r => r.success).length,
     });
 
     return results;
   } catch (error) {
     logger.error({
-      msg: "Failed to send multicast push",
+      msg: 'Failed to send multicast push',
       error: error.message,
     });
     throw new Error(`Multicast push failed: ${error.message}`);
@@ -284,12 +272,12 @@ export const sendMulticastPush = async (
  */
 export const sendTopicPush = async (topic, title, body, data = {}) => {
   if (!topic) {
-    throw new Error("Topic name required");
+    throw new Error('Topic name required');
   }
 
   if (!IS_PRODUCTION) {
     logger.info({
-      msg: "[DEV] Topic push would send:",
+      msg: '[DEV] Topic push would send:',
       topic,
       title,
       body,
@@ -300,7 +288,7 @@ export const sendTopicPush = async (topic, title, body, data = {}) => {
   try {
     const messaging = await initFirebase();
     if (!messaging) {
-      throw new Error("Firebase Messaging not initialized");
+      throw new Error('Firebase Messaging not initialized');
     }
 
     const message = {
@@ -309,15 +297,13 @@ export const sendTopicPush = async (topic, title, body, data = {}) => {
         title: title.slice(0, 100),
         body: body.slice(0, 200),
       },
-      data: Object.fromEntries(
-        Object.entries(data).map(([k, v]) => [k, String(v)]),
-      ),
+      data: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])),
     };
 
     const response = await messaging.send(message);
 
     logger.info({
-      msg: "Topic push sent",
+      msg: 'Topic push sent',
       topic,
       messageId: response,
     });
@@ -325,7 +311,7 @@ export const sendTopicPush = async (topic, title, body, data = {}) => {
     return { success: true, messageId: response };
   } catch (error) {
     logger.error({
-      msg: "Failed to send topic push",
+      msg: 'Failed to send topic push',
       topic,
       error: error.message,
     });
@@ -346,7 +332,7 @@ export const subscribeToTopic = async (deviceTokens, topic) => {
 
   if (!IS_PRODUCTION) {
     logger.info({
-      msg: "[DEV] Would subscribe to topic:",
+      msg: '[DEV] Would subscribe to topic:',
       topic,
       tokenCount: deviceTokens.length,
     });
@@ -360,13 +346,13 @@ export const subscribeToTopic = async (deviceTokens, topic) => {
   try {
     const messaging = await initFirebase();
     if (!messaging) {
-      throw new Error("Firebase Messaging not initialized");
+      throw new Error('Firebase Messaging not initialized');
     }
 
     const response = await messaging.subscribeToTopic(deviceTokens, topic);
 
     logger.info({
-      msg: "Subscribed to topic",
+      msg: 'Subscribed to topic',
       topic,
       successCount: response.successCount,
       failureCount: response.failureCount,
@@ -378,7 +364,7 @@ export const subscribeToTopic = async (deviceTokens, topic) => {
     };
   } catch (error) {
     logger.error({
-      msg: "Failed to subscribe to topic",
+      msg: 'Failed to subscribe to topic',
       topic,
       error: error.message,
     });
@@ -391,17 +377,17 @@ export const subscribeToTopic = async (deviceTokens, topic) => {
  */
 export const checkPushHealth = async () => {
   if (!IS_PRODUCTION) {
-    return { status: "ok", mode: "development", simulated: true };
+    return { status: 'ok', mode: 'development', simulated: true };
   }
 
   try {
     const messaging = await initFirebase();
     if (!messaging) {
-      return { status: "error", error: "Firebase not initialized" };
+      return { status: 'error', error: 'Firebase not initialized' };
     }
-    return { status: "ok", mode: "production", provider: "firebase" };
+    return { status: 'ok', mode: 'production', provider: 'firebase' };
   } catch (error) {
-    return { status: "error", error: error.message };
+    return { status: 'error', error: error.message };
   }
 };
 

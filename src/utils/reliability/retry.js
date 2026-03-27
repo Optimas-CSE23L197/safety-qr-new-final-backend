@@ -7,7 +7,7 @@
 // Never retry: Auth operations (retrying failed auth is a security risk)
 // =============================================================================
 
-import { logger } from "../../config/logger.js";
+import { logger } from '#config/logger.js';
 
 // ─── Config Defaults ──────────────────────────────────────────────────────────
 const DEFAULT_OPTIONS = {
@@ -52,10 +52,7 @@ export async function withRetry(fn, options = {}) {
 
       // Check if this error is retryable
       if (!isRetryable(err, opts.retryOn)) {
-        logger.debug(
-          { attempt, err: err.message },
-          "Non-retryable error — stopping retry",
-        );
+        logger.debug({ attempt, err: err.message }, 'Non-retryable error — stopping retry');
         throw err;
       }
 
@@ -70,17 +67,14 @@ export async function withRetry(fn, options = {}) {
           delayMs: delay,
           err: err.message,
         },
-        `Retry attempt ${attempt}/${opts.maxAttempts} — retrying in ${delay}ms`,
+        `Retry attempt ${attempt}/${opts.maxAttempts} — retrying in ${delay}ms`
       );
 
       await sleep(delay);
     }
   }
 
-  logger.error(
-    { attempts: attempt, err: lastErr?.message },
-    "All retry attempts exhausted",
-  );
+  logger.error({ attempts: attempt, err: lastErr?.message }, 'All retry attempts exhausted');
   throw lastErr;
 }
 
@@ -94,7 +88,7 @@ export async function withRetry(fn, options = {}) {
 export async function withHttpRetry(fetchFn, options = {}) {
   return withRetry(fetchFn, {
     ...options,
-    retryOn: (err) => {
+    retryOn: err => {
       // Network errors (no response) → always retry
       if (!err.status) return true;
       // 5xx → retry (server-side transient error)
@@ -110,7 +104,7 @@ export async function withHttpRetry(fetchFn, options = {}) {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function isRetryable(err, retryOnFn) {
-  if (typeof retryOnFn === "function") return retryOnFn(err);
+  if (typeof retryOnFn === 'function') return retryOnFn(err);
   // Default: retry on any error except non-retryable HTTP codes
   if (err.statusCode && NON_RETRYABLE_HTTP.has(err.statusCode)) return false;
   if (err.status && NON_RETRYABLE_HTTP.has(err.status)) return false;
@@ -128,5 +122,5 @@ function computeDelay(attempt, opts) {
 }
 
 function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise(resolve => setTimeout(resolve, ms));
 }

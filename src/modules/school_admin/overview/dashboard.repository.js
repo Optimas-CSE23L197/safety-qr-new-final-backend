@@ -12,7 +12,7 @@
 //   Subscription → @@index([school_id])
 // =============================================================================
 
-import { prisma } from "../../../config/prisma.js";
+import { prisma } from '#config/database/prisma.js';
 
 // ─── Student Counts ───────────────────────────────────────────────────────────
 
@@ -65,14 +65,14 @@ export async function getTokenBreakdown(schoolId) {
 
   const [grouped, expiringCount] = await Promise.all([
     prisma.token.groupBy({
-      by: ["status"],
+      by: ['status'],
       where: { school_id: schoolId },
       _count: { status: true },
     }),
     prisma.token.count({
       where: {
         school_id: schoolId,
-        status: "ACTIVE",
+        status: 'ACTIVE',
         expires_at: {
           gte: new Date(),
           lte: thirtyDaysOut,
@@ -81,12 +81,12 @@ export async function getTokenBreakdown(schoolId) {
     }),
   ]);
 
-  const breakdown = grouped.map((g) => ({
+  const breakdown = grouped.map(g => ({
     status: g.status,
     count: g._count.status,
   }));
 
-  const activeCount = breakdown.find((b) => b.status === "ACTIVE")?.count ?? 0;
+  const activeCount = breakdown.find(b => b.status === 'ACTIVE')?.count ?? 0;
   const totalCount = breakdown.reduce((sum, b) => sum + b.count, 0);
 
   return { breakdown, activeCount, totalCount, expiringCount };
@@ -116,7 +116,7 @@ export async function getScanLogsLast7Days(schoolId) {
       result: true,
       created_at: true,
     },
-    orderBy: { created_at: "asc" },
+    orderBy: { created_at: 'asc' },
   });
 }
 
@@ -156,18 +156,18 @@ export async function getRecentAnomalies(schoolId) {
         },
       },
     },
-    orderBy: { created_at: "desc" },
+    orderBy: { created_at: 'desc' },
     take: 5,
   });
 
-  return rows.map((a) => ({
+  return rows.map(a => ({
     id: a.id,
     type: a.anomaly_type,
     severity: a.severity,
     created_at: a.created_at,
     student_name: a.token?.student
-      ? `${a.token.student.first_name ?? ""} ${a.token.student.last_name ?? ""}`.trim()
-      : "Unknown Student",
+      ? `${a.token.student.first_name ?? ''} ${a.token.student.last_name ?? ''}`.trim()
+      : 'Unknown Student',
   }));
 }
 
@@ -189,7 +189,7 @@ export async function getPendingParentRequests(schoolId) {
   const rows = await prisma.parentEditLog.findMany({
     where: {
       school_id: schoolId,
-      field_group: { in: ["CARD_REPLACEMENT", "CARD_BLOCK"] },
+      field_group: { in: ['CARD_REPLACEMENT', 'CARD_BLOCK'] },
       created_at: { gte: thirtyDaysAgo },
     },
     select: {
@@ -206,18 +206,18 @@ export async function getPendingParentRequests(schoolId) {
         select: { name: true },
       },
     },
-    orderBy: { created_at: "desc" },
+    orderBy: { created_at: 'desc' },
     take: 5,
   });
 
-  return rows.map((r) => ({
+  return rows.map(r => ({
     id: r.id,
     type: r.field_group,
     created_at: r.created_at,
     student_name: r.student
-      ? `${r.student.first_name ?? ""} ${r.student.last_name ?? ""}`.trim()
-      : "Unknown Student",
-    parent_name: r.parent?.name ?? "Unknown Parent",
+      ? `${r.student.first_name ?? ''} ${r.student.last_name ?? ''}`.trim()
+      : 'Unknown Student',
+    parent_name: r.parent?.name ?? 'Unknown Parent',
   }));
 }
 
@@ -239,7 +239,7 @@ export async function getSubscription(schoolId) {
       current_period_end: true,
       trial_ends_at: true,
     },
-    orderBy: { created_at: "desc" },
+    orderBy: { created_at: 'desc' },
   });
 }
 

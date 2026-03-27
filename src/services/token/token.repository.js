@@ -4,7 +4,7 @@
 // No business logic here — only Prisma calls
 // =============================================================================
 
-import { prisma } from "../../config/prisma.js";
+import { prisma } from '#config/database/prisma.js';
 
 // =============================================================================
 // SCHOOL
@@ -13,7 +13,7 @@ import { prisma } from "../../config/prisma.js";
 /**
  * Find school with settings + latest subscription (for branding + validity).
  */
-export const findSchoolWithSettings = (schoolId) => {
+export const findSchoolWithSettings = schoolId => {
   return prisma.school.findUnique({
     where: { id: schoolId },
     select: {
@@ -30,7 +30,7 @@ export const findSchoolWithSettings = (schoolId) => {
         },
       },
       subscriptions: {
-        orderBy: { created_at: "desc" },
+        orderBy: { created_at: 'desc' },
         take: 1,
         select: { plan: true, status: true },
       },
@@ -56,21 +56,21 @@ export const findStudentsInSchool = (studentIds, schoolId) => {
   });
 };
 
-export const countActiveTokensForStudent = (studentId) => {
+export const countActiveTokensForStudent = studentId => {
   return prisma.token.count({
     where: {
       student_id: studentId,
-      status: { in: ["ACTIVE", "ISSUED"] },
+      status: { in: ['ACTIVE', 'ISSUED'] },
     },
   });
 };
 
-export const groupActiveTokenCountsByStudents = (studentIds) => {
+export const groupActiveTokenCountsByStudents = studentIds => {
   return prisma.token.groupBy({
-    by: ["student_id"],
+    by: ['student_id'],
     where: {
       student_id: { in: studentIds },
-      status: { in: ["ACTIVE", "ISSUED"] },
+      status: { in: ['ACTIVE', 'ISSUED'] },
     },
     _count: { id: true },
   });
@@ -84,7 +84,7 @@ export const groupActiveTokenCountsByStudents = (studentIds) => {
  * Check if a card number already exists.
  * Used by service to retry on collision (extremely rare — 16.7M combinations).
  */
-export const cardNumberExists = (cardNumber) => {
+export const cardNumberExists = cardNumber => {
   return prisma.card.findUnique({
     where: { card_number: cardNumber },
     select: { id: true },
@@ -109,7 +109,7 @@ export const createToken = ({
     data: {
       school_id: schoolId,
       token_hash: tokenHash,
-      status: "UNASSIGNED",
+      status: 'UNASSIGNED',
       expires_at: expiresAt,
       order_id: orderId,
       order_item_id: orderItemId,
@@ -134,7 +134,7 @@ export const createPreloadedToken = ({
       school_id: schoolId,
       student_id: studentId,
       token_hash: tokenHash,
-      status: "ACTIVE",
+      status: 'ACTIVE',
       assigned_at: now,
       activated_at: now,
       expires_at: expiresAt,
@@ -160,7 +160,7 @@ export const createBatchWithTokens = ({
   notes,
   tokenData,
 }) => {
-  return prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async tx => {
     const batch = await tx.tokenBatch.create({
       data: {
         school_id: schoolId,
@@ -179,11 +179,11 @@ export const createBatchWithTokens = ({
             batch_id: batch.id,
             order_id: orderId,
             token_hash: tokenHash,
-            status: "UNASSIGNED",
+            status: 'UNASSIGNED',
             expires_at: expiresAt,
           },
-        }),
-      ),
+        })
+      )
     );
 
     return { batch, createdTokens };
@@ -201,7 +201,7 @@ export const createBatchWithPreloadedTokens = ({
   notes,
   tokenData,
 }) => {
-  return prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async tx => {
     const batch = await tx.tokenBatch.create({
       data: {
         school_id: schoolId,
@@ -222,13 +222,13 @@ export const createBatchWithPreloadedTokens = ({
             batch_id: batch.id,
             order_id: orderId,
             token_hash: tokenHash,
-            status: "ACTIVE",
+            status: 'ACTIVE',
             assigned_at: now,
             activated_at: now,
             expires_at: expiresAt,
           },
-        }),
-      ),
+        })
+      )
     );
 
     return { batch, createdTokens };
@@ -247,14 +247,8 @@ export const createBatchWithPreloadedTokens = ({
  *   PARTIAL   — some succeeded, some failed
  *   FAILED    — every single token errored (generatedCount === 0)
  */
-export const finalizeBatch = ({
-  batchId,
-  generatedCount,
-  failedCount,
-  errorLog,
-}) => {
-  const status =
-    generatedCount === 0 ? "FAILED" : failedCount > 0 ? "PARTIAL" : "COMPLETE";
+export const finalizeBatch = ({ batchId, generatedCount, failedCount, errorLog }) => {
+  const status = generatedCount === 0 ? 'FAILED' : failedCount > 0 ? 'PARTIAL' : 'COMPLETE';
 
   return prisma.tokenBatch.update({
     where: { id: batchId },
@@ -328,7 +322,7 @@ export const createQrAsset = ({
       school_id: schoolId,
       storage_key: storageKey,
       public_url: publicUrl,
-      format: "PNG",
+      format: 'PNG',
       qr_type: qrType, // already mapped to Prisma enum by caller
       generated_by: generatedBy,
       order_id: orderId ?? null,
@@ -373,7 +367,7 @@ export const writeAuditLog = ({
 // CARD DATA — for card.service (card design step, runs after token generation)
 // =============================================================================
 
-export const findStudentForCard = (studentId) => {
+export const findStudentForCard = studentId => {
   return prisma.student.findUnique({
     where: { id: studentId },
     select: {
@@ -388,7 +382,7 @@ export const findStudentForCard = (studentId) => {
   });
 };
 
-export const findEmergencyProfileForCard = (studentId) => {
+export const findEmergencyProfileForCard = studentId => {
   return prisma.emergencyProfile.findUnique({
     where: { student_id: studentId },
     select: {
@@ -398,7 +392,7 @@ export const findEmergencyProfileForCard = (studentId) => {
       medications: true,
       contacts: {
         where: { is_active: true },
-        orderBy: { priority: "asc" },
+        orderBy: { priority: 'asc' },
         select: {
           name: true,
           relationship: true,
@@ -410,7 +404,7 @@ export const findEmergencyProfileForCard = (studentId) => {
   });
 };
 
-export const findManyStudentsForCard = (studentIds) => {
+export const findManyStudentsForCard = studentIds => {
   return prisma.student.findMany({
     where: { id: { in: studentIds } },
     select: {
@@ -425,7 +419,7 @@ export const findManyStudentsForCard = (studentIds) => {
   });
 };
 
-export const findManyEmergencyProfilesForCard = (studentIds) => {
+export const findManyEmergencyProfilesForCard = studentIds => {
   return prisma.emergencyProfile.findMany({
     where: { student_id: { in: studentIds } },
     select: {
@@ -436,7 +430,7 @@ export const findManyEmergencyProfilesForCard = (studentIds) => {
       medications: true,
       contacts: {
         where: { is_active: true },
-        orderBy: { priority: "asc" },
+        orderBy: { priority: 'asc' },
         select: {
           name: true,
           relationship: true,

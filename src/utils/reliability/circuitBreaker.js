@@ -7,13 +7,13 @@
 // If MSG91 is down → circuit opens → OTP sends queued → parents not affected
 // =============================================================================
 
-import { logger } from "../../config/logger.js";
+import { logger } from '#config/logger.js';
 
 // ─── States ───────────────────────────────────────────────────────────────────
 const STATE = {
-  CLOSED: "CLOSED", // Normal — requests pass through
-  OPEN: "OPEN", // Failing — requests blocked immediately
-  HALF_OPEN: "HALF_OPEN", // Testing — one request allowed to check recovery
+  CLOSED: 'CLOSED', // Normal — requests pass through
+  OPEN: 'OPEN', // Failing — requests blocked immediately
+  HALF_OPEN: 'HALF_OPEN', // Testing — one request allowed to check recovery
 };
 
 // ─── Circuit Breaker Class ────────────────────────────────────────────────────
@@ -77,10 +77,7 @@ export class CircuitBreaker {
       this._successCount++;
       if (this._successCount >= this.successThreshold) {
         this._reset();
-        logger.info(
-          { circuit: this.name },
-          `Circuit CLOSED — service recovered`,
-        );
+        logger.info({ circuit: this.name }, `Circuit CLOSED — service recovered`);
       }
     } else {
       this._failureCount = 0;
@@ -109,7 +106,7 @@ export class CircuitBreaker {
         threshold: this.failureThreshold,
         err: err.message,
       },
-      `Circuit failure recorded`,
+      `Circuit failure recorded`
     );
   }
 
@@ -122,7 +119,7 @@ export class CircuitBreaker {
         failureCount: this._failureCount,
         opensForMs: this.timeoutMs,
       },
-      `Circuit OPENED — ${this.name} is failing`,
+      `Circuit OPENED — ${this.name} is failing`
     );
   }
 
@@ -141,7 +138,7 @@ export class CircuitBreaker {
   _transitionTo(newState) {
     logger.debug(
       { circuit: this.name, from: this._state, to: newState },
-      "Circuit state transition",
+      'Circuit state transition'
     );
     this._state = newState;
   }
@@ -176,13 +173,9 @@ export class CircuitBreaker {
 
 export class CircuitOpenError extends Error {
   constructor(serviceName, openedAt, timeoutMs) {
-    const retryIn = openedAt
-      ? Math.max(0, timeoutMs - (Date.now() - openedAt))
-      : timeoutMs;
-    super(
-      `Circuit breaker OPEN for '${serviceName}' — retry in ${Math.ceil(retryIn / 1000)}s`,
-    );
-    this.name = "CircuitOpenError";
+    const retryIn = openedAt ? Math.max(0, timeoutMs - (Date.now() - openedAt)) : timeoutMs;
+    super(`Circuit breaker OPEN for '${serviceName}' — retry in ${Math.ceil(retryIn / 1000)}s`);
+    this.name = 'CircuitOpenError';
     this.serviceName = serviceName;
     this.retryIn = retryIn;
     this.isOperational = true;
@@ -193,20 +186,20 @@ export class CircuitOpenError extends Error {
 // ─── Pre-built Breakers for RESQID Services ───────────────────────────────────
 
 export const breakers = {
-  msg91: new CircuitBreaker("MSG91", {
+  msg91: new CircuitBreaker('MSG91', {
     failureThreshold: 3,
     timeoutMs: 30_000,
   }),
-  firebase: new CircuitBreaker("Firebase", {
+  firebase: new CircuitBreaker('Firebase', {
     failureThreshold: 5,
     timeoutMs: 60_000,
   }),
-  s3: new CircuitBreaker("AWS-S3", { failureThreshold: 5, timeoutMs: 60_000 }),
-  razorpay: new CircuitBreaker("Razorpay", {
+  s3: new CircuitBreaker('AWS-S3', { failureThreshold: 5, timeoutMs: 60_000 }),
+  razorpay: new CircuitBreaker('Razorpay', {
     failureThreshold: 3,
     timeoutMs: 60_000,
   }),
-  geoip: new CircuitBreaker("GeoIP", {
+  geoip: new CircuitBreaker('GeoIP', {
     failureThreshold: 5,
     timeoutMs: 30_000,
   }),

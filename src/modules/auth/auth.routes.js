@@ -1,14 +1,14 @@
 // =============================================================================
-// src/modules/auth/routes.js — RESQID
+// src/modules/auth/routes.js — RESQID (FIXED)
 // Mounted at /api/auth
 // =============================================================================
 
-import { Router } from "express";
+import { Router } from 'express';
 
-import { validate } from "../../middleware/validate.middleware.js";
-import { authenticate } from "../../middleware/auth.middleware.js";
-import { authLimiter } from "../../middleware/rateLimit.middleware.js";
-import { authSlowDown } from "../../middleware/slowDown.middleware.js";
+import { validate } from '#middleware/validate.middleware.js';
+import { authenticate } from '#middleware/auth.middleware.js';
+import { authLimiter } from '#middleware/rateLimit.middleware.js';
+import { authSlowDown } from '#middleware/slowDown.middleware.js';
 
 import {
   emailPasswordValidation,
@@ -16,7 +16,8 @@ import {
   verifyOtpValidation,
   registerInitValidation,
   registerVerifyValidation,
-} from "./auth.validation.js";
+  changePasswordValidation, // ✅ ADDED IMPORT
+} from './auth.validation.js';
 
 import {
   loginSuperAdminController,
@@ -27,73 +28,66 @@ import {
   registerVerifyController,
   refreshTokenController,
   logoutController,
-  changePasswordController, // ✅ ADD THIS IMPORT
-} from "./auth.controller.js";
+  changePasswordController,
+} from './auth.controller.js';
 
 const router = Router();
 
 // ── Super Admin Login ─────────────────────────────────────────────────────────
 router.post(
-  "/super-admin",
+  '/super-admin',
   authSlowDown,
   authLimiter,
   validate(emailPasswordValidation),
-  loginSuperAdminController,
+  loginSuperAdminController
 );
 
 // ── School User Login ─────────────────────────────────────────────────────────
 router.post(
-  "/school",
+  '/school',
   authSlowDown,
   authLimiter,
   validate(emailPasswordValidation),
-  loginSchoolUserController,
+  loginSchoolUserController
 );
 
 // ── Parent Login: Send OTP ────────────────────────────────────────────────────
-router.post(
-  "/send-otp",
-  authLimiter,
-  validate(sendOtpValidation),
-  sendOtpController,
-);
+router.post('/send-otp', authLimiter, validate(sendOtpValidation), sendOtpController);
 
 // ── Parent Login: Verify OTP ──────────────────────────────────────────────────
-router.post(
-  "/verify-otp",
-  authLimiter,
-  validate(verifyOtpValidation),
-  verifyOtpController,
-);
+router.post('/verify-otp', authLimiter, validate(verifyOtpValidation), verifyOtpController);
 
 // ── Parent Registration: Step 1 — validate card + send OTP + issue nonce ─────
 router.post(
-  "/register/init",
+  '/register/init',
+  authSlowDown, // ✅ ADDED slow down for registration
   authLimiter,
   validate(registerInitValidation),
-  registerInitController,
+  registerInitController
 );
 
 // ── Parent Registration: Step 2 — verify nonce + OTP → issue tokens ──────────
 router.post(
-  "/register/verify",
+  '/register/verify',
+  authSlowDown, // ✅ ADDED slow down for registration
   authLimiter,
   validate(registerVerifyValidation),
-  registerVerifyController,
+  registerVerifyController
 );
 
 // ── Change Password ───────────────────────────────────────────────────────────
 router.post(
-  "/change-password",
+  '/change-password',
+  authLimiter, // ✅ ADDED rate limiter for password change
   authenticate,
-  // validate(changePasswordValidation), // TODO: Add validation when ready
-  changePasswordController,
+  validate(changePasswordValidation), // ✅ UNCOMMENTED AND FIXED
+  changePasswordController
 );
 
 // ── Refresh Token ─────────────────────────────────────────────────────────────
-router.post("/refresh", authLimiter, refreshTokenController);
+router.post('/refresh', authLimiter, refreshTokenController);
 
 // ── Logout ────────────────────────────────────────────────────────────────────
-router.post("/logout", authenticate, logoutController);
+router.post('/logout', authenticate, logoutController);
 
 export default router;

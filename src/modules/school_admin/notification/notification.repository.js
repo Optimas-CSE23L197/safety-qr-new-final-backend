@@ -12,7 +12,7 @@
 //   payload.*      — any extra context (student_id, token_hash, etc.)
 //
 // NotificationStatus enum: QUEUED | SENT | FAILED | SUPPRESSED
-//   Frontend treats QUEUED = "unread", SENT = "read".
+//   Frontend treats QUEUED = "unread", SENT = "read'.
 //   markRead / markAllRead set status → SENT.
 //   FAILED / SUPPRESSED shown as-is in the list.
 //
@@ -38,7 +38,7 @@
 //   @@index([type])                — type filter
 // =============================================================================
 
-import { prisma } from "../../../config/prisma.js";
+import { prisma } from '#config/database/prisma.js';
 
 /**
  * findNotifications({ schoolId, filter, skip, take })
@@ -52,8 +52,8 @@ export async function findNotifications({ schoolId, filter, skip, take }) {
       where,
       orderBy: [
         // QUEUED (unread) rows float to top — mirrors frontend unread-first display
-        { status: "asc" },
-        { created_at: "desc" },
+        { status: 'asc' },
+        { created_at: 'desc' },
       ],
       skip,
       take,
@@ -92,7 +92,7 @@ export async function getNotificationStats(schoolId) {
   const unread = await prisma.notification.count({
     where: {
       school_id: schoolId,
-      status: "QUEUED",
+      status: 'QUEUED',
     },
   });
 
@@ -111,10 +111,10 @@ export async function markOneRead({ notificationId, schoolId }) {
     where: {
       id: notificationId,
       school_id: schoolId, // ownership guard
-      status: "QUEUED", // idempotency — don't re-mark SENT/FAILED
+      status: 'QUEUED', // idempotency — don't re-mark SENT/FAILED
     },
     data: {
-      status: "SENT",
+      status: 'SENT',
       sent_at: new Date(),
     },
   });
@@ -151,10 +151,10 @@ export async function markAllRead(schoolId) {
   const result = await prisma.notification.updateMany({
     where: {
       school_id: schoolId,
-      status: "QUEUED",
+      status: 'QUEUED',
     },
     data: {
-      status: "SENT",
+      status: 'SENT',
       sent_at: new Date(),
     },
   });
@@ -167,11 +167,11 @@ export async function markAllRead(schoolId) {
 function buildWhere({ schoolId, filter }) {
   const where = { school_id: schoolId };
 
-  if (filter === "UNREAD") {
+  if (filter === 'UNREAD') {
     // Only unread notifications
-    where.status = "QUEUED";
-  } else if (filter !== "ALL") {
-    // filter is a NotificationType value e.g. "SCAN_ANOMALY"
+    where.status = 'QUEUED';
+  } else if (filter !== 'ALL') {
+    // filter is a NotificationType value e.g. 'SCAN_ANOMALY'
     where.type = filter;
   }
 
@@ -183,7 +183,7 @@ function buildWhere({ schoolId, filter }) {
 function shapeNotification(n) {
   // Extract title + body from payload JSON
   // payload is typed as Json? — coerce safely
-  const payload = n.payload && typeof n.payload === "object" ? n.payload : {};
+  const payload = n.payload && typeof n.payload === 'object' ? n.payload : {};
 
   return {
     id: n.id,
@@ -194,10 +194,9 @@ function shapeNotification(n) {
     title: payload.title ?? humanizeFallbackTitle(n.type),
     body: payload.body ?? null,
     // Extra payload context passed through — frontend can use if needed
-    payload_meta: omit(payload, ["title", "body"]),
+    payload_meta: omit(payload, ['title', 'body']),
     student_name: n.student
-      ? `${n.student.first_name ?? ""} ${n.student.last_name ?? ""}`.trim() ||
-        null
+      ? `${n.student.first_name ?? ''} ${n.student.last_name ?? ''}`.trim() || null
       : null,
     sent_at: n.sent_at,
     created_at: n.created_at,
@@ -210,16 +209,16 @@ function shapeNotification(n) {
  */
 function humanizeFallbackTitle(type) {
   const titles = {
-    SCAN_ALERT: "Scan Alert",
-    SCAN_ANOMALY: "Suspicious scan detected",
-    CARD_EXPIRING: "Card Expiring Soon",
-    CARD_REVOKED: "Card Revoked",
-    CARD_REPLACED: "Card Replaced",
-    BILLING_ALERT: "Billing Alert",
-    DEVICE_LOGIN: "New Device Login",
-    SYSTEM: "System Notification",
+    SCAN_ALERT: 'Scan Alert',
+    SCAN_ANOMALY: 'Suspicious scan detected',
+    CARD_EXPIRING: 'Card Expiring Soon',
+    CARD_REVOKED: 'Card Revoked',
+    CARD_REPLACED: 'Card Replaced',
+    BILLING_ALERT: 'Billing Alert',
+    DEVICE_LOGIN: 'New Device Login',
+    SYSTEM: 'System Notification',
   };
-  return titles[type] ?? "Notification";
+  return titles[type] ?? 'Notification';
 }
 
 /** Shallow omit helper — avoids lodash dependency */

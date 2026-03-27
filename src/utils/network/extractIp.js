@@ -33,17 +33,17 @@ const PRIVATE_RANGES = [
  */
 export function extractIp(req) {
   // 1. Cloudflare
-  const cf = req.headers["cf-connecting-ip"];
+  const cf = req.headers['cf-connecting-ip'];
   if (cf && isValidIp(cf)) return normalizeIp(cf);
 
   // 2. Nginx / custom reverse proxy
-  const xReal = req.headers["x-real-ip"];
+  const xReal = req.headers['x-real-ip'];
   if (xReal && isValidIp(xReal)) return normalizeIp(xReal);
 
   // 3. X-Forwarded-For — take FIRST IP (leftmost = original client)
-  const xff = req.headers["x-forwarded-for"];
+  const xff = req.headers['x-forwarded-for'];
   if (xff) {
-    const first = xff.split(",")[0]?.trim();
+    const first = xff.split(',')[0]?.trim();
     if (first && isValidIp(first)) return normalizeIp(first);
   }
 
@@ -51,7 +51,7 @@ export function extractIp(req) {
   const socket = req.socket?.remoteAddress ?? req.connection?.remoteAddress;
   if (socket && isValidIp(socket)) return normalizeIp(socket);
 
-  return "0.0.0.0";
+  return '0.0.0.0';
 }
 
 /**
@@ -60,7 +60,7 @@ export function extractIp(req) {
  * Used to flag scan logs from school intranet (TrustedScanZone)
  */
 export function isPrivateIp(ip) {
-  return PRIVATE_RANGES.some((r) => r.test(ip));
+  return PRIVATE_RANGES.some(r => r.test(ip));
 }
 
 /**
@@ -68,7 +68,7 @@ export function isPrivateIp(ip) {
  * Validate IPv4 or IPv6 format
  */
 export function isValidIp(ip) {
-  if (!ip || typeof ip !== "string") return false;
+  if (!ip || typeof ip !== 'string') return false;
   const trimmed = ip.trim();
   return IPV4_REGEX.test(trimmed) || IPV6_REGEX.test(trimmed);
 }
@@ -76,13 +76,13 @@ export function isValidIp(ip) {
 /**
  * normalizeIp(ip)
  * Strip IPv6 wrapper from IPv4 addresses
- * "::ffff:192.168.1.1" → "192.168.1.1"
+ * "::ffff:192.168.1.1" → '192.168.1.1'
  */
 export function normalizeIp(ip) {
-  if (!ip) return "0.0.0.0";
+  if (!ip) return '0.0.0.0';
   const cleaned = ip.trim();
   // Strip IPv6-mapped IPv4 prefix
-  if (cleaned.startsWith("::ffff:")) {
+  if (cleaned.startsWith('::ffff:')) {
     return cleaned.slice(7);
   }
   return cleaned;

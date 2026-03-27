@@ -2,8 +2,8 @@
 // modules/school_admin/students/students.controller.js — RESQID
 // =============================================================================
 
-import { getStudentList } from "./students.service.js";
-import { logger } from "../../../config/logger.js";
+import { getStudentList } from './students.service.js';
+import { logger } from '#config/logger.js';
 
 /**
  * GET /api/v1/school-admin/:schoolId/students
@@ -28,14 +28,11 @@ export async function listStudents(req, res) {
     const result = await getStudentList(schoolId, query);
     return res.status(200).json({ success: true, data: result });
   } catch (err) {
-    logger.error(
-      { schoolId, query, err: err.message },
-      "Students list fetch failed",
-    );
+    logger.error({ schoolId, query, err: err.message }, 'Students list fetch failed');
     return res.status(500).json({
       success: false,
-      code: "INTERNAL_ERROR",
-      message: "Failed to fetch students",
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch students',
     });
   }
 }
@@ -52,20 +49,17 @@ export async function getStudentDetails(req, res) {
     if (!student) {
       return res.status(404).json({
         success: false,
-        code: "NOT_FOUND",
-        message: "Student not found in this school",
+        code: 'NOT_FOUND',
+        message: 'Student not found in this school',
       });
     }
     return res.status(200).json({ success: true, data: student });
   } catch (err) {
-    logger.error(
-      { schoolId, studentId, err: err.message },
-      "Student details fetch failed",
-    );
+    logger.error({ schoolId, studentId, err: err.message }, 'Student details fetch failed');
     return res.status(500).json({
       success: false,
-      code: "INTERNAL_ERROR",
-      message: "Failed to fetch student details",
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch student details',
     });
   }
 }

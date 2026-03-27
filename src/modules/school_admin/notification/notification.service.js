@@ -14,11 +14,11 @@
 //   → Fast via @@index([school_id]) + @@index([status, created_at])
 // =============================================================================
 
-import * as repo from "./notification.repository.js";
-import { cacheAside, cacheDel } from "../../../utils/cache/cache.js";
-import { buildOffsetMeta } from "../../../utils/response/paginate.js";
+import * as repo from './notification.repository.js';
+import { cacheAside, cacheDel } from '#utils/cache/cache.js';
+import { buildOffsetMeta } from '#utils/response/paginate.js';
 
-const STATS_KEY = (schoolId) => `notif_stats:${schoolId}`;
+const STATS_KEY = schoolId => `notif_stats:${schoolId}`;
 const STATS_TTL = 30; // 30s — badge must feel instant after reading
 
 export async function getNotificationInventory(schoolId, query) {
@@ -39,9 +39,7 @@ export async function getNotificationInventory(schoolId, query) {
 }
 
 async function getStatsCached(schoolId) {
-  return cacheAside(STATS_KEY(schoolId), STATS_TTL, () =>
-    repo.getNotificationStats(schoolId),
-  );
+  return cacheAside(STATS_KEY(schoolId), STATS_TTL, () => repo.getNotificationStats(schoolId));
 }
 
 /**

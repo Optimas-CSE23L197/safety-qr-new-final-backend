@@ -5,11 +5,11 @@
 // scheduleBalanceInvoiceNotification() and forget about it.
 // =============================================================================
 
-import { Queue } from "bullmq";
-import { createWorkerRedisClient } from "../../config/redis.js";
-import { logger } from "../../config/logger.js";
+import { Queue } from 'bullmq';
+import { createWorkerRedisClient } from '#config/redis.js';
+import { logger } from '#config/logger.js';
 
-const INVOICE_QUEUE_NAME = "invoice-notifications";
+const INVOICE_QUEUE_NAME = 'invoice-notifications';
 
 // Lazily initialised — created on first use, reused after that.
 let _invoiceQueue = null;
@@ -17,12 +17,12 @@ let _invoiceQueue = null;
 const getInvoiceQueue = () => {
   if (!_invoiceQueue) {
     _invoiceQueue = new Queue(INVOICE_QUEUE_NAME, {
-      connection: { client: createWorkerRedisClient("queue-invoice") },
+      connection: { client: createWorkerRedisClient('queue-invoice') },
       defaultJobOptions: {
         removeOnComplete: { count: 100 },
         removeOnFail: { count: 50 },
         attempts: 3,
-        backoff: { type: "exponential", delay: 60_000 },
+        backoff: { type: 'exponential', delay: 60_000 },
       },
     });
   }
@@ -43,16 +43,16 @@ export const scheduleBalanceInvoiceNotification = async ({
   const queue = getInvoiceQueue();
 
   const job = await queue.add(
-    "send-balance-invoice",
-    { orderId, invoiceId, event: "BALANCE_INVOICE_DUE" },
+    'send-balance-invoice',
+    { orderId, invoiceId, event: 'BALANCE_INVOICE_DUE' },
     {
       delay: delayMs,
       jobId: `balance-invoice-${orderId}`, // deduplication key
-    },
+    }
   );
 
   logger.info({
-    msg: "Balance invoice notification scheduled",
+    msg: 'Balance invoice notification scheduled',
     orderId,
     invoiceId,
     jobId: job.id,

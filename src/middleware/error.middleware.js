@@ -13,12 +13,12 @@
 //   - Programming errors (unexpected) → 500 + generic message
 // =============================================================================
 
-import { Prisma } from "../generated/index.js";
-import { ZodError } from "zod";
-import { logger } from "../config/logger.js";
-import { ENV } from "../config/env.js";
+import { Prisma } from '../../src/generated/index.js';
+import { ZodError } from 'zod';
+import { logger } from '#config/logger.js';
+import { ENV } from '#config/env.js';
 
-const IS_PROD = ENV.NODE_ENV === "production";
+const IS_PROD = ENV.NODE_ENV === 'production';
 
 // ─── Error Response Shape ─────────────────────────────────────────────────────
 // ALL errors from this API look exactly like this — no exceptions
@@ -41,7 +41,7 @@ function errorResponse(res, { statusCode, message, errors = null, requestId }) {
 // Must have 4 arguments — Express identifies error middleware by arity
 // eslint-disable-next-line no-unused-vars
 export function globalErrorHandler(err, req, res, next) {
-  const requestId = req.id ?? req.requestId ?? "unknown";
+  const requestId = req.id ?? req.requestId ?? 'unknown';
   const log = req.log ?? logger;
 
   // Store stack for dev response (never sent in prod)
@@ -52,7 +52,7 @@ export function globalErrorHandler(err, req, res, next) {
     // Warn level — these are expected (bad input, auth failures, etc.)
     log.warn(
       {
-        type: "operational_error",
+        type: 'operational_error',
         statusCode: err.statusCode,
         message: err.message,
         errors: err.errors,
@@ -60,7 +60,7 @@ export function globalErrorHandler(err, req, res, next) {
         method: req.method,
         userId: req.userId,
       },
-      `Operational error: ${err.message}`,
+      `Operational error: ${err.message}`
     );
 
     return errorResponse(res, {
@@ -73,20 +73,17 @@ export function globalErrorHandler(err, req, res, next) {
 
   // ── 2. Zod Validation Error — schema parse failed ─────────────────────────
   if (err instanceof ZodError) {
-    const errors = err.errors.map((e) => ({
-      field: e.path.join("."),
+    const errors = err.errors.map(e => ({
+      field: e.path.join('.'),
       message: e.message,
       code: e.code,
     }));
 
-    log.warn(
-      { type: "validation_error", errors, path: req.path },
-      "Zod validation error",
-    );
+    log.warn({ type: 'validation_error', errors, path: req.path }, 'Zod validation error');
 
     return errorResponse(res, {
       statusCode: 422,
-      message: "Validation failed",
+      message: 'Validation failed',
       errors,
       requestId,
     });
@@ -99,13 +96,13 @@ export function globalErrorHandler(err, req, res, next) {
 
   if (err instanceof Prisma.PrismaClientValidationError) {
     log.error(
-      { type: "prisma_validation", path: req.path, userId: req.userId },
-      "Prisma validation error — schema mismatch in query",
+      { type: 'prisma_validation', path: req.path, userId: req.userId },
+      'Prisma validation error — schema mismatch in query'
     );
 
     return errorResponse(res, {
       statusCode: 400,
-      message: "Invalid data provided",
+      message: 'Invalid data provided',
       requestId,
     });
   }
@@ -114,53 +111,47 @@ export function globalErrorHandler(err, req, res, next) {
     err instanceof Prisma.PrismaClientInitializationError ||
     err instanceof Prisma.PrismaClientRustPanicError
   ) {
-    log.fatal(
-      { type: "prisma_init_error", err },
-      "Prisma init/panic — database unavailable",
-    );
+    log.fatal({ type: 'prisma_init_error', err }, 'Prisma init/panic — database unavailable');
 
     return errorResponse(res, {
       statusCode: 503,
-      message: "Database temporarily unavailable. Please try again shortly.",
+      message: 'Database temporarily unavailable. Please try again shortly.',
       requestId,
     });
   }
 
   // ── 4. JWT Errors — should be caught by auth middleware, but safety net ───
-  if (err.name === "JsonWebTokenError" || err.name === "TokenExpiredError") {
-    log.warn(
-      { type: "jwt_error", name: err.name },
-      "JWT error reached error handler",
-    );
+  if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
+    log.warn({ type: 'jwt_error', name: err.name }, 'JWT error reached error handler');
     return errorResponse(res, {
       statusCode: 401,
-      message: "Authentication failed",
+      message: 'Authentication failed',
       requestId,
     });
   }
 
   // ── 5. Multer / File Upload Errors ────────────────────────────────────────
-  if (err.code === "LIMIT_FILE_SIZE") {
+  if (err.code === 'LIMIT_FILE_SIZE') {
     return errorResponse(res, {
       statusCode: 413,
-      message: "File size exceeds the allowed limit",
+      message: 'File size exceeds the allowed limit',
       requestId,
     });
   }
 
-  if (err.code === "LIMIT_UNEXPECTED_FILE") {
+  if (err.code === 'LIMIT_UNEXPECTED_FILE') {
     return errorResponse(res, {
       statusCode: 400,
-      message: "Unexpected file field in upload",
+      message: 'Unexpected file field in upload',
       requestId,
     });
   }
 
   // ── 6. SyntaxError — malformed JSON body ──────────────────────────────────
-  if (err instanceof SyntaxError && "body" in err) {
+  if (err instanceof SyntaxError && 'body' in err) {
     return errorResponse(res, {
       statusCode: 400,
-      message: "Request body contains invalid JSON",
+      message: 'Request body contains invalid JSON',
       requestId,
     });
   }
@@ -169,7 +160,7 @@ export function globalErrorHandler(err, req, res, next) {
   // Full error logged internally, safe message sent to client
   log.error(
     {
-      type: "unexpected_error",
+      type: 'unexpected_error',
       err: {
         message: err.message,
         name: err.name,
@@ -182,14 +173,12 @@ export function globalErrorHandler(err, req, res, next) {
       schoolId: req.schoolId,
       requestId,
     },
-    `Unexpected error: ${err.message}`,
+    `Unexpected error: ${err.message}`
   );
 
   return errorResponse(res, {
     statusCode: 500,
-    message: IS_PROD
-      ? "An unexpected error occurred. Our team has been notified."
-      : err.message, // Show real message in dev only
+    message: IS_PROD ? 'An unexpected error occurred. Our team has been notified.' : err.message, // Show real message in dev only
     requestId,
   });
 }
@@ -197,17 +186,17 @@ export function globalErrorHandler(err, req, res, next) {
 // ─── 404 Handler — must be registered BEFORE globalErrorHandler ───────────────
 
 export function notFoundHandler(req, res) {
-  const requestId = req.id ?? "unknown";
+  const requestId = req.id ?? 'unknown';
   const log = req.log ?? logger;
 
   log.warn(
     {
-      type: "not_found",
+      type: 'not_found',
       method: req.method,
       url: req.originalUrl,
       userId: req.userId,
     },
-    `404: ${req.method} ${req.path}`,
+    `404: ${req.method} ${req.path}`
   );
 
   return res.status(404).json({
@@ -223,20 +212,20 @@ export function notFoundHandler(req, res) {
 function handlePrismaKnownError(err, req, res, requestId, log) {
   log.warn(
     {
-      type: "prisma_error",
+      type: 'prisma_error',
       code: err.code,
       // NEVER log err.meta in production — contains table/field names
       ...(IS_PROD ? {} : { meta: err.meta }),
       path: req.path,
       userId: req.userId,
     },
-    `Prisma error P${err.code}`,
+    `Prisma error P${err.code}`
   );
 
   switch (err.code) {
     // Unique constraint violation
-    case "P2002": {
-      const field = IS_PROD ? "field" : (err.meta?.target?.[0] ?? "field");
+    case 'P2002': {
+      const field = IS_PROD ? 'field' : (err.meta?.target?.[0] ?? 'field');
       return errorResponse(res, {
         statusCode: 409,
         message: `A record with this ${field} already exists`,
@@ -245,42 +234,42 @@ function handlePrismaKnownError(err, req, res, requestId, log) {
     }
 
     // Record not found
-    case "P2025":
+    case 'P2025':
       return errorResponse(res, {
         statusCode: 404,
-        message: "The requested record was not found",
+        message: 'The requested record was not found',
         requestId,
       });
 
     // Foreign key constraint failed
-    case "P2003":
+    case 'P2003':
       return errorResponse(res, {
         statusCode: 400,
-        message: "Referenced record does not exist",
+        message: 'Referenced record does not exist',
         requestId,
       });
 
     // Required field null violation
-    case "P2011":
+    case 'P2011':
       return errorResponse(res, {
         statusCode: 400,
-        message: "A required field is missing",
+        message: 'A required field is missing',
         requestId,
       });
 
     // Value too long
-    case "P2000":
+    case 'P2000':
       return errorResponse(res, {
         statusCode: 400,
-        message: "A field value exceeds the maximum allowed length",
+        message: 'A field value exceeds the maximum allowed length',
         requestId,
       });
 
     // Transaction conflict
-    case "P2034":
+    case 'P2034':
       return errorResponse(res, {
         statusCode: 409,
-        message: "Write conflict, please retry",
+        message: 'Write conflict, please retry',
         requestId,
       });
 
@@ -288,9 +277,7 @@ function handlePrismaKnownError(err, req, res, requestId, log) {
     default:
       return errorResponse(res, {
         statusCode: 500,
-        message: IS_PROD
-          ? "A database error occurred"
-          : `Prisma error ${err.code}`,
+        message: IS_PROD ? 'A database error occurred' : `Prisma error ${err.code}`,
         requestId,
       });
   }
@@ -302,44 +289,44 @@ function handlePrismaKnownError(err, req, res, requestId, log) {
 
 export function setupProcessErrorHandlers(server) {
   // Unhandled promise rejections — log and exit gracefully
-  process.on("unhandledRejection", (reason, promise) => {
+  process.on('unhandledRejection', (reason, promise) => {
     logger.fatal(
-      { type: "unhandled_rejection", reason, promise },
-      "Unhandled promise rejection — shutting down",
+      { type: 'unhandled_rejection', reason, promise },
+      'Unhandled promise rejection — shutting down'
     );
     gracefulShutdown(server, 1);
   });
 
   // Uncaught exceptions — ALWAYS exit — process state is undefined
-  process.on("uncaughtException", (err) => {
+  process.on('uncaughtException', err => {
     logger.fatal(
-      { type: "uncaught_exception", err },
-      "Uncaught exception — shutting down immediately",
+      { type: 'uncaught_exception', err },
+      'Uncaught exception — shutting down immediately'
     );
     gracefulShutdown(server, 1);
   });
 
   // Graceful shutdown signals
-  process.on("SIGTERM", () => {
-    logger.info("SIGTERM received — shutting down gracefully");
+  process.on('SIGTERM', () => {
+    logger.info('SIGTERM received — shutting down gracefully');
     gracefulShutdown(server, 0);
   });
 
-  process.on("SIGINT", () => {
-    logger.info("SIGINT received — shutting down gracefully");
+  process.on('SIGINT', () => {
+    logger.info('SIGINT received — shutting down gracefully');
     gracefulShutdown(server, 0);
   });
 }
 
 function gracefulShutdown(server, code) {
   server.close(() => {
-    logger.info("HTTP server closed");
+    logger.info('HTTP server closed');
     process.exit(code);
   });
 
   // Force kill after 10 seconds if graceful close fails
   setTimeout(() => {
-    logger.error("Forced shutdown — server did not close in time");
+    logger.error('Forced shutdown — server did not close in time');
     process.exit(code);
   }, 10_000).unref();
 }

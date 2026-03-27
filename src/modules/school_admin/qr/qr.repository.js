@@ -28,7 +28,7 @@
 //   QrAsset → unique token_id                 — one-to-one with token
 // =============================================================================
 
-import { prisma } from "../../../config/prisma.js";
+import { prisma } from '#config/database/prisma.js';
 
 // ─── List students with QR status ─────────────────────────────────────────────
 
@@ -40,19 +40,13 @@ import { prisma } from "../../../config/prisma.js";
  * { id, first_name, last_name, class, section,
  *   token_status, token_id, qr_ready, qr_generated_at }
  */
-export async function findStudentsWithQrStatus({
-  schoolId,
-  search,
-  filter,
-  skip,
-  take,
-}) {
+export async function findStudentsWithQrStatus({ schoolId, search, filter, skip, take }) {
   const where = buildListWhere({ schoolId, search, filter });
 
   const [rows, total] = await Promise.all([
     prisma.student.findMany({
       where,
-      orderBy: [{ first_name: "asc" }, { last_name: "asc" }],
+      orderBy: [{ first_name: 'asc' }, { last_name: 'asc' }],
       skip,
       take,
       select: {
@@ -65,11 +59,11 @@ export async function findStudentsWithQrStatus({
         // Get the student's active token + its QR asset in one shot
         // take:1 + orderBy status ensures we get the most relevant token
         tokens: {
-          where: { school_id: schoolId, status: { not: "REVOKED" } },
+          where: { school_id: schoolId, status: { not: 'REVOKED' } },
           orderBy: [
             // Priority: ACTIVE > ISSUED > UNASSIGNED > others
-            { activated_at: { sort: "desc", nulls: "last" } },
-            { created_at: "desc" },
+            { activated_at: { sort: 'desc', nulls: 'last' } },
+            { created_at: 'desc' },
           ],
           take: 1,
           select: {
@@ -116,11 +110,8 @@ export async function findStudentQrDetail(studentId, schoolId) {
       photo_url: true,
 
       tokens: {
-        where: { school_id: schoolId, status: { not: "REVOKED" } },
-        orderBy: [
-          { activated_at: { sort: "desc", nulls: "last" } },
-          { created_at: "desc" },
-        ],
+        where: { school_id: schoolId, status: { not: 'REVOKED' } },
+        orderBy: [{ activated_at: { sort: 'desc', nulls: 'last' } }, { created_at: 'desc' }],
         take: 1,
         select: {
           id: true,
@@ -164,7 +155,7 @@ export async function findStudentQrDetail(studentId, schoolId) {
  * Throws: AppError with reason if business rule violated
  */
 export async function assignTokenToStudent({ schoolId, studentId, tokenId }) {
-  return prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async tx => {
     // [1] Verify token — must be UNASSIGNED and owned by this school
     const token = await tx.token.findUnique({
       where: { id: tokenId },
@@ -172,23 +163,21 @@ export async function assignTokenToStudent({ schoolId, studentId, tokenId }) {
     });
 
     if (!token) {
-      throw Object.assign(new Error("Token not found"), {
-        code: "TOKEN_NOT_FOUND",
+      throw Object.assign(new Error('Token not found'), {
+        code: 'TOKEN_NOT_FOUND',
         statusCode: 404,
       });
     }
     if (token.school_id !== schoolId) {
-      throw Object.assign(new Error("Token does not belong to this school"), {
-        code: "TOKEN_NOT_OWNED",
+      throw Object.assign(new Error('Token does not belong to this school'), {
+        code: 'TOKEN_NOT_OWNED',
         statusCode: 403,
       });
     }
-    if (token.status !== "UNASSIGNED") {
+    if (token.status !== 'UNASSIGNED') {
       throw Object.assign(
-        new Error(
-          `Token is ${token.status} — only UNASSIGNED tokens can be assigned`,
-        ),
-        { code: "TOKEN_NOT_AVAILABLE", statusCode: 409 },
+        new Error(`Token is ${token.status} — only UNASSIGNED tokens can be assigned`),
+        { code: 'TOKEN_NOT_AVAILABLE', statusCode: 409 }
       );
     }
 
@@ -200,7 +189,7 @@ export async function assignTokenToStudent({ schoolId, studentId, tokenId }) {
         school_id: true,
         is_active: true,
         tokens: {
-          where: { status: { in: ["ACTIVE", "ISSUED"] } },
+          where: { status: { in: ['ACTIVE', 'ISSUED'] } },
           select: { id: true },
           take: 1,
         },
@@ -208,22 +197,22 @@ export async function assignTokenToStudent({ schoolId, studentId, tokenId }) {
     });
 
     if (!student || student.school_id !== schoolId) {
-      throw Object.assign(new Error("Student not found"), {
-        code: "STUDENT_NOT_FOUND",
+      throw Object.assign(new Error('Student not found'), {
+        code: 'STUDENT_NOT_FOUND',
         statusCode: 404,
       });
     }
     if (!student.is_active) {
-      throw Object.assign(
-        new Error("Cannot assign token to inactive student"),
-        { code: "STUDENT_INACTIVE", statusCode: 409 },
-      );
+      throw Object.assign(new Error('Cannot assign token to inactive student'), {
+        code: 'STUDENT_INACTIVE',
+        statusCode: 409,
+      });
     }
     if (student.tokens.length > 0) {
-      throw Object.assign(
-        new Error("Student already has an active or issued token"),
-        { code: "STUDENT_ALREADY_HAS_TOKEN", statusCode: 409 },
-      );
+      throw Object.assign(new Error('Student already has an active or issued token'), {
+        code: 'STUDENT_ALREADY_HAS_TOKEN',
+        statusCode: 409,
+      });
     }
 
     // [3] Link token → student
@@ -231,7 +220,7 @@ export async function assignTokenToStudent({ schoolId, studentId, tokenId }) {
       where: { id: tokenId },
       data: {
         student_id: studentId,
-        status: "ISSUED",
+        status: 'ISSUED',
         assigned_at: new Date(),
       },
       select: { id: true, status: true, assigned_at: true },
@@ -258,26 +247,26 @@ function buildListWhere({ schoolId, search, filter }) {
   // Search: student name or class
   if (search) {
     where.OR = [
-      { first_name: { contains: search, mode: "insensitive" } },
-      { last_name: { contains: search, mode: "insensitive" } },
-      { class: { contains: search, mode: "insensitive" } },
+      { first_name: { contains: search, mode: 'insensitive' } },
+      { last_name: { contains: search, mode: 'insensitive' } },
+      { class: { contains: search, mode: 'insensitive' } },
     ];
   }
 
   // QR filter
-  if (filter === "ready") {
+  if (filter === 'ready') {
     // Has at least one active token with a QR asset
     where.tokens = {
       some: {
         school_id: schoolId,
-        status: "ACTIVE",
+        status: 'ACTIVE',
         qrAsset: { is: { is_active: true } },
       },
     };
-  } else if (filter === "no_token") {
+  } else if (filter === 'no_token') {
     // Has no non-revoked tokens at all
     where.tokens = {
-      none: { school_id: schoolId, status: { not: "REVOKED" } },
+      none: { school_id: schoolId, status: { not: 'REVOKED' } },
     };
   }
 
@@ -298,7 +287,7 @@ function shapeListStudent(s) {
     section: s.section,
     token_id: token?.id ?? null,
     token_status: token?.status ?? null,
-    qr_ready: !!(token?.status === "ACTIVE" && qrAsset?.is_active),
+    qr_ready: !!(token?.status === 'ACTIVE' && qrAsset?.is_active),
     qr_generated_at: qrAsset?.generated_at ?? null,
   };
 }

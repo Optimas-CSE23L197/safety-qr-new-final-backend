@@ -11,7 +11,7 @@
 //   Payment:      15s — Razorpay needs more time
 // =============================================================================
 
-import { logger } from "../../config/logger.js";
+import { logger } from '#config/logger.js';
 
 // ─── Predefined Timeouts (ms) ────────────────────────────────────────────────
 export const Timeouts = {
@@ -42,16 +42,13 @@ export const Timeouts = {
  *   'MSG91 OTP'
  * )
  */
-export function withTimeout(promise, timeoutMs, label = "Operation") {
+export function withTimeout(promise, timeoutMs, label = 'Operation') {
   let timeoutHandle;
 
   const timeoutPromise = new Promise((_, reject) => {
     timeoutHandle = setTimeout(() => {
       const err = new TimeoutError(label, timeoutMs);
-      logger.warn(
-        { label, timeoutMs },
-        `${label} timed out after ${timeoutMs}ms`,
-      );
+      logger.warn({ label, timeoutMs }, `${label} timed out after ${timeoutMs}ms`);
       reject(err);
     }, timeoutMs);
   });
@@ -70,7 +67,7 @@ export function withTimeout(promise, timeoutMs, label = "Operation") {
  * const safeFetch = withTimeoutFn(() => fetch(url), Timeouts.GEO, 'GeoIP')
  * const data = await safeFetch()
  */
-export function withTimeoutFn(fn, timeoutMs, label = "Operation") {
+export function withTimeoutFn(fn, timeoutMs, label = 'Operation') {
   return (...args) => withTimeout(fn(...args), timeoutMs, label);
 }
 
@@ -79,7 +76,7 @@ export function withTimeoutFn(fn, timeoutMs, label = "Operation") {
 export class TimeoutError extends Error {
   constructor(label, timeoutMs) {
     super(`${label} timed out after ${timeoutMs}ms`);
-    this.name = "TimeoutError";
+    this.name = 'TimeoutError';
     this.label = label;
     this.timeoutMs = timeoutMs;
     this.isTimeout = true;

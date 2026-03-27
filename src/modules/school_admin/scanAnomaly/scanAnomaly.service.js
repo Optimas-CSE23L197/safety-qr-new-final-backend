@@ -14,11 +14,11 @@
 //   → Query is fast via @@index([resolved]) + @@index([token_id])
 // =============================================================================
 
-import * as repo from "./scanAnomaly.repository.js";
-import { cacheAside, cacheDel } from "../../../utils/cache/cache.js";
-import { buildOffsetMeta } from "../../../utils/response/paginate.js";
+import * as repo from './scanAnomaly.repository.js';
+import { cacheAside, cacheDel } from '#utils/cache/cache.js';
+import { buildOffsetMeta } from '#utils/response/paginate.js';
 
-const STATS_KEY = (schoolId) => `anomaly_stats:${schoolId}`;
+const STATS_KEY = schoolId => `anomaly_stats:${schoolId}`;
 const STATS_TTL = 30; // 30 seconds — badge must feel real-time after resolving
 
 export async function getAnomalyInventory(schoolId, query) {
@@ -39,9 +39,7 @@ export async function getAnomalyInventory(schoolId, query) {
 }
 
 async function getStatsCached(schoolId) {
-  return cacheAside(STATS_KEY(schoolId), STATS_TTL, () =>
-    repo.getAnomalyStats(schoolId),
-  );
+  return cacheAside(STATS_KEY(schoolId), STATS_TTL, () => repo.getAnomalyStats(schoolId));
 }
 
 /**
@@ -50,12 +48,7 @@ async function getStatsCached(schoolId) {
  * Returns: { anomaly } on success
  * Throws:  404-style null → controller converts to 404
  */
-export async function resolveAnomaly({
-  anomalyId,
-  schoolId,
-  resolvedBy,
-  notes,
-}) {
+export async function resolveAnomaly({ anomalyId, schoolId, resolvedBy, notes }) {
   const anomaly = await repo.resolveAnomaly({
     anomalyId,
     schoolId,

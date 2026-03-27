@@ -11,7 +11,7 @@
 //   - Emergency contacts: phone decrypted + formatted for tap-to-call
 // =============================================================================
 
-import { decryptField } from "../security/encryption.js";
+import { decryptField } from './security/encryption.js';
 
 // ─── Parent User ──────────────────────────────────────────────────────────────
 
@@ -106,12 +106,7 @@ export function transformStudentAdmin(student) {
  * Output for public QR scan page — decrypts contacts for tap-to-call
  * This is the most security-sensitive transformer — only show what's needed
  */
-export async function transformEmergencyPublic(
-  student,
-  profile,
-  contacts,
-  visibility,
-) {
+export async function transformEmergencyPublic(student, profile, contacts, visibility) {
   if (!profile || !profile.is_visible) return null;
 
   // Respect card visibility settings
@@ -119,43 +114,43 @@ export async function transformEmergencyPublic(
 
   const safeContacts = await Promise.all(
     (contacts ?? [])
-      .filter((c) => c.is_active)
+      .filter(c => c.is_active)
       .sort((a, b) => a.display_order - b.display_order)
-      .map(async (c) => ({
+      .map(async c => ({
         name: c.name,
         relationship: c.relationship,
         phone: await decryptField(c.phone_encrypted), // decrypt for call
         callEnabled: c.call_enabled,
         whatsappEnabled: c.whatsapp_enabled,
         priority: c.priority,
-      })),
+      }))
   );
 
   return {
     // Student info — only what scanner needs
-    ...(!hidden.has("student_name") && {
+    ...(!hidden.has('student_name') && {
       studentName: buildFullName(student.first_name, student.last_name),
     }),
-    ...(!hidden.has("photo") && {
+    ...(!hidden.has('photo') && {
       photoUrl: student.photo_url,
     }),
-    ...(!hidden.has("class") &&
+    ...(!hidden.has('class') &&
       student.class && {
         class: student.class,
         section: student.section,
       }),
 
     // Medical — critical for emergency responders
-    ...(!hidden.has("blood_group") && {
+    ...(!hidden.has('blood_group') && {
       bloodGroup: profile.blood_group,
     }),
-    ...(!hidden.has("allergies") && {
+    ...(!hidden.has('allergies') && {
       allergies: profile.allergies,
     }),
-    ...(!hidden.has("conditions") && {
+    ...(!hidden.has('conditions') && {
       conditions: profile.conditions,
     }),
-    ...(!hidden.has("medications") && {
+    ...(!hidden.has('medications') && {
       medications: profile.medications,
     }),
 
@@ -163,7 +158,7 @@ export async function transformEmergencyPublic(
     emergencyContacts: safeContacts,
 
     // Notes — optional
-    ...(!hidden.has("notes") &&
+    ...(!hidden.has('notes') &&
       profile.notes && {
         notes: profile.notes,
       }),
@@ -277,7 +272,7 @@ export function transformShipment(shipment) {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 export function buildFullName(first, last) {
-  return [first, last].filter(Boolean).join(" ") || null;
+  return [first, last].filter(Boolean).join(' ') || null;
 }
 
 /**
@@ -287,9 +282,9 @@ export function buildFullName(first, last) {
  */
 export function maskPhone(phone) {
   if (!phone) return null;
-  if (phone.length < 4) return "****";
+  if (phone.length < 4) return '****';
   const last4 = phone.slice(-4);
-  const prefix = phone.length > 8 ? phone.slice(0, phone.length - 8) : "";
+  const prefix = phone.length > 8 ? phone.slice(0, phone.length - 8) : '';
   return `${prefix}****${last4}`;
 }
 

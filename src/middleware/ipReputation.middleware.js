@@ -25,17 +25,17 @@
 //   TrustedScanZone — school premises IP ranges (suppress false positives)
 // =============================================================================
 
-import { prisma } from "../config/prisma.js";
-import { redis } from "../config/redis.js";
-import { asyncHandler } from "../utils/response/asyncHandler.js";
-import { extractIp } from "../utils/network/extractIp.js";
-import { logger } from "../config/logger.js";
+import { prisma } from '#config/database/prisma.js';
+import { redis } from '#config/database/redis.js';
+import { asyncHandler } from '#utils/response/asyncHandler.js';
+import { extractIp } from '#utils/network/extractIp.js';
+import { logger } from '#config/logger.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 // Redis key prefixes
-const IP_BLOCK_PREFIX = "ip:blocked:"; // manually blocked IPs
-const IP_ALLOW_PREFIX = "ip:trusted:"; // trusted scan zone IPs (fast allow)
+const IP_BLOCK_PREFIX = 'ip:blocked:'; // manually blocked IPs
+const IP_ALLOW_PREFIX = 'ip:trusted:'; // trusted scan zone IPs (fast allow)
 
 const BLOCK_CACHE_TTL = 5 * 60; // 5 min — re-check DB every 5 min
 const TRUST_CACHE_TTL = 10 * 60; // 10 min — trusted zones change rarely
@@ -44,28 +44,28 @@ const TRUST_CACHE_TTL = 10 * 60; // 10 min — trusted zones change rarely
 // These are the top ranges used by bots, scrapers, and vulnerability scanners
 // This is a lightweight static list — not a replacement for full IP rep APIs
 const DATACENTER_PREFIXES = [
-  "104.16.",
-  "104.17.",
-  "104.18.",
-  "104.19.", // Cloudflare (bot infra)
-  "162.158.", // Cloudflare Warp (often abused)
-  "198.41.128.",
-  "198.41.129.", // Cloudflare
-  "3.208.",
-  "3.209.",
-  "3.210.",
-  "3.211.", // AWS EC2 ranges (common scanner origin)
-  "34.64.",
-  "34.65.",
-  "34.66.",
-  "34.67.", // GCP
-  "20.36.",
-  "20.37.",
-  "20.38.",
-  "20.39.", // Azure
-  "45.33.",
-  "45.56.",
-  "45.79.", // Linode/Akamai
+  '104.16.',
+  '104.17.',
+  '104.18.',
+  '104.19.', // Cloudflare (bot infra)
+  '162.158.', // Cloudflare Warp (often abused)
+  '198.41.128.',
+  '198.41.129.', // Cloudflare
+  '3.208.',
+  '3.209.',
+  '3.210.',
+  '3.211.', // AWS EC2 ranges (common scanner origin)
+  '34.64.',
+  '34.65.',
+  '34.66.',
+  '34.67.', // GCP
+  '20.36.',
+  '20.37.',
+  '20.38.',
+  '20.39.', // Azure
+  '45.33.',
+  '45.56.',
+  '45.79.', // Linode/Akamai
 ];
 
 // ─── Core Middleware ──────────────────────────────────────────────────────────
@@ -94,7 +94,7 @@ export const checkIpReputation = asyncHandler(async (req, res, next) => {
     where: {
       identifier_identifier_type: {
         identifier: ip,
-        identifier_type: "IP",
+        identifier_type: 'IP',
       },
     },
     select: { blocked_until: true, blocked_reason: true },
@@ -102,15 +102,13 @@ export const checkIpReputation = asyncHandler(async (req, res, next) => {
 
   if (dbBlock?.blocked_until && new Date(dbBlock.blocked_until) > new Date()) {
     // Cache the block in Redis so DB isn't hit on every request
-    const ttlSecs = Math.ceil(
-      (new Date(dbBlock.blocked_until) - Date.now()) / 1000,
-    );
+    const ttlSecs = Math.ceil((new Date(dbBlock.blocked_until) - Date.now()) / 1000);
     if (ttlSecs > 0) {
       await redis
         .setex(
           `${IP_BLOCK_PREFIX}${ip}`,
           Math.min(ttlSecs, BLOCK_CACHE_TTL),
-          JSON.stringify({ reason: dbBlock.blocked_reason }),
+          JSON.stringify({ reason: dbBlock.blocked_reason })
         )
         .catch(() => {});
     }
@@ -118,14 +116,9 @@ export const checkIpReputation = asyncHandler(async (req, res, next) => {
   }
 
   // [3] Datacenter prefix check — lightweight static blocklist
-  const isDatacenter = DATACENTER_PREFIXES.some((prefix) =>
-    ip.startsWith(prefix),
-  );
+  const isDatacenter = DATACENTER_PREFIXES.some(prefix => ip.startsWith(prefix));
   if (isDatacenter) {
-    logger.warn(
-      { ip, path: req.path },
-      "ipReputation: datacenter IP blocked from emergency API",
-    );
+    logger.warn({ ip, path: req.path }, 'ipReputation: datacenter IP blocked from emergency API');
     // Don't hard block — log and flag as anomaly, still serve (emergency is safety-critical)
     // Rationale: a genuine first responder might be on a corporate VPN
     req.isSuspiciousIp = true;
@@ -153,7 +146,7 @@ export async function blockIp(ip, reason, durationMs = 60 * 60 * 1000) {
     where: {
       identifier_identifier_type: {
         identifier: ip,
-        identifier_type: "IP",
+        identifier_type: 'IP',
       },
     },
     update: {
@@ -164,7 +157,7 @@ export async function blockIp(ip, reason, durationMs = 60 * 60 * 1000) {
     },
     create: {
       identifier: ip,
-      identifier_type: "IP",
+      identifier_type: 'IP',
       count: 1,
       window_start: new Date(),
       last_hit: new Date(),
@@ -179,7 +172,7 @@ export async function blockIp(ip, reason, durationMs = 60 * 60 * 1000) {
   await redis.setex(
     `${IP_BLOCK_PREFIX}${ip}`,
     Math.min(ttlSecs, BLOCK_CACHE_TTL),
-    JSON.stringify({ reason }),
+    JSON.stringify({ reason })
   );
 }
 
@@ -188,12 +181,12 @@ export async function blockIp(ip, reason, durationMs = 60 * 60 * 1000) {
 function blockRequest(res, req, ip, reason) {
   logger.warn(
     { ip, reason, path: req.path, requestId: req.id },
-    "ipReputation: IP blocked from emergency API",
+    'ipReputation: IP blocked from emergency API'
   );
 
   return res.status(403).json({
     success: false,
-    message: "Access temporarily restricted",
+    message: 'Access temporarily restricted',
     requestId: req.id,
   });
 }
@@ -202,7 +195,7 @@ async function checkTrustedZone(ip) {
   const cacheKey = `${IP_ALLOW_PREFIX}${ip}`;
   const cached = await redis.get(cacheKey);
 
-  if (cached !== null) return cached === "1";
+  if (cached !== null) return cached === '1';
 
   // Check if IP falls within any active TrustedScanZone ip_range (CIDR)
   // For simplicity we do a prefix match — for full CIDR support add a
@@ -213,10 +206,10 @@ async function checkTrustedZone(ip) {
   });
 
   const isTrusted = zones.some(
-    (z) => z.ip_range && ip.startsWith(z.ip_range.split("/")[0].slice(0, -1)),
+    z => z.ip_range && ip.startsWith(z.ip_range.split('/')[0].slice(0, -1))
   );
 
-  await redis.setex(cacheKey, TRUST_CACHE_TTL, isTrusted ? "1" : "0");
+  await redis.setex(cacheKey, TRUST_CACHE_TTL, isTrusted ? '1' : '0');
 
   return isTrusted;
 }

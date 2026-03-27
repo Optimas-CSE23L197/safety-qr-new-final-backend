@@ -11,28 +11,22 @@
 //   CardOrder → @@index([status, created_at]) — ordering
 // =============================================================================
 
-import { prisma } from "../../../config/prisma.js";
+import { prisma } from '#config/database/prisma.js';
 
 /**
  * findCardRequests({ schoolId, status, search, skip, take })
  * Returns { orders, total, counts }
  * counts = { ALL, PENDING, APPROVED, REJECTED } — for tab badges, one extra query
  */
-export async function findCardRequests({
-  schoolId,
-  status,
-  search,
-  skip,
-  take,
-}) {
+export async function findCardRequests({ schoolId, status, search, skip, take }) {
   // ── WHERE clause ──────────────────────────────────────────────────────────
   const baseWhere = {
     school_id: schoolId,
-    channel: "DASHBOARD", // only school-submitted orders
+    channel: 'DASHBOARD', // only school-submitted orders
 
     // Map frontend status to OrderStatus values
     ...(status &&
-      status !== "ALL" && {
+      status !== 'ALL' && {
         status: STATUS_MAP[status],
       }),
 
@@ -40,70 +34,69 @@ export async function findCardRequests({
     // OR by order_number which is always available
     ...(search && {
       OR: [
-        { order_number: { contains: search, mode: "insensitive" } },
-        { notes: { contains: search, mode: "insensitive" } },
-        { school: { name: { contains: search, mode: "insensitive" } } },
+        { order_number: { contains: search, mode: 'insensitive' } },
+        { notes: { contains: search, mode: 'insensitive' } },
+        { school: { name: { contains: search, mode: 'insensitive' } } },
       ],
     }),
   };
 
   // ── Parallel: page data + total count + status counts ────────────────────
-  const [orders, total, pendingCount, approvedCount, rejectedCount] =
-    await Promise.all([
-      prisma.cardOrder.findMany({
-        where: baseWhere,
-        orderBy: { created_at: "desc" },
-        skip,
-        take,
-        select: {
-          id: true,
-          order_number: true,
-          card_count: true,
-          order_type: true,
-          status: true,
-          payment_status: true,
-          notes: true,
-          delivery_name: true,
-          delivery_phone: true,
-          delivery_address: true,
-          delivery_city: true,
-          delivery_state: true,
-          delivery_pincode: true,
-          status_note: true, // rejection reason lives here
-          created_at: true,
-          status_changed_at: true, // reviewed_at equivalent
-          school: {
-            select: { id: true, name: true, code: true },
-          },
+  const [orders, total, pendingCount, approvedCount, rejectedCount] = await Promise.all([
+    prisma.cardOrder.findMany({
+      where: baseWhere,
+      orderBy: { created_at: 'desc' },
+      skip,
+      take,
+      select: {
+        id: true,
+        order_number: true,
+        card_count: true,
+        order_type: true,
+        status: true,
+        payment_status: true,
+        notes: true,
+        delivery_name: true,
+        delivery_phone: true,
+        delivery_address: true,
+        delivery_city: true,
+        delivery_state: true,
+        delivery_pincode: true,
+        status_note: true, // rejection reason lives here
+        created_at: true,
+        status_changed_at: true, // reviewed_at equivalent
+        school: {
+          select: { id: true, name: true, code: true },
         },
-      }),
+      },
+    }),
 
-      // Total for current filter (for pagination)
-      prisma.cardOrder.count({ where: baseWhere }),
+    // Total for current filter (for pagination)
+    prisma.cardOrder.count({ where: baseWhere }),
 
-      // Status counts for tab badges — always scoped to this school
-      prisma.cardOrder.count({
-        where: {
-          school_id: schoolId,
-          channel: "DASHBOARD",
-          status: { in: PENDING_STATUSES },
-        },
-      }),
-      prisma.cardOrder.count({
-        where: {
-          school_id: schoolId,
-          channel: "DASHBOARD",
-          status: { in: APPROVED_STATUSES },
-        },
-      }),
-      prisma.cardOrder.count({
-        where: {
-          school_id: schoolId,
-          channel: "DASHBOARD",
-          status: "CANCELLED",
-        },
-      }),
-    ]);
+    // Status counts for tab badges — always scoped to this school
+    prisma.cardOrder.count({
+      where: {
+        school_id: schoolId,
+        channel: 'DASHBOARD',
+        status: { in: PENDING_STATUSES },
+      },
+    }),
+    prisma.cardOrder.count({
+      where: {
+        school_id: schoolId,
+        channel: 'DASHBOARD',
+        status: { in: APPROVED_STATUSES },
+      },
+    }),
+    prisma.cardOrder.count({
+      where: {
+        school_id: schoolId,
+        channel: 'DASHBOARD',
+        status: 'CANCELLED',
+      },
+    }),
+  ]);
 
   // Shape for frontend
   const shaped = orders.map(shapeOrder);
@@ -134,11 +127,11 @@ export async function createCardOrder({ schoolId, schoolUserId, body }) {
       school_id: schoolId,
       order_number: orderNumber,
       order_type: body.order_type,
-      order_mode: "BULK",
-      channel: "DASHBOARD",
+      order_mode: 'BULK',
+      channel: 'DASHBOARD',
       card_count: body.card_count,
-      status: "PENDING",
-      payment_status: "UNPAID",
+      status: 'PENDING',
+      payment_status: 'UNPAID',
       notes: body.notes,
       delivery_name: body.delivery_name,
       delivery_phone: body.delivery_phone,
@@ -163,29 +156,29 @@ export async function createCardOrder({ schoolId, schoolUserId, body }) {
 // We map frontend tabs to groups of OrderStatus values
 
 const PENDING_STATUSES = [
-  "PENDING",
-  "CONFIRMED",
-  "PAYMENT_PENDING",
-  "ADVANCE_RECEIVED",
-  "TOKEN_GENERATION",
-  "TOKEN_GENERATED",
-  "CARD_DESIGN",
-  "CARD_DESIGN_READY",
-  "CARD_DESIGN_REVISION",
-  "SENT_TO_VENDOR",
-  "PRINTING",
-  "PRINT_COMPLETE",
-  "READY_TO_SHIP",
-  "SHIPPED",
-  "OUT_FOR_DELIVERY",
+  'PENDING',
+  'CONFIRMED',
+  'PAYMENT_PENDING',
+  'ADVANCE_RECEIVED',
+  'TOKEN_GENERATION',
+  'TOKEN_GENERATED',
+  'CARD_DESIGN',
+  'CARD_DESIGN_READY',
+  'CARD_DESIGN_REVISION',
+  'SENT_TO_VENDOR',
+  'PRINTING',
+  'PRINT_COMPLETE',
+  'READY_TO_SHIP',
+  'SHIPPED',
+  'OUT_FOR_DELIVERY',
 ];
 
-const APPROVED_STATUSES = ["DELIVERED", "BALANCE_PENDING", "COMPLETED"];
+const APPROVED_STATUSES = ['DELIVERED', 'BALANCE_PENDING', 'COMPLETED'];
 
 const STATUS_MAP = {
   PENDING: { in: PENDING_STATUSES },
   APPROVED: { in: APPROVED_STATUSES },
-  REJECTED: "CANCELLED",
+  REJECTED: 'CANCELLED',
 };
 
 // ─── Shape ────────────────────────────────────────────────────────────────────
@@ -212,16 +205,16 @@ function shapeOrder(order) {
       state: order.delivery_state,
       pincode: order.delivery_pincode,
     },
-    reject_reason: order.status === "CANCELLED" ? order.status_note : null,
+    reject_reason: order.status === 'CANCELLED' ? order.status_note : null,
     reviewed_at: order.status_changed_at,
     created_at: order.created_at,
   };
 }
 
 function deriveSimpleStatus(orderStatus) {
-  if (APPROVED_STATUSES.includes(orderStatus)) return "APPROVED";
-  if (orderStatus === "CANCELLED") return "REJECTED";
-  return "PENDING";
+  if (APPROVED_STATUSES.includes(orderStatus)) return 'APPROVED';
+  if (orderStatus === 'CANCELLED') return 'REJECTED';
+  return 'PENDING';
 }
 
 // ─── Order Number Generator ───────────────────────────────────────────────────
@@ -234,11 +227,11 @@ async function generateOrderNumber() {
 
   const latest = await prisma.cardOrder.findFirst({
     where: { order_number: { startsWith: prefix } },
-    orderBy: { order_number: "desc" },
+    orderBy: { order_number: 'desc' },
     select: { order_number: true },
   });
 
-  const lastNum = latest ? parseInt(latest.order_number.split("-")[2], 10) : 0;
+  const lastNum = latest ? parseInt(latest.order_number.split('-')[2], 10) : 0;
 
-  return `${prefix}${String(lastNum + 1).padStart(4, "0")}`;
+  return `${prefix}${String(lastNum + 1).padStart(4, '0')}`;
 }

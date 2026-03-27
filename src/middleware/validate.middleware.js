@@ -10,9 +10,9 @@
 // req.body remains a direct assignment (writable property from express.json).
 // =============================================================================
 
-import { ZodError } from "zod";
-import { ApiError } from "../utils/response/ApiError.js";
-import { asyncHandler } from "../utils/response/asyncHandler.js";
+import { ZodError } from 'zod';
+import { ApiError } from '#utils/response/ApiError.js';
+import { asyncHandler } from '#utils/response/asyncHandler.js';
 
 // ─── Validation Targets ───────────────────────────────────────────────────────
 
@@ -31,7 +31,7 @@ import { asyncHandler } from "../utils/response/asyncHandler.js";
  * Uses Zod .strict() behavior via schema definition.
  * Unknown fields cause validation failure — no extra data leaks through.
  */
-export const validate = (schema) =>
+export const validate = schema =>
   asyncHandler(async (req, _res, next) => {
     // Auto-detect schema shape:
     //   envelope shape  — z.object({ body: z.object(...), params?, query? })
@@ -40,9 +40,7 @@ export const validate = (schema) =>
     // Detection: if the schema has a "body" key in its shape, it is an envelope schema.
     // Otherwise treat it as a flat body schema (legacy auth routes).
     const isEnvelope =
-      typeof schema.shape === "object" &&
-      schema.shape !== null &&
-      "body" in schema.shape;
+      typeof schema.shape === 'object' && schema.shape !== null && 'body' in schema.shape;
 
     let data, result;
 
@@ -54,25 +52,17 @@ export const validate = (schema) =>
       };
       result = schema.safeParse(data);
       if (!result.success) {
-        throw ApiError.validationError(
-          "Validation failed",
-          formatZodErrors(result.error),
-        );
+        throw ApiError.validationError('Validation failed', formatZodErrors(result.error));
       }
       if (result.data.body !== undefined) req.body = result.data.body;
-      if (result.data.query !== undefined)
-        Object.assign(req.query, result.data.query);
-      if (result.data.params !== undefined)
-        Object.assign(req.params, result.data.params);
+      if (result.data.query !== undefined) Object.assign(req.query, result.data.query);
+      if (result.data.params !== undefined) Object.assign(req.params, result.data.params);
     } else {
       // Flat schema — validate req.body directly (auth routes)
       data = req.body ?? {};
       result = schema.safeParse(data);
       if (!result.success) {
-        throw ApiError.validationError(
-          "Validation failed",
-          formatZodErrors(result.error),
-        );
+        throw ApiError.validationError('Validation failed', formatZodErrors(result.error));
       }
       req.body = result.data;
     }
@@ -88,7 +78,7 @@ export const validate = (schema) =>
  * Use this when a route needs simultaneous body + params or body + query
  * validation. For single-target validation use validate() instead.
  */
-export const validateAll = (schemas) =>
+export const validateAll = schemas =>
   asyncHandler(async (req, _res, next) => {
     const errors = [];
 
@@ -98,10 +88,10 @@ export const validateAll = (schemas) =>
 
       if (!result.success) {
         errors.push(
-          ...formatZodErrors(result.error).map((e) => ({
+          ...formatZodErrors(result.error).map(e => ({
             ...e,
             location: target,
-          })),
+          }))
         );
       } else {
         assignTarget(req, target, result.data);
@@ -109,7 +99,7 @@ export const validateAll = (schemas) =>
     }
 
     if (errors.length > 0) {
-      throw ApiError.validationError("Validation failed", errors);
+      throw ApiError.validationError('Validation failed', errors);
     }
 
     next();
@@ -119,13 +109,13 @@ export const validateAll = (schemas) =>
 
 function selectTarget(req, target) {
   switch (target) {
-    case "body":
+    case 'body':
       return req.body;
-    case "query":
+    case 'query':
       return req.query;
-    case "params":
+    case 'params':
       return req.params;
-    case "all":
+    case 'all':
       return { body: req.body, query: req.query, params: req.params };
     default:
       return req.body;
@@ -143,16 +133,16 @@ function selectTarget(req, target) {
  */
 function assignTarget(req, target, data) {
   switch (target) {
-    case "body":
+    case 'body':
       req.body = data;
       break;
-    case "query":
+    case 'query':
       Object.assign(req.query, data); // getter-only — mutate in-place
       break;
-    case "params":
+    case 'params':
       Object.assign(req.params, data); // getter-only — mutate in-place
       break;
-    case "all":
+    case 'all':
       if (data.body) req.body = data.body;
       if (data.query) Object.assign(req.query, data.query); // getter-only
       if (data.params) Object.assign(req.params, data.params); // getter-only
@@ -163,8 +153,8 @@ function assignTarget(req, target, data) {
 function formatZodErrors(error) {
   const issues = error?.issues || error?.errors || [];
 
-  return issues.map((e) => ({
-    field: e.path?.join(".") ?? "",
+  return issues.map(e => ({
+    field: e.path?.join('.') ?? '',
     message: e.message,
     code: e.code,
   }));

@@ -33,9 +33,9 @@
 //   Every operation writes to AuditLog — fire-and-forget, never blocks
 // =============================================================================
 
-import { logger } from "../../config/logger.js";
-import * as repo from "./token.repository.js";
-import { ApiError } from "../../utils/response/ApiError.js";
+import { logger } from '#config/logger.js';
+import * as repo from './token.repository.js';
+import { ApiError } from '#utils/response/ApiError.js';
 import {
   generateRawToken,
   hashRawToken,
@@ -45,7 +45,7 @@ import {
   calculateExpiry,
   resolveBranding,
   toQrTypeEnum, // FIX [#1]
-} from "./token.helpers.js";
+} from './token.helpers.js';
 
 // =============================================================================
 // CONSTANTS
@@ -61,10 +61,10 @@ const MAX_BULK_LIMIT = 1000;
  * Validate school exists and is active.
  * Returns school with settings + subscription.
  */
-const validateSchool = async (schoolId) => {
+const validateSchool = async schoolId => {
   const school = await repo.findSchoolWithSettings(schoolId);
-  if (!school) throw ApiError.notFound("School not found");
-  if (!school.is_active) throw ApiError.forbidden("School account is inactive");
+  if (!school) throw ApiError.notFound('School not found');
+  if (!school.is_active) throw ApiError.forbidden('School account is inactive');
   return school;
 };
 
@@ -74,9 +74,7 @@ const validateSchool = async (schoolId) => {
 const validateStudent = async (studentId, schoolId) => {
   const student = await repo.findStudentInSchool(studentId, schoolId);
   if (!student) {
-    throw ApiError.notFound(
-      `Student ${studentId} not found or does not belong to this school`,
-    );
+    throw ApiError.notFound(`Student ${studentId} not found or does not belong to this school`);
   }
   return student;
 };
@@ -88,7 +86,7 @@ const checkTokenLimit = async (studentId, maxTokens = 1) => {
   const count = await repo.countActiveTokensForStudent(studentId);
   if (count >= maxTokens) {
     throw ApiError.conflict(
-      `Student already has ${count} active token(s). Revoke existing token before generating a new one.`,
+      `Student already has ${count} active token(s). Revoke existing token before generating a new one.`
     );
   }
 };
@@ -111,9 +109,7 @@ const pregenerateCardNumbers = async (schoolCode, isBlank, count) => {
     // Retry up to 5 times per card number on collision
     let generated = false;
     for (let attempt = 0; attempt < 5; attempt++) {
-      const number = isBlank
-        ? generateBlankCardNumber()
-        : generateCardNumber(schoolCode);
+      const number = isBlank ? generateBlankCardNumber() : generateCardNumber(schoolCode);
       const exists = await repo.cardNumberExists(number);
       if (!exists) {
         numbers.push(number);
@@ -122,9 +118,7 @@ const pregenerateCardNumbers = async (schoolCode, isBlank, count) => {
       }
     }
     if (!generated) {
-      throw new Error(
-        `Failed to generate unique card number after 5 attempts (index ${i})`,
-      );
+      throw new Error(`Failed to generate unique card number after 5 attempts (index ${i})`);
     }
   }
   return numbers;
@@ -134,11 +128,11 @@ const pregenerateCardNumbers = async (schoolCode, isBlank, count) => {
  * Fire-and-forget audit log.
  * Never throws, never blocks the main operation.
  */
-const audit = (params) => {
-  repo.writeAuditLog(params).catch((err) => {
+const audit = params => {
+  repo.writeAuditLog(params).catch(err => {
     logger.error(
-      { type: "audit_log_failure", err: err.message, action: params.action },
-      "Token audit log write failed — logged here as fallback",
+      { type: 'audit_log_failure', err: err.message, action: params.action },
+      'Token audit log write failed — logged here as fallback'
     );
   });
 };
@@ -165,7 +159,7 @@ const audit = (params) => {
  * @param {object} params
  * @param {string} params.schoolId
  * @param {string} params.createdBy    - SuperAdmin.id
- * @param {string} params.actorType    - "SUPER_ADMIN"
+ * @param {string} params.actorType    - 'SUPER_ADMIN'
  * @param {string} [params.orderId]    - CardOrder.id if triggered from order pipeline
  * @param {object} [params.ua]         - parsed user agent
  * @param {string} [params.ipAddress]
@@ -213,7 +207,7 @@ export const generateSingleBlankToken = async ({
     content: scanUrl,
     tokenId: token.id,
     schoolId,
-    qrType: "SINGLE_BLANK", // rich internal string, kept in qrService + audit
+    qrType: 'SINGLE_BLANK', // rich internal string, kept in qrService + audit
     branding,
     generatedBy: createdBy,
   });
@@ -223,7 +217,7 @@ export const generateSingleBlankToken = async ({
   //            Full card design (logo + student photo + QR composed) is done
   //            later by card.service.js. Card.file_url updated there.
   // FIX [#4] — Single prisma.$transaction — both or neither. No orphaned Cards.
-  // FIX [#1] — toQrTypeEnum() maps "SINGLE_BLANK" → "BLANK" for Prisma enum.
+  // FIX [#1] — toQrTypeEnum() maps "SINGLE_BLANK" → 'BLANK' for Prisma enum.
   const [card] = await repo.createCardWithQrAsset({
     cardData: {
       school_id: schoolId,
@@ -231,15 +225,15 @@ export const generateSingleBlankToken = async ({
       token_id: token.id,
       card_number: cardNumber,
       file_url: null, // populated by card.service.js (design step)
-      print_status: "PENDING",
+      print_status: 'PENDING',
     },
     qrData: {
       token_id: token.id,
       school_id: schoolId,
       storage_key: qrResult.storageKey,
       public_url: qrResult.publicUrl,
-      format: "PNG",
-      qr_type: toQrTypeEnum("SINGLE_BLANK"), // FIX [#1] → "BLANK"
+      format: 'PNG',
+      qr_type: toQrTypeEnum('SINGLE_BLANK'), // FIX [#1] → 'BLANK'
       generated_by: createdBy,
       order_id: orderId,
       is_active: true,
@@ -251,19 +245,19 @@ export const generateSingleBlankToken = async ({
     schoolId,
     actorId: createdBy,
     actorType,
-    action: "TOKEN_GENERATE",
-    entity: "Token",
+    action: 'TOKEN_GENERATE',
+    entity: 'Token',
     entityId: token.id,
     oldValue: null,
     newValue: {
-      card_type: "SINGLE_BLANK",
-      status: "UNASSIGNED",
+      card_type: 'SINGLE_BLANK',
+      status: 'UNASSIGNED',
       card_number: cardNumber,
       card_id: card.id,
       order_id: orderId,
       expires_at: expiresAt,
     },
-    metadata: { type: "SINGLE_BLANK", notes },
+    metadata: { type: 'SINGLE_BLANK', notes },
     ip: ipAddress,
   });
 
@@ -316,12 +310,10 @@ export const generateBulkBlankTokens = async ({
   const branding = resolveBranding(school);
 
   if (!Number.isInteger(count) || count < 1) {
-    throw ApiError.badRequest("count must be a positive integer");
+    throw ApiError.badRequest('count must be a positive integer');
   }
   if (count > MAX_BULK_LIMIT) {
-    throw ApiError.badRequest(
-      `Bulk limit is ${MAX_BULK_LIMIT} per request. Received: ${count}`,
-    );
+    throw ApiError.badRequest(`Bulk limit is ${MAX_BULK_LIMIT} per request. Received: ${count}`);
   }
 
   // ── 2. Pre-generate all raw tokens in memory BEFORE DB ───────────────────
@@ -348,9 +340,7 @@ export const generateBulkBlankTokens = async ({
   });
 
   // ── 5. Build hash→rawToken map + attach scanUrl + cardNumber ──────────────
-  const hashToRaw = new Map(
-    rawTokenData.map(({ rawToken, tokenHash }) => [tokenHash, rawToken]),
-  );
+  const hashToRaw = new Map(rawTokenData.map(({ rawToken, tokenHash }) => [tokenHash, rawToken]));
 
   // Pure CPU work — no DB calls inside map (card numbers already pre-generated)
   const tokenData = createdTokens.map((t, i) => {
@@ -362,23 +352,23 @@ export const generateBulkBlankTokens = async ({
 
   // ── 6. Generate all QR PNGs → S3 (concurrency capped inside qrService) ───
   const qrResults = await qrService.generateAndUploadBulk({
-    items: tokenData.map((td) => ({
+    items: tokenData.map(td => ({
       content: td.scanUrl,
       tokenId: td.tokenId,
       schoolId,
-      qrType: "BULK_BLANK",
+      qrType: 'BULK_BLANK',
       branding,
       generatedBy: createdBy,
     })),
   });
 
-  const qrByTokenId = new Map(qrResults.map((r) => [r.tokenId, r]));
+  const qrByTokenId = new Map(qrResults.map(r => [r.tokenId, r]));
 
   // ── 7. FIX [#4] — Save Card + QrAsset atomically per token ───────────────
   // FIX [#2] — file_url: null (card design step fills this later)
   // FIX [#1] — toQrTypeEnum maps to Prisma enum value
   await Promise.all(
-    tokenData.map((td) => {
+    tokenData.map(td => {
       const qr = qrByTokenId.get(td.tokenId);
       return repo.createCardWithQrAsset({
         cardData: {
@@ -387,21 +377,21 @@ export const generateBulkBlankTokens = async ({
           token_id: td.tokenId,
           card_number: td.cardNumber,
           file_url: null, // card.service.js fills this during design step
-          print_status: "PENDING",
+          print_status: 'PENDING',
         },
         qrData: {
           token_id: td.tokenId,
           school_id: schoolId,
           storage_key: qr.storageKey,
           public_url: qr.publicUrl,
-          format: "PNG",
-          qr_type: toQrTypeEnum("BULK_BLANK"), // FIX [#1] → "BLANK"
+          format: 'PNG',
+          qr_type: toQrTypeEnum('BULK_BLANK'), // FIX [#1] → 'BLANK'
           generated_by: createdBy,
           order_id: orderId,
           is_active: true,
         },
       });
-    }),
+    })
   );
 
   // ── 8. Audit log — fire-and-forget ────────────────────────────────────────
@@ -409,24 +399,24 @@ export const generateBulkBlankTokens = async ({
     schoolId,
     actorId: createdBy,
     actorType,
-    action: "TOKEN_GENERATE",
-    entity: "TokenBatch",
+    action: 'TOKEN_GENERATE',
+    entity: 'TokenBatch',
     entityId: batch.id,
     oldValue: null,
     newValue: {
-      card_type: "BULK_BLANK",
+      card_type: 'BULK_BLANK',
       count,
       order_id: orderId,
-      status: "UNASSIGNED",
+      status: 'UNASSIGNED',
       expires_at: expiresAt,
     },
-    metadata: { type: "BULK_BLANK", notes },
+    metadata: { type: 'BULK_BLANK', notes },
     ip: ipAddress,
   });
 
   // ── 9. Return ─────────────────────────────────────────────────────────────
   // ⚠ rawToken array shown ONCE — never log, cache, or persist this response
-  const tokens = tokenData.map((td) => ({
+  const tokens = tokenData.map(td => ({
     // FIX [#5] — removed unused (td, i)
     tokenId: td.tokenId,
     rawToken: td.rawToken,
@@ -507,14 +497,14 @@ export const generateSinglePreloadedToken = async ({
     content: scanUrl,
     tokenId: token.id,
     schoolId,
-    qrType: "SINGLE_PRE_DETAILS",
+    qrType: 'SINGLE_PRE_DETAILS',
     branding,
     generatedBy: createdBy,
   });
 
   // ── 6. FIX [#4] — Save Card + QrAsset atomically ─────────────────────────
   // FIX [#2] — file_url: null
-  // FIX [#1] — toQrTypeEnum → "PRE_DETAILS"
+  // FIX [#1] — toQrTypeEnum → 'PRE_DETAILS'
   const [card] = await repo.createCardWithQrAsset({
     cardData: {
       school_id: schoolId,
@@ -522,15 +512,15 @@ export const generateSinglePreloadedToken = async ({
       token_id: token.id,
       card_number: cardNumber,
       file_url: null, // card.service.js fills this
-      print_status: "PENDING",
+      print_status: 'PENDING',
     },
     qrData: {
       token_id: token.id,
       school_id: schoolId,
       storage_key: qrResult.storageKey,
       public_url: qrResult.publicUrl,
-      format: "PNG",
-      qr_type: toQrTypeEnum("SINGLE_PRE_DETAILS"), // FIX [#1] → "PRE_DETAILS"
+      format: 'PNG',
+      qr_type: toQrTypeEnum('SINGLE_PRE_DETAILS'), // FIX [#1] → 'PRE_DETAILS'
       generated_by: createdBy,
       order_id: orderId,
       is_active: true,
@@ -542,13 +532,13 @@ export const generateSinglePreloadedToken = async ({
     schoolId,
     actorId: createdBy,
     actorType,
-    action: "TOKEN_GENERATE",
-    entity: "Token",
+    action: 'TOKEN_GENERATE',
+    entity: 'Token',
     entityId: token.id,
     oldValue: null,
     newValue: {
-      card_type: "SINGLE_PRE_DETAILS",
-      status: "ACTIVE",
+      card_type: 'SINGLE_PRE_DETAILS',
+      status: 'ACTIVE',
       student_id: studentId,
       card_number: cardNumber,
       card_id: card.id,
@@ -558,7 +548,7 @@ export const generateSinglePreloadedToken = async ({
       assigned_at: now,
       activated_at: now,
     },
-    metadata: { type: "SINGLE_PRE_DETAILS" },
+    metadata: { type: 'SINGLE_PRE_DETAILS' },
     ip: ipAddress,
   });
 
@@ -613,31 +603,27 @@ export const generateBulkPreloadedTokens = async ({
 
   // ── 2. Validate input ─────────────────────────────────────────────────────
   if (!Array.isArray(studentIds) || studentIds.length === 0) {
-    throw ApiError.badRequest("studentIds must be a non-empty array");
+    throw ApiError.badRequest('studentIds must be a non-empty array');
   }
   if (studentIds.length > MAX_BULK_LIMIT) {
     throw ApiError.badRequest(
-      `Bulk limit is ${MAX_BULK_LIMIT} per request. Received: ${studentIds.length}`,
+      `Bulk limit is ${MAX_BULK_LIMIT} per request. Received: ${studentIds.length}`
     );
   }
 
   // ── 3. Deduplicate + validate all students in 1 query ────────────────────
   const uniqueIds = [...new Set(studentIds)];
   const validStudents = await repo.findStudentsInSchool(uniqueIds, schoolId);
-  const validSet = new Set(validStudents.map((s) => s.id));
-  const invalidIds = uniqueIds.filter((id) => !validSet.has(id));
+  const validSet = new Set(validStudents.map(s => s.id));
+  const invalidIds = uniqueIds.filter(id => !validSet.has(id));
 
   if (invalidIds.length > 0) {
-    throw ApiError.badRequest(
-      `Invalid or out-of-school student IDs: ${invalidIds.join(", ")}`,
-    );
+    throw ApiError.badRequest(`Invalid or out-of-school student IDs: ${invalidIds.join(', ')}`);
   }
 
   // ── 4. Check token limits — 1 query for all students ─────────────────────
   const existingCounts = await repo.groupActiveTokenCountsByStudents(uniqueIds);
-  const countMap = new Map(
-    existingCounts.map((r) => [r.student_id, r._count.id]),
-  );
+  const countMap = new Map(existingCounts.map(r => [r.student_id, r._count.id]));
 
   const skipped = [];
   const eligibleIds = [];
@@ -645,36 +631,29 @@ export const generateBulkPreloadedTokens = async ({
   for (const id of uniqueIds) {
     const count = countMap.get(id) ?? 0;
     if (count >= maxTokens) {
-      skipped.push({ studentId: id, reason: "TOKEN_LIMIT_REACHED" });
+      skipped.push({ studentId: id, reason: 'TOKEN_LIMIT_REACHED' });
     } else {
       eligibleIds.push(id);
     }
   }
 
   if (eligibleIds.length === 0) {
-    throw ApiError.conflict("All students already have active tokens.");
+    throw ApiError.conflict('All students already have active tokens.');
   }
 
   // ── 5. Pre-generate all raw tokens in memory ──────────────────────────────
-  const rawTokenData = eligibleIds.map((studentId) => {
+  const rawTokenData = eligibleIds.map(studentId => {
     const rawToken = generateRawToken();
     const tokenHash = hashRawToken(rawToken);
     return { studentId, rawToken, tokenHash, expiresAt };
   });
 
   const hashToData = new Map(
-    rawTokenData.map(({ tokenHash, rawToken, studentId }) => [
-      tokenHash,
-      { rawToken, studentId },
-    ]),
+    rawTokenData.map(({ tokenHash, rawToken, studentId }) => [tokenHash, { rawToken, studentId }])
   );
 
   // ── 6. FIX [#3] — Pre-generate all card numbers sequentially ─────────────
-  const cardNumbers = await pregenerateCardNumbers(
-    school.code,
-    false,
-    eligibleIds.length,
-  );
+  const cardNumbers = await pregenerateCardNumbers(school.code, false, eligibleIds.length);
 
   // ── 7. Atomic DB: TokenBatch + all Tokens ─────────────────────────────────
   const { batch, createdTokens } = await repo.createBatchWithPreloadedTokens({
@@ -694,8 +673,8 @@ export const generateBulkPreloadedTokens = async ({
     repo.findManyEmergencyProfilesForCard(eligibleIds),
   ]);
 
-  const studentMap = new Map(allStudents.map((s) => [s.id, s]));
-  const emergencyMap = new Map(allEmergency.map((e) => [e.student_id, e]));
+  const studentMap = new Map(allStudents.map(s => [s.id, s]));
+  const emergencyMap = new Map(allEmergency.map(e => [e.student_id, e]));
 
   // ── 9. Build tokenData — pure CPU, no DB calls ────────────────────────────
   const tokenData = createdTokens.map((t, i) => {
@@ -715,23 +694,23 @@ export const generateBulkPreloadedTokens = async ({
 
   // ── 10. Generate all QR PNGs → S3 ────────────────────────────────────────
   const qrResults = await qrService.generateAndUploadBulk({
-    items: tokenData.map((td) => ({
+    items: tokenData.map(td => ({
       content: td.scanUrl,
       tokenId: td.tokenId,
       schoolId,
-      qrType: "BULK_PRE_DETAILS",
+      qrType: 'BULK_PRE_DETAILS',
       branding,
       generatedBy: createdBy,
     })),
   });
 
-  const qrByTokenId = new Map(qrResults.map((r) => [r.tokenId, r]));
+  const qrByTokenId = new Map(qrResults.map(r => [r.tokenId, r]));
 
   // ── 11. FIX [#4] — Save Card + QrAsset atomically per token ──────────────
   // FIX [#2] — file_url: null (card design fills this later)
-  // FIX [#1] — toQrTypeEnum → "PRE_DETAILS"
+  // FIX [#1] — toQrTypeEnum → 'PRE_DETAILS'
   await Promise.all(
-    tokenData.map((td) => {
+    tokenData.map(td => {
       const qr = qrByTokenId.get(td.tokenId);
       return repo.createCardWithQrAsset({
         cardData: {
@@ -740,21 +719,21 @@ export const generateBulkPreloadedTokens = async ({
           token_id: td.tokenId,
           card_number: td.cardNumber,
           file_url: null, // card.service.js fills this
-          print_status: "PENDING",
+          print_status: 'PENDING',
         },
         qrData: {
           token_id: td.tokenId,
           school_id: schoolId,
           storage_key: qr.storageKey,
           public_url: qr.publicUrl,
-          format: "PNG",
-          qr_type: toQrTypeEnum("BULK_PRE_DETAILS"), // FIX [#1] → "PRE_DETAILS"
+          format: 'PNG',
+          qr_type: toQrTypeEnum('BULK_PRE_DETAILS'), // FIX [#1] → 'PRE_DETAILS'
           generated_by: createdBy,
           order_id: orderId,
           is_active: true,
         },
       });
-    }),
+    })
   );
 
   // ── 12. Audit log — fire-and-forget ───────────────────────────────────────
@@ -762,20 +741,20 @@ export const generateBulkPreloadedTokens = async ({
     schoolId,
     actorId: createdBy,
     actorType,
-    action: "TOKEN_GENERATE",
-    entity: "TokenBatch",
+    action: 'TOKEN_GENERATE',
+    entity: 'TokenBatch',
     entityId: batch.id,
     oldValue: null,
     newValue: {
-      card_type: "BULK_PRE_DETAILS",
+      card_type: 'BULK_PRE_DETAILS',
       count: eligibleIds.length,
       order_id: orderId,
-      status: "ACTIVE",
+      status: 'ACTIVE',
       expires_at: expiresAt,
       student_ids: eligibleIds,
     },
     metadata: {
-      type: "BULK_PRE_DETAILS",
+      type: 'BULK_PRE_DETAILS',
       notes,
       skipped_count: skipped.length,
       skipped_students: skipped,
@@ -785,7 +764,7 @@ export const generateBulkPreloadedTokens = async ({
 
   // ── 13. Return ────────────────────────────────────────────────────────────
   // ⚠ rawToken array shown ONCE — never log, cache, or persist this response
-  const tokens = tokenData.map((td) => ({
+  const tokens = tokenData.map(td => ({
     // FIX [#5] — removed unused index param
     tokenId: td.tokenId,
     studentId: td.studentId,

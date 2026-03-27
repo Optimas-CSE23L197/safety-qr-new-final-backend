@@ -9,14 +9,11 @@
 //   [F-3] SIGTERM handler stub added to document shutdown contract.
 // =============================================================================
 
-import { prisma } from "../../config/prisma.js";
-import { redis } from "../../config/redis.js";
-import {
-  tokenGenerationQueue,
-  cardDesignQueue,
-} from "../../services/jobs/queue.service.js";
-import * as pipelineRepo from "../../modules/order/pipeline/pipeline.repository.js";
-import { logger } from "../../config/logger.js";
+import { prisma } from '#config/database/prisma.js';
+import { redis } from '#config/database/redis.js';
+import { tokenGenerationQueue, cardDesignQueue } from '#services/jobs/queue.service.js';
+import * as pipelineRepo from '#modules/order/pipeline/pipeline.repository.js';
+import { logger } from '#config/logger.js';
 
 const STALL_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -26,7 +23,7 @@ export const detectStalledPipelines = async () => {
   // [F-1] Fixed typo: runnningSteps → runningSteps
   const runningSteps = await prisma.orderStepExecution.findMany({
     where: {
-      status: "RUNNING",
+      status: 'RUNNING',
       started_at: { lt: cutoff },
     },
     select: {
@@ -54,7 +51,7 @@ export const detectStalledPipelines = async () => {
 
     if (!isWorkerAlive) {
       logger.warn(
-        `[stall-detector] Stalled pipeline: order=${step.order_id} step=${step.step} elapsed=${elapsedMin}m`,
+        `[stall-detector] Stalled pipeline: order=${step.order_id} step=${step.step} elapsed=${elapsedMin}m`
       );
 
       // Mark stalled + publish SSE so dashboard shows alert immediately.
@@ -63,44 +60,39 @@ export const detectStalledPipelines = async () => {
       await Promise.all([
         pipelineRepo.markPipelineStalled(
           step.pipeline_id,
-          `Step ${step.step} stalled after ${elapsedMin} minutes — worker may be down`,
+          `Step ${step.step} stalled after ${elapsedMin} minutes — worker may be down`
         ),
         redis.publish(
           `pipeline:${step.order_id}:progress`,
           JSON.stringify({
             ts: Date.now(),
             step: step.step,
-            status: "STALLED",
+            status: 'STALLED',
             elapsedMs,
             message: `Generation appears stalled (${elapsedMin}m). Check worker health.`,
-          }),
+          })
         ),
       ]);
     }
   }
 
   if (runningSteps.length > 0) {
-    logger.info(
-      `[stall-detector] Checked ${runningSteps.length} running steps`,
-    );
+    logger.info(`[stall-detector] Checked ${runningSteps.length} running steps`);
   }
 };
 
-const checkWorkerAlive = async (jobs) => {
+const checkWorkerAlive = async jobs => {
   if (!jobs.length) return false;
 
   for (const job of jobs) {
     if (!job.bullmq_job_id) continue;
 
-    const queue =
-      job.queue_name === "token-generation"
-        ? tokenGenerationQueue
-        : cardDesignQueue;
+    const queue = job.queue_name === 'token-generation' ? tokenGenerationQueue : cardDesignQueue;
 
     const bullJob = await queue.getJob(job.bullmq_job_id).catch(() => null);
     if (bullJob) {
       const state = await bullJob.getState().catch(() => null);
-      if (["active", "waiting", "delayed"].includes(state)) return true;
+      if (['active', 'waiting', 'delayed'].includes(state)) return true;
     }
   }
 

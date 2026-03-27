@@ -12,10 +12,10 @@
 // blocking all school users in production.
 // =============================================================================
 
-import { prisma } from "../config/prisma.js";
-import { redis } from "../config/redis.js";
-import { ApiError } from "../utils/response/ApiError.js";
-import { asyncHandler } from "../utils/response/asyncHandler.js";
+import { prisma } from '#config/database/prisma.js';
+import { redis } from '#config/database/redis.js';
+import { ApiError } from '#utils/response/ApiError.js';
+import { asyncHandler } from '#utils/response/asyncHandler.js';
 
 const PARENT_CHILDREN_TTL = 2 * 60; // 2 minutes
 
@@ -29,24 +29,23 @@ const PARENT_CHILDREN_TTL = 2 * 60; // 2 minutes
  * REQUIRES: tenantScope to run before this middleware on the same route.
  */
 export const ownSchoolOnly = asyncHandler(async (req, _res, next) => {
-  if (req.role === "SUPER_ADMIN") return next(); // super admin bypasses
+  if (req.role === 'SUPER_ADMIN') return next(); // super admin bypasses
 
-  const requestedSchoolId =
-    req.params.schoolId ?? req.params.school_id ?? req.body?.school_id;
+  const requestedSchoolId = req.params.schoolId ?? req.params.school_id ?? req.body?.school_id;
 
   if (!requestedSchoolId) return next(); // no school ref in request — ok
 
   // FIX [#6]: If req.schoolId is undefined here, tenantScope was not applied.
   // Fail with 500 + a descriptive message so the route misconfiguration is
   // caught immediately rather than silently blocking all school users.
-  if (req.role === "SCHOOL_USER" && req.schoolId === undefined) {
+  if (req.role === 'SCHOOL_USER' && req.schoolId === undefined) {
     throw ApiError.internal(
-      "ownSchoolOnly requires tenantScope to run first — missing on this route",
+      'ownSchoolOnly requires tenantScope to run first — missing on this route'
     );
   }
 
   if (req.schoolId !== requestedSchoolId) {
-    throw ApiError.forbidden("Access to this school is not permitted");
+    throw ApiError.forbidden('Access to this school is not permitted');
   }
 
   next();
@@ -60,10 +59,9 @@ export const ownSchoolOnly = asyncHandler(async (req, _res, next) => {
  * Checks ParentStudent relationship in DB (cached in Redis)
  */
 export const ownChildrenOnly = asyncHandler(async (req, _res, next) => {
-  if (req.role !== "PARENT_USER") return next();
+  if (req.role !== 'PARENT_USER') return next();
 
-  const studentId =
-    req.params.studentId ?? req.params.student_id ?? req.body?.student_id;
+  const studentId = req.params.studentId ?? req.params.student_id ?? req.body?.student_id;
 
   if (!studentId) return next();
 
@@ -71,7 +69,7 @@ export const ownChildrenOnly = asyncHandler(async (req, _res, next) => {
   const isChild = await verifyParentChild(parentId, studentId);
 
   if (!isChild) {
-    throw ApiError.forbidden("You do not have access to this student");
+    throw ApiError.forbidden('You do not have access to this student');
   }
 
   req.studentId = studentId;
@@ -83,12 +81,12 @@ export const ownChildrenOnly = asyncHandler(async (req, _res, next) => {
  * Parent can only access/modify their own profile
  */
 export const ownProfileOnly = asyncHandler(async (req, _res, next) => {
-  if (req.role !== "PARENT_USER") return next();
+  if (req.role !== 'PARENT_USER') return next();
 
   const requestedId = req.params.parentId ?? req.params.id;
 
   if (requestedId && requestedId !== req.userId) {
-    throw ApiError.forbidden("You can only access your own profile");
+    throw ApiError.forbidden('You can only access your own profile');
   }
 
   next();
@@ -103,15 +101,15 @@ export const ownProfileOnly = asyncHandler(async (req, _res, next) => {
  * REQUIRES: tenantScope to run before this middleware on the same route.
  */
 export const ownTokenOnly = asyncHandler(async (req, _res, next) => {
-  if (req.role === "SUPER_ADMIN") return next();
+  if (req.role === 'SUPER_ADMIN') return next();
 
   const tokenId = req.params.tokenId ?? req.params.token_id;
   if (!tokenId) return next();
 
   // FIX [#6]: Same guard as ownSchoolOnly — catch missing tenantScope early.
-  if (req.role === "SCHOOL_USER" && req.schoolId === undefined) {
+  if (req.role === 'SCHOOL_USER' && req.schoolId === undefined) {
     throw ApiError.internal(
-      "ownTokenOnly requires tenantScope to run first — missing on this route",
+      'ownTokenOnly requires tenantScope to run first — missing on this route'
     );
   }
 
@@ -120,10 +118,10 @@ export const ownTokenOnly = asyncHandler(async (req, _res, next) => {
     select: { school_id: true },
   });
 
-  if (!token) throw ApiError.notFound("Token not found");
+  if (!token) throw ApiError.notFound('Token not found');
 
   if (req.schoolId && token.school_id !== req.schoolId) {
-    throw ApiError.forbidden("This token does not belong to your school");
+    throw ApiError.forbidden('This token does not belong to your school');
   }
 
   next();
@@ -143,7 +141,7 @@ async function verifyParentChild(parentId, studentId) {
       where: { parent_id: parentId },
       select: { student_id: true },
     });
-    childIds = links.map((l) => l.student_id);
+    childIds = links.map(l => l.student_id);
     await redis.setex(key, PARENT_CHILDREN_TTL, JSON.stringify(childIds));
   }
 

@@ -19,25 +19,25 @@
 //     after every successful ScanLog write (cheap cacheDel call)
 // =============================================================================
 
-import * as repo from "./scanLog.repository.js";
-import { cacheAside, cacheDel } from "../../../utils/cache/cache.js";
-import { buildOffsetMeta } from "../../../utils/response/paginate.js";
+import * as repo from './scanLog.repository.js';
+import { cacheAside, cacheDel } from '#utils/cache/cache.js';
+import { buildOffsetMeta } from '#utils/response/paginate.js';
 
 const STATS_TTL = 60; // 1 minute — scans are real-time, keep stats fresh
 
 /**
  * Cache key includes a date bucket so filtering by "today" vs "all time"
- * produces separate cache entries and don't pollute each other.
+ * produces separate cache entries and don"t pollute each other.
  */
 function statsKey(schoolId, from, to) {
   // No date range supplied → "today" bucket
   if (!from && !to) {
-    const today = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+    const today = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
     return `scan_log_stats:${schoolId}:${today}`;
   }
   // Date range supplied → encode range in key
-  const f = from ? from.toISOString().slice(0, 10) : "start";
-  const t = to ? to.toISOString().slice(0, 10) : "end";
+  const f = from ? from.toISOString().slice(0, 10) : 'start';
+  const t = to ? to.toISOString().slice(0, 10) : 'end';
   return `scan_log_stats:${schoolId}:${f}_${t}`;
 }
 
@@ -69,9 +69,7 @@ export async function getScanLogInventory(schoolId, query) {
 
 async function getStatsCached(schoolId, from, to) {
   const key = statsKey(schoolId, from, to);
-  return cacheAside(key, STATS_TTL, () =>
-    repo.getScanLogStats({ schoolId, from, to }),
-  );
+  return cacheAside(key, STATS_TTL, () => repo.getScanLogStats({ schoolId, from, to }));
 }
 
 /**

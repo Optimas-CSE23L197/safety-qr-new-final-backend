@@ -4,17 +4,13 @@
 // Integrates with your existing crypto patterns.
 // =============================================================================
 
-import crypto from "crypto";
-import { prisma } from "../../config/prisma.js";
-import { ENV } from "../../config/env.js";
-import { logger } from "../../config/logger.js";
-import { uploadFile } from "../storage/storage.service.js";
-import { generateQrImage } from "../qr/qr.service.js";
-import {
-  generateScanCode,
-  decodeScanCode,
-  ScanCodeError,
-} from "./token.helpers.js";
+import crypto from 'crypto';
+import { prisma } from '#config/database/prisma.js';
+import { ENV } from '#config/env.js';
+import { logger } from '#config/logger.js';
+import { uploadFile } from './storage/storage.service.js';
+import { generateQrImage } from './qr/qr.service.js';
+import { generateScanCode, decodeScanCode, ScanCodeError } from './token.helpers.js';
 
 // =============================================================================
 // CONSTANTS
@@ -33,7 +29,7 @@ const SCAN_CODE_LENGTH = 43; // AES-SIV output in base62
  * @returns {string} 64-char uppercase hex (256 bits)
  */
 export const generateRawToken = () => {
-  return crypto.randomBytes(TOKEN_BYTE_LENGTH).toString("hex").toUpperCase();
+  return crypto.randomBytes(TOKEN_BYTE_LENGTH).toString('hex').toUpperCase();
 };
 
 /**
@@ -42,14 +38,11 @@ export const generateRawToken = () => {
  * @param {string} rawToken
  * @returns {string} hex digest
  */
-export const hashRawToken = (rawToken) => {
-  if (!rawToken || typeof rawToken !== "string") {
-    throw new TypeError("hashRawToken: rawToken must be a non-empty string");
+export const hashRawToken = rawToken => {
+  if (!rawToken || typeof rawToken !== 'string') {
+    throw new TypeError('hashRawToken: rawToken must be a non-empty string');
   }
-  return crypto
-    .createHmac("sha256", ENV.TOKEN_HASH_SECRET)
-    .update(rawToken)
-    .digest("hex");
+  return crypto.createHmac('sha256', ENV.TOKEN_HASH_SECRET).update(rawToken).digest('hex');
 };
 
 // =============================================================================
@@ -64,9 +57,9 @@ export const hashRawToken = (rawToken) => {
  * @param {number} schoolSerial — School.serial_number (1-based)
  * @returns {string}
  */
-export const generateCardNumber = (schoolSerial) => {
-  const serial = String(schoolSerial).padStart(4, "0");
-  const randomHex = crypto.randomBytes(4).toString("hex").toUpperCase();
+export const generateCardNumber = schoolSerial => {
+  const serial = String(schoolSerial).padStart(4, '0');
+  const randomHex = crypto.randomBytes(4).toString('hex').toUpperCase();
   return `RQ-${serial}-${randomHex}`;
 };
 
@@ -77,10 +70,10 @@ export const generateCardNumber = (schoolSerial) => {
  * @returns {string[]}
  */
 export const batchGenerateCardNumbers = (schoolSerial, count) => {
-  const serial = String(schoolSerial).padStart(4, "0");
+  const serial = String(schoolSerial).padStart(4, '0');
   const cardNumbers = [];
   for (let i = 0; i < count; i++) {
-    const randomHex = crypto.randomBytes(4).toString("hex").toUpperCase();
+    const randomHex = crypto.randomBytes(4).toString('hex').toUpperCase();
     cardNumbers.push(`RQ-${serial}-${randomHex}`);
   }
   return cardNumbers;
@@ -91,7 +84,7 @@ export const batchGenerateCardNumbers = (schoolSerial, count) => {
  * @returns {string}
  */
 export const generateBlankCardNumber = () => {
-  const randomHex = crypto.randomBytes(4).toString("hex").toUpperCase();
+  const randomHex = crypto.randomBytes(4).toString('hex').toUpperCase();
   return `RQ-BLANK-${randomHex}`;
 };
 
@@ -106,7 +99,7 @@ export const generateBlankCardNumber = () => {
  * @param {string} tokenId — UUID from DB
  * @returns {string} 43-char base62 scan code
  */
-export const generateScanCodeForToken = (tokenId) => {
+export const generateScanCodeForToken = tokenId => {
   return generateScanCode(tokenId);
 };
 
@@ -115,7 +108,7 @@ export const generateScanCodeForToken = (tokenId) => {
  * @param {string} tokenId — UUID from DB
  * @returns {string} e.g. "https://resqid.in/s/5YbX2mKqf3AB9xP9nRtL3vWcUjAe4xQ"
  */
-export const buildScanUrl = (tokenId) => {
+export const buildScanUrl = tokenId => {
   const scanCode = generateScanCodeForToken(tokenId);
   return `${ENV.SCAN_BASE_URL}/${scanCode}`;
 };
@@ -127,15 +120,10 @@ export const buildScanUrl = (tokenId) => {
  * @param {string} params.tokenId — UUID from DB
  * @param {string} params.schoolId
  * @param {string} params.orderId
- * @param {string} params.qrType — "BLANK" or "PRE_DETAILS"
+ * @param {string} params.qrType — "BLANK" or 'PRE_DETAILS'
  * @returns {Promise<{ qrUrl: string, storageKey: string }>}
  */
-export const generateAndUploadQr = async ({
-  tokenId,
-  schoolId,
-  orderId,
-  qrType,
-}) => {
+export const generateAndUploadQr = async ({ tokenId, schoolId, orderId, qrType }) => {
   const scanUrl = buildScanUrl(tokenId);
 
   // Generate QR image (PNG)
@@ -144,8 +132,8 @@ export const generateAndUploadQr = async ({
     height: 512,
     margin: 1,
     color: {
-      dark: "#000000",
-      light: "#FFFFFF",
+      dark: '#000000',
+      light: '#FFFFFF',
     },
   });
 
@@ -154,8 +142,8 @@ export const generateAndUploadQr = async ({
   const qrUrl = await uploadFile({
     key: storageKey,
     body: qrBuffer,
-    contentType: "image/png",
-    cacheControl: "public, max-age=31536000",
+    contentType: 'image/png',
+    cacheControl: 'public, max-age=31536000',
   });
 
   // Store QR asset in DB
@@ -165,11 +153,11 @@ export const generateAndUploadQr = async ({
       school_id: schoolId,
       storage_key: storageKey,
       public_url: qrUrl,
-      format: "PNG",
+      format: 'PNG',
       width_px: 512,
       height_px: 512,
       qr_type: qrType,
-      generated_by: "system",
+      generated_by: 'system',
       order_id: orderId,
     },
   });
@@ -190,7 +178,7 @@ export const generateAndUploadQr = async ({
  * @param {string} params.schoolId
  * @param {number} params.schoolSerial
  * @param {number} params.cardCount
- * @param {string} params.orderType — "BLANK" or "PRE_DETAILS"
+ * @param {string} params.orderType — "BLANK" or 'PRE_DETAILS'
  * @param {Array} params.items — CardOrderItems for PRE_DETAILS
  * @param {string} params.batchId — TokenBatch ID
  * @returns {Promise<{ tokens: Array, cards: Array, qrs: Array }>}
@@ -223,10 +211,10 @@ export const batchGenerateTokensAndCards = async ({
         school_id: schoolId,
         order_id: orderId,
         token_hash: tokenHash,
-        status: "UNASSIGNED",
+        status: 'UNASSIGNED',
         batch_id: batchId,
         // For PRE_DETAILS, link to student data
-        ...(orderType === "PRE_DETAILS" &&
+        ...(orderType === 'PRE_DETAILS' &&
           items[i] && {
             order_item_id: items[i].id,
             student_id: items[i].student_id,
@@ -247,7 +235,7 @@ export const batchGenerateTokensAndCards = async ({
     const qrUrl = await uploadFile({
       key: storageKey,
       body: qrBuffer,
-      contentType: "image/png",
+      contentType: 'image/png',
     });
 
     // 5. Store QR asset
@@ -257,11 +245,11 @@ export const batchGenerateTokensAndCards = async ({
         school_id: schoolId,
         storage_key: storageKey,
         public_url: qrUrl,
-        format: "PNG",
+        format: 'PNG',
         width_px: 512,
         height_px: 512,
         qr_type: orderType,
-        generated_by: "system",
+        generated_by: 'system',
         order_id: orderId,
       },
     });
@@ -273,7 +261,7 @@ export const batchGenerateTokensAndCards = async ({
         token_id: token.id,
         order_id: orderId,
         card_number: cardNumbers[i],
-        print_status: "PENDING",
+        print_status: 'PENDING',
       },
     });
 
@@ -317,7 +305,7 @@ export const batchGenerateTokensAndCards = async ({
  * @param {string} scanCode — 43-char base62 code
  * @returns {Promise<{ token: object, student: object, school: object, emergency: object }>}
  */
-export const resolveScanCode = async (scanCode) => {
+export const resolveScanCode = async scanCode => {
   // 1. Decode and verify scan code (AES-SIV)
   let tokenId;
   try {
@@ -350,7 +338,7 @@ export const resolveScanCode = async (scanCode) => {
             include: {
               contacts: {
                 where: { is_active: true },
-                orderBy: { priority: "asc" },
+                orderBy: { priority: 'asc' },
               },
             },
           },
@@ -360,7 +348,7 @@ export const resolveScanCode = async (scanCode) => {
   });
 
   if (!token) {
-    throw new Error("Token not found");
+    throw new Error('Token not found');
   }
 
   // 3. Validate token state
@@ -370,10 +358,7 @@ export const resolveScanCode = async (scanCode) => {
   }
 
   // 4. Build response with visibility rules
-  const profile = buildEmergencyProfile(
-    token.student,
-    token.student?.emergency,
-  );
+  const profile = buildEmergencyProfile(token.student, token.student?.emergency);
 
   return {
     token: {
@@ -389,7 +374,7 @@ export const resolveScanCode = async (scanCode) => {
     },
     student: token.student
       ? {
-          name: `${token.student.first_name || ""} ${token.student.last_name || ""}`.trim(),
+          name: `${token.student.first_name || ''} ${token.student.last_name || ''}`.trim(),
           photo_url: token.student.photo_url,
           class: token.student.class,
           section: token.student.section,
@@ -402,14 +387,14 @@ export const resolveScanCode = async (scanCode) => {
 /**
  * Validate token state for scanning.
  */
-const validateTokenState = (token) => {
-  if (!token) return { valid: false, reason: "NOT_FOUND" };
-  if (token.status === "REVOKED") return { valid: false, reason: "REVOKED" };
-  if (token.status === "EXPIRED") return { valid: false, reason: "EXPIRED" };
-  if (token.status === "INACTIVE") return { valid: false, reason: "INACTIVE" };
-  if (token.status !== "ACTIVE") return { valid: false, reason: "INVALID" };
+const validateTokenState = token => {
+  if (!token) return { valid: false, reason: 'NOT_FOUND' };
+  if (token.status === 'REVOKED') return { valid: false, reason: 'REVOKED' };
+  if (token.status === 'EXPIRED') return { valid: false, reason: 'EXPIRED' };
+  if (token.status === 'INACTIVE') return { valid: false, reason: 'INACTIVE' };
+  if (token.status !== 'ACTIVE') return { valid: false, reason: 'INVALID' };
   if (token.expires_at && token.expires_at < new Date()) {
-    return { valid: false, reason: "EXPIRED" };
+    return { valid: false, reason: 'EXPIRED' };
   }
   return { valid: true, reason: null };
 };
@@ -420,35 +405,32 @@ const validateTokenState = (token) => {
 const buildEmergencyProfile = (student, emergency) => {
   if (!student) return null;
 
-  const visibility =
-    emergency?.visibility || student?.cardVisibility?.visibility || "PUBLIC";
+  const visibility = emergency?.visibility || student?.cardVisibility?.visibility || 'PUBLIC';
 
-  if (visibility === "HIDDEN") {
+  if (visibility === 'HIDDEN') {
     return {
-      visibility: "HIDDEN",
-      message: "Emergency information is hidden",
+      visibility: 'HIDDEN',
+      message: 'Emergency information is hidden',
     };
   }
 
   const profile = {
     visibility,
-    name: `${student.first_name || ""} ${student.last_name || ""}`.trim(),
+    name: `${student.first_name || ''} ${student.last_name || ''}`.trim(),
     photo_url: student.photo_url,
     class: student.class,
     section: student.section,
   };
 
-  if (visibility === "PUBLIC" && emergency) {
-    profile.blood_group = emergency.blood_group
-      ?.replace("_POS", "+")
-      .replace("_NEG", "-");
+  if (visibility === 'PUBLIC' && emergency) {
+    profile.blood_group = emergency.blood_group?.replace('_POS', '+').replace('_NEG', '-');
     profile.allergies = emergency.allergies;
     profile.conditions = emergency.conditions;
     profile.medications = emergency.medications;
     profile.notes = emergency.notes;
 
     if (emergency.contacts?.length) {
-      profile.contacts = emergency.contacts.map((contact) => ({
+      profile.contacts = emergency.contacts.map(contact => ({
         name: contact.name,
         relationship: contact.relationship,
         phone: decryptField(contact.phone_encrypted),
@@ -464,9 +446,8 @@ const buildEmergencyProfile = (student, emergency) => {
         phone: decryptField(emergency.doctor_phone_encrypted),
       };
     }
-  } else if (visibility === "MINIMAL" && emergency?.contacts?.length) {
-    const primaryContact =
-      emergency.contacts.find((c) => c.priority === 1) || emergency.contacts[0];
+  } else if (visibility === 'MINIMAL' && emergency?.contacts?.length) {
+    const primaryContact = emergency.contacts.find(c => c.priority === 1) || emergency.contacts[0];
     profile.primary_contact = {
       name: primaryContact.name,
       relationship: primaryContact.relationship,
@@ -480,11 +461,11 @@ const buildEmergencyProfile = (student, emergency) => {
 /**
  * Decrypt encrypted field (AES-256-GCM).
  */
-const decryptField = (encrypted) => {
+const decryptField = encrypted => {
   if (!encrypted) return null;
   try {
     // Import your existing decryption logic
-    const { decrypt } = require("../../utils/security/encryption.js");
+    const { decrypt } = require('../../utils/security/encryption.js');
     return decrypt(encrypted);
   } catch {
     return null;

@@ -16,25 +16,25 @@
 //   Super admins can bypass using X-Maintenance-Bypass: <BYPASS_SECRET>
 //   This allows Anthropic ops to check system health during maintenance.
 //
-// To enable:  UPDATE "FeatureFlag" SET enabled=true WHERE key='maintenance_mode'
+// To enable:  UPDATE "FeatureFlag" SET enabled=true WHERE key="maintenance_mode"
 //             Then flush Redis key: DEL flag:maintenance_mode
-// To disable: UPDATE "FeatureFlag" SET enabled=false WHERE key='maintenance_mode'
+// To disable: UPDATE "FeatureFlag' SET enabled=false WHERE key='maintenance_mode'
 //             Then flush Redis key: DEL flag:maintenance_mode
 // =============================================================================
 
-import { prisma } from "../config/prisma.js";
-import { redis } from "../config/redis.js";
-import { ENV } from "../config/env.js";
-import { logger } from "../config/logger.js";
+import { prisma } from '#config/database/prisma.js';
+import { redis } from '#config/database/redis.js';
+import { ENV } from '#config/env.js';
+import { logger } from '#config/logger.js';
 
-const FLAG_KEY = "maintenance_mode";
+const FLAG_KEY = 'maintenance_mode';
 const CACHE_KEY = `flag:${FLAG_KEY}`;
 const CACHE_TTL = 30; // 30 seconds — short so enable/disable is near-instant
-const BYPASS_HEADER = "x-maintenance-bypass";
+const BYPASS_HEADER = 'x-maintenance-bypass';
 
 // Routes that always work even during maintenance
 // Health check must stay alive so load balancers know the server is up
-const ALWAYS_ALLOWED = new Set(["/health", "/api/health", "/api/status"]);
+const ALWAYS_ALLOWED = new Set(['/health', '/api/health', '/api/status']);
 
 // ─── Core Middleware ──────────────────────────────────────────────────────────
 
@@ -55,10 +55,7 @@ export async function maintenanceMode(req, res, next) {
     // If we can't check the flag (Redis + DB both down), fail open —
     // it's better to serve requests than to 503 everything due to a
     // monitoring failure. Log at error level for ops visibility.
-    logger.error(
-      { err: err.message },
-      "maintenanceMode: could not check flag — failing open",
-    );
+    logger.error({ err: err.message }, 'maintenanceMode: could not check flag — failing open');
     return next();
   }
 
@@ -66,22 +63,18 @@ export async function maintenanceMode(req, res, next) {
 
   // Maintenance is active — check for bypass header (ops only)
   const bypassSecret = req.headers[BYPASS_HEADER];
-  if (
-    ENV.MAINTENANCE_BYPASS_SECRET &&
-    bypassSecret === ENV.MAINTENANCE_BYPASS_SECRET
-  ) {
-    logger.warn({ ip: req.ip, path: req.path }, "maintenanceMode: bypass used");
+  if (ENV.MAINTENANCE_BYPASS_SECRET && bypassSecret === ENV.MAINTENANCE_BYPASS_SECRET) {
+    logger.warn({ ip: req.ip, path: req.path }, 'maintenanceMode: bypass used');
     return next();
   }
 
   // Maintenance window — estimate 15 min retry
-  res.setHeader("Retry-After", "900");
+  res.setHeader('Retry-After', '900');
   return res.status(503).json({
     success: false,
-    message:
-      "RESQID is currently undergoing scheduled maintenance. We will be back shortly.",
+    message: 'RESQID is currently undergoing scheduled maintenance. We will be back shortly.',
     retryAfter: 900,
-    requestId: req.id ?? "unknown",
+    requestId: req.id ?? 'unknown',
     timestamp: new Date().toISOString(),
   });
 }
@@ -92,7 +85,7 @@ async function checkMaintenanceFlag() {
   // Redis first — fast path
   const cached = await redis.get(CACHE_KEY);
   if (cached !== null) {
-    return cached === "1";
+    return cached === '1';
   }
 
   // DB fallback
@@ -104,7 +97,7 @@ async function checkMaintenanceFlag() {
   const enabled = flag?.enabled ?? false;
 
   // Cache result — 30 second TTL so ops can toggle quickly
-  await redis.setex(CACHE_KEY, CACHE_TTL, enabled ? "1" : "0");
+  await redis.setex(CACHE_KEY, CACHE_TTL, enabled ? '1' : '0');
 
   return enabled;
 }

@@ -14,15 +14,15 @@
 
 export const AUTH = Object.freeze({
   // JWT
-  ISSUER: "resqid",
-  AUDIENCE: "resqid-api",
-  ALGORITHM: "HS256",
+  ISSUER: 'resqid',
+  AUDIENCE: 'resqid-api',
+  ALGORITHM: 'HS256',
 
   // Blacklist Redis key prefix — auth.middleware.js
-  BLACKLIST_PREFIX: "blacklist:",
+  BLACKLIST_PREFIX: 'blacklist:',
 
   // Session Redis cache key prefix — auth.middleware.js
-  SESSION_PREFIX: "session:",
+  SESSION_PREFIX: 'session:',
   SESSION_CACHE_TTL_SECS: 60, // 1 minute
 
   // Bearer token regex — auth.middleware.js
@@ -44,7 +44,7 @@ export const OTP = Object.freeze({
   WINDOW_MINUTES: 10,
 
   // Redis key prefix for OTP rate limiting
-  RATE_KEY_PREFIX: "rl:otp:",
+  RATE_KEY_PREFIX: 'rl:otp:',
 });
 
 // ─── Sessions ─────────────────────────────────────────────────────────────────
@@ -57,12 +57,12 @@ export const SESSION = Object.freeze({
 
   // Session revoke reasons — SessionRevokeReason enum
   REVOKE_REASONS: Object.freeze({
-    NEW_DEVICE_LOGIN: "NEW_DEVICE_LOGIN",
-    MANUAL_LOGOUT: "MANUAL_LOGOUT",
-    SESSION_EXPIRED: "SESSION_EXPIRED",
-    ADMIN_REVOKED: "ADMIN_REVOKED",
-    PASSWORD_CHANGED: "PASSWORD_CHANGED",
-    PHONE_CHANGED: "PHONE_CHANGED",
+    NEW_DEVICE_LOGIN: 'NEW_DEVICE_LOGIN',
+    MANUAL_LOGOUT: 'MANUAL_LOGOUT',
+    SESSION_EXPIRED: 'SESSION_EXPIRED',
+    ADMIN_REVOKED: 'ADMIN_REVOKED',
+    PASSWORD_CHANGED: 'PASSWORD_CHANGED',
+    PHONE_CHANGED: 'PHONE_CHANGED',
   }),
 });
 
@@ -73,15 +73,15 @@ export const DEVICE = Object.freeze({
   CACHE_TTL_SECS: 60,
 
   // Header name for device identification — deviceFingerprint.middleware.js
-  HEADER: "x-device-id",
+  HEADER: 'x-device-id',
 
   // Device logout reasons — DeviceLogoutReason enum
   LOGOUT_REASONS: Object.freeze({
-    NEW_DEVICE_LOGIN: "NEW_DEVICE_LOGIN",
-    MANUAL_LOGOUT: "MANUAL_LOGOUT",
-    SESSION_EXPIRED: "SESSION_EXPIRED",
-    ADMIN_REVOKED: "ADMIN_REVOKED",
-    SUSPICIOUS_ACTIVITY: "SUSPICIOUS_ACTIVITY",
+    NEW_DEVICE_LOGIN: 'NEW_DEVICE_LOGIN',
+    MANUAL_LOGOUT: 'MANUAL_LOGOUT',
+    SESSION_EXPIRED: 'SESSION_EXPIRED',
+    ADMIN_REVOKED: 'ADMIN_REVOKED',
+    SUSPICIOUS_ACTIVITY: 'SUSPICIOUS_ACTIVITY',
   }),
 });
 
@@ -90,14 +90,14 @@ export const DEVICE = Object.freeze({
 export const RATE_LIMIT = Object.freeze({
   // Redis key prefixes — rateLimit.middleware.js
   PREFIX: Object.freeze({
-    EMERGENCY: "rl:emergency:",
-    AUTH: "rl:auth:",
-    OTP: "rl:otp:",
-    API: "rl:api:",
-    UPLOAD: "rl:upload:",
-    DASHBOARD: "rl:dashboard:",
-    TOKEN_GEN: "rl:token-gen:",
-    TOKEN_SCAN: "rl:token:",
+    EMERGENCY: 'rl:emergency:',
+    AUTH: 'rl:auth:',
+    OTP: 'rl:otp:',
+    API: 'rl:api:',
+    UPLOAD: 'rl:upload:',
+    DASHBOARD: 'rl:dashboard:',
+    TOKEN_GEN: 'rl:token-gen:',
+    TOKEN_SCAN: 'rl:token:',
   }),
 
   // Public emergency API — 10 req/min per IP
@@ -148,9 +148,9 @@ export const RATE_LIMIT = Object.freeze({
 export const SLOW_DOWN = Object.freeze({
   // slowDown.middleware.js — Redis key prefixes
   PREFIX: Object.freeze({
-    EMERGENCY: "sd:emergency:",
-    AUTH: "sd:auth:",
-    API: "sd:api:",
+    EMERGENCY: 'sd:emergency:',
+    AUTH: 'sd:auth:',
+    API: 'sd:api:',
   }),
 
   EMERGENCY: Object.freeze({
@@ -171,16 +171,16 @@ export const SLOW_DOWN = Object.freeze({
 // ─── CSRF ─────────────────────────────────────────────────────────────────────
 
 export const CSRF = Object.freeze({
-  COOKIE_NAME: "__Host-csrf",
-  HEADER_NAME: "x-csrf-token",
+  COOKIE_NAME: '__Host-csrf',
+  HEADER_NAME: 'x-csrf-token',
   TOKEN_BYTES: 32,
   TOKEN_TTL_MS: 24 * 60 * 60 * 1000, // 24 hours
 
   // Methods that require CSRF validation
-  PROTECTED_METHODS: Object.freeze(["POST", "PUT", "PATCH", "DELETE"]),
+  PROTECTED_METHODS: Object.freeze(['POST', 'PUT', 'PATCH', 'DELETE']),
 
   // Routes exempt from CSRF — csrf.middleware.js
-  EXEMPT_PREFIXES: Object.freeze(["/api/emergency", "/api/auth/otp"]),
+  EXEMPT_PREFIXES: Object.freeze(['/api/emergency', '/api/auth/otp']),
 });
 
 // ─── Tenant / School ──────────────────────────────────────────────────────────
@@ -194,8 +194,8 @@ export const TENANT = Object.freeze({
 
   // Redis key prefixes
   PREFIX: Object.freeze({
-    SCHOOL: "school:",
-    PARENT_CHILDREN: "parent_children:",
+    SCHOOL: 'school:',
+    PARENT_CHILDREN: 'parent_children:',
   }),
 });
 
@@ -203,8 +203,8 @@ export const TENANT = Object.freeze({
 
 export const IP = Object.freeze({
   // Redis key prefixes — ipReputation.middleware.js
-  BLOCK_PREFIX: "ip:blocked:",
-  TRUST_PREFIX: "ip:trusted:",
+  BLOCK_PREFIX: 'ip:blocked:',
+  TRUST_PREFIX: 'ip:trusted:',
 
   // Cache TTLs
   BLOCK_CACHE_TTL_SECS: 5 * 60,
@@ -212,9 +212,9 @@ export const IP = Object.freeze({
 
   // ScanRateLimit identifier types — matches RateLimitIdentifierType enum
   IDENTIFIER_TYPES: Object.freeze({
-    IP: "IP",
-    DEVICE: "DEVICE",
-    TOKEN: "TOKEN",
+    IP: 'IP',
+    DEVICE: 'DEVICE',
+    TOKEN: 'TOKEN',
   }),
 
   // Default IP block duration for violations — 1 hour
@@ -225,24 +225,24 @@ export const IP = Object.freeze({
 
 export const MAINTENANCE = Object.freeze({
   // Redis cache key — maintenanceMode.middleware.js
-  FLAG_KEY: "maintenance_mode",
-  CACHE_KEY: "flag:maintenance_mode",
+  FLAG_KEY: 'maintenance_mode',
+  CACHE_KEY: 'flag:maintenance_mode',
   CACHE_TTL_SECS: 30,
-  BYPASS_HEADER: "x-maintenance-bypass",
+  BYPASS_HEADER: 'x-maintenance-bypass',
   RETRY_AFTER_SECS: 900, // 15 minutes
 
   // Routes always allowed even during maintenance
-  ALWAYS_ALLOWED: Object.freeze(["/health", "/api/health", "/api/status"]),
+  ALWAYS_ALLOWED: Object.freeze(['/health', '/api/health', '/api/status']),
 });
 
 // ─── Feature Flags ────────────────────────────────────────────────────────────
 
 export const FEATURE_FLAGS = Object.freeze({
-  MAINTENANCE_MODE: "maintenance_mode",
+  MAINTENANCE_MODE: 'maintenance_mode',
   // Add new feature flag keys here as they're added to the FeatureFlag model
-  LOCATION_TRACKING: "location_tracking",
-  ANOMALY_DETECTION: "anomaly_detection",
-  WEBHOOK_DELIVERY: "webhook_delivery",
+  LOCATION_TRACKING: 'location_tracking',
+  ANOMALY_DETECTION: 'anomaly_detection',
+  WEBHOOK_DELIVERY: 'webhook_delivery',
 });
 
 // ─── Audit Log ────────────────────────────────────────────────────────────────
@@ -250,33 +250,33 @@ export const FEATURE_FLAGS = Object.freeze({
 export const AUDIT = Object.freeze({
   // ActorType enum values — auditLog.middleware.js
   ACTOR_TYPES: Object.freeze({
-    SUPER_ADMIN: "SUPER_ADMIN",
-    SCHOOL_USER: "SCHOOL_USER",
-    PARENT_USER: "PARENT_USER",
-    SYSTEM: "SYSTEM",
+    SUPER_ADMIN: 'SUPER_ADMIN',
+    SCHOOL_USER: 'SCHOOL_USER',
+    PARENT_USER: 'PARENT_USER',
+    SYSTEM: 'SYSTEM',
   }),
 
   // Action verbs mapped from HTTP methods
   ACTIONS: Object.freeze({
-    POST: "CREATE",
-    PUT: "UPDATE",
-    PATCH: "UPDATE",
-    DELETE: "DELETE",
+    POST: 'CREATE',
+    PUT: 'UPDATE',
+    PATCH: 'UPDATE',
+    DELETE: 'DELETE',
   }),
 
   // Sensitive fields stripped before writing to AuditLog.new_value
   REDACTED_FIELDS: Object.freeze([
-    "password",
-    "password_hash",
-    "otp",
-    "otp_hash",
-    "token_hash",
-    "refresh_token",
-    "dob_encrypted",
-    "phone_encrypted",
-    "doctor_phone_encrypted",
-    "secret",
-    "private_key",
+    'password',
+    'password_hash',
+    'otp',
+    'otp_hash',
+    'token_hash',
+    'refresh_token',
+    'dob_encrypted',
+    'phone_encrypted',
+    'doctor_phone_encrypted',
+    'secret',
+    'private_key',
   ]),
 });
 
@@ -285,32 +285,32 @@ export const AUDIT = Object.freeze({
 export const SCAN = Object.freeze({
   // ScanResult enum values
   RESULTS: Object.freeze({
-    SUCCESS: "SUCCESS",
-    INVALID: "INVALID",
-    REVOKED: "REVOKED",
-    EXPIRED: "EXPIRED",
-    INACTIVE: "INACTIVE",
-    RATE_LIMITED: "RATE_LIMITED",
-    ERROR: "ERROR",
+    SUCCESS: 'SUCCESS',
+    INVALID: 'INVALID',
+    REVOKED: 'REVOKED',
+    EXPIRED: 'EXPIRED',
+    INACTIVE: 'INACTIVE',
+    RATE_LIMITED: 'RATE_LIMITED',
+    ERROR: 'ERROR',
   }),
 
   // AnomalyType enum values — used in scan handler + ipReputation
   ANOMALY_TYPES: Object.freeze({
-    HIGH_FREQUENCY: "HIGH_FREQUENCY",
-    MULTIPLE_LOCATIONS: "MULTIPLE_LOCATIONS",
-    SUSPICIOUS_IP: "SUSPICIOUS_IP",
-    AFTER_HOURS: "AFTER_HOURS",
-    BULK_SCRAPING: "BULK_SCRAPING",
-    HONEYPOT_TRIGGERED: "HONEYPOT_TRIGGERED",
-    REPEATED_FAILURE: "REPEATED_FAILURE",
+    HIGH_FREQUENCY: 'HIGH_FREQUENCY',
+    MULTIPLE_LOCATIONS: 'MULTIPLE_LOCATIONS',
+    SUSPICIOUS_IP: 'SUSPICIOUS_IP',
+    AFTER_HOURS: 'AFTER_HOURS',
+    BULK_SCRAPING: 'BULK_SCRAPING',
+    HONEYPOT_TRIGGERED: 'HONEYPOT_TRIGGERED',
+    REPEATED_FAILURE: 'REPEATED_FAILURE',
   }),
 
   // AnomalySeverity enum
   SEVERITY: Object.freeze({
-    LOW: "LOW",
-    MEDIUM: "MEDIUM",
-    HIGH: "HIGH",
-    CRITICAL: "CRITICAL",
+    LOW: 'LOW',
+    MEDIUM: 'MEDIUM',
+    HIGH: 'HIGH',
+    CRITICAL: 'CRITICAL',
   }),
 });
 
@@ -319,49 +319,45 @@ export const SCAN = Object.freeze({
 export const TOKEN = Object.freeze({
   // TokenStatus enum values
   STATUS: Object.freeze({
-    UNASSIGNED: "UNASSIGNED",
-    ISSUED: "ISSUED",
-    ACTIVE: "ACTIVE",
-    INACTIVE: "INACTIVE",
-    REVOKED: "REVOKED",
-    EXPIRED: "EXPIRED",
+    UNASSIGNED: 'UNASSIGNED',
+    ISSUED: 'ISSUED',
+    ACTIVE: 'ACTIVE',
+    INACTIVE: 'INACTIVE',
+    REVOKED: 'REVOKED',
+    EXPIRED: 'EXPIRED',
   }),
 
   // Token hash algorithm — must match auth.middleware.js
-  HASH_ALGORITHM: "sha256",
+  HASH_ALGORITHM: 'sha256',
 });
 
 // ─── Encryption ───────────────────────────────────────────────────────────────
 
 export const ENCRYPTION = Object.freeze({
-  ALGORITHM: "aes-256-cbc",
+  ALGORITHM: 'aes-256-cbc',
   KEY_LENGTH_BYTES: 32,
   IV_LENGTH_BYTES: 16,
-  ENCODING: "hex",
+  ENCODING: 'hex',
 
   // Fields encrypted at rest — Student, EmergencyProfile, EmergencyContact
-  ENCRYPTED_FIELDS: Object.freeze([
-    "dob_encrypted",
-    "phone_encrypted",
-    "doctor_phone_encrypted",
-  ]),
+  ENCRYPTED_FIELDS: Object.freeze(['dob_encrypted', 'phone_encrypted', 'doctor_phone_encrypted']),
 });
 
 // ─── Request ──────────────────────────────────────────────────────────────────
 
 export const REQUEST = Object.freeze({
   // Request ID header — requestId.middleware.js
-  ID_HEADER: "x-request-id",
+  ID_HEADER: 'x-request-id',
   ID_REGEX: /^[a-zA-Z0-9_-]{8,64}$/,
 
   // Content-Type header
-  CONTENT_TYPE_HEADER: "content-type",
-  JSON_CONTENT_TYPE: "application/json",
+  CONTENT_TYPE_HEADER: 'content-type',
+  JSON_CONTENT_TYPE: 'application/json',
 
   // API version header — apiVersion.middleware.js
-  VERSION_HEADER: "api-version",
-  DEFAULT_VERSION: "v1",
-  SUPPORTED_VERSIONS: Object.freeze(["v1"]),
+  VERSION_HEADER: 'api-version',
+  DEFAULT_VERSION: 'v1',
+  SUPPORTED_VERSIONS: Object.freeze(['v1']),
 });
 
 // ─── Pagination ───────────────────────────────────────────────────────────────
@@ -375,15 +371,15 @@ export const PAGINATION = Object.freeze({
 // ─── User Roles ───────────────────────────────────────────────────────────────
 
 export const ROLES = Object.freeze({
-  SUPER_ADMIN: "SUPER_ADMIN",
-  SCHOOL_USER: "SCHOOL_USER",
-  PARENT_USER: "PARENT_USER",
+  SUPER_ADMIN: 'SUPER_ADMIN',
+  SCHOOL_USER: 'SCHOOL_USER',
+  PARENT_USER: 'PARENT_USER',
 });
 
 export const SCHOOL_ROLES = Object.freeze({
-  ADMIN: "ADMIN",
-  STAFF: "STAFF",
-  VIEWER: "VIEWER",
+  ADMIN: 'ADMIN',
+  STAFF: 'STAFF',
+  VIEWER: 'VIEWER',
 });
 
 // ─── Profile ──────────────────────────────────────────────────────────────────
@@ -391,19 +387,19 @@ export const SCHOOL_ROLES = Object.freeze({
 export const PROFILE = Object.freeze({
   // ProfileVisibility enum
   VISIBILITY: Object.freeze({
-    PUBLIC: "PUBLIC",
-    MINIMAL: "MINIMAL",
-    HIDDEN: "HIDDEN",
+    PUBLIC: 'PUBLIC',
+    MINIMAL: 'MINIMAL',
+    HIDDEN: 'HIDDEN',
   }),
 
   // SetupStage enum
   SETUP_STAGE: Object.freeze({
-    PENDING: "PENDING",
-    BASIC: "BASIC",
-    COMPLETE: "COMPLETE",
-    VERIFIED: "VERIFIED",
+    PENDING: 'PENDING',
+    BASIC: 'BASIC',
+    COMPLETE: 'COMPLETE',
+    VERIFIED: 'VERIFIED',
   }),
 });
 
 export const TOKEN_BYTE_LENGTH = 32;
-export const CARD_NUMBER_PREFIX = "RESQID";
+export const CARD_NUMBER_PREFIX = 'RESQID';

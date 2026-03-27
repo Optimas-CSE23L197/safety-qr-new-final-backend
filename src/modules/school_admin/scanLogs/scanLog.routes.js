@@ -4,22 +4,19 @@
 // Full path:  GET /api/school-admin/:schoolId/scan-logs
 // =============================================================================
 
-import { Router } from "express";
-import {
-  authenticate,
-  requireSchoolUser,
-} from "../../../middleware/auth.middleware.js";
-import { validateListScanLogs } from "./scanLog.validation.js";
-import { listScanLogs } from "./scanLog.controller.js";
+import { Router } from 'express';
+import { authenticate, requireSchoolUser } from '#middleware/auth.middleware.js';
+import { validateListScanLogs } from './scanLog.validation.js';
+import { listScanLogs } from './scanLog.controller.js';
 
 const router = Router();
 
 router.get(
-  "/:schoolId/scan-logs",
+  '/:schoolId/scan-logs',
   authenticate,
   requireSchoolUser,
   validateListScanLogs,
-  listScanLogs,
+  listScanLogs
 );
 
 export default router;

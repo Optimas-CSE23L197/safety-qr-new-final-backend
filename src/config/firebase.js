@@ -16,12 +16,12 @@
 //   - Automatic handling of invalid/expired tokens (remove from DB)
 // =============================================================================
 
-import admin from "firebase-admin";
-import { ENV } from "./env.js";
-import { logger } from "./logger.js";
+import admin from 'firebase-admin';
+import { ENV } from './env.js';
+import { logger } from './logger.js';
 
 // ─── Initialize Firebase Admin ────────────────────────────────────────────────
-// Guard against hot-reload reinitializing the app (causes "app already exists" error)
+// Guard against hot-reload reinitializing the app (causes 'app already exists' error)
 
 let _app = null;
 
@@ -49,8 +49,8 @@ function getFirebaseApp() {
   });
 
   logger.info(
-    { type: "firebase_initialized", projectId: ENV.FIREBASE_PROJECT_ID },
-    "Firebase Admin SDK initialized",
+    { type: 'firebase_initialized', projectId: ENV.FIREBASE_PROJECT_ID },
+    'Firebase Admin SDK initialized'
   );
 
   return _app;
@@ -75,14 +75,14 @@ function getMessaging() {
  * @param {string} notification.title - Notification title
  * @param {string} notification.body  - Notification body
  * @param {object} [data]     - Custom key-value data payload (string values only)
- * @param {string} [platform] - "IOS" | "ANDROID" | "WEB" — for platform-specific config
+ * @param {string} [platform] - "IOS" | "ANDROID" | 'WEB' — for platform-specific config
  * @returns {{ success: boolean, messageId?: string, error?: string }}
  */
 export async function sendPushNotification(
   deviceToken,
   notification,
   data = {},
-  platform = "ANDROID",
+  platform = 'ANDROID'
 ) {
   const messaging = getMessaging();
 
@@ -90,19 +90,17 @@ export async function sendPushNotification(
   if (!messaging) {
     logger.info(
       {
-        type: "fcm_dev_mock",
-        deviceToken: deviceToken.slice(0, 16) + "...",
+        type: 'fcm_dev_mock',
+        deviceToken: deviceToken.slice(0, 16) + '...',
         notification,
       },
-      "Firebase [DEV]: push notification (not sent)",
+      'Firebase [DEV]: push notification (not sent)'
     );
-    return { success: true, messageId: "dev-mock-message-id" };
+    return { success: true, messageId: 'dev-mock-message-id' };
   }
 
   // Stringify all data values — FCM requires string values
-  const stringData = Object.fromEntries(
-    Object.entries(data).map(([k, v]) => [k, String(v)]),
-  );
+  const stringData = Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)]));
 
   const message = {
     token: deviceToken,
@@ -112,16 +110,16 @@ export async function sendPushNotification(
     },
     data: stringData,
     // Platform-specific config
-    ...(platform === "IOS" && {
+    ...(platform === 'IOS' && {
       apns: {
-        payload: { aps: { sound: "default", badge: 1 } },
-        headers: { "apns-priority": "10" },
+        payload: { aps: { sound: 'default', badge: 1 } },
+        headers: { 'apns-priority': '10' },
       },
     }),
-    ...(platform === "ANDROID" && {
+    ...(platform === 'ANDROID' && {
       android: {
-        priority: "high",
-        notification: { sound: "default", channelId: "resqid_alerts" },
+        priority: 'high',
+        notification: { sound: 'default', channelId: 'resqid_alerts' },
       },
     }),
   };
@@ -129,10 +127,7 @@ export async function sendPushNotification(
   try {
     const messageId = await messaging.send(message);
 
-    logger.info(
-      { type: "fcm_sent", messageId, platform },
-      "Firebase: push notification sent",
-    );
+    logger.info({ type: 'fcm_sent', messageId, platform }, 'Firebase: push notification sent');
 
     return { success: true, messageId };
   } catch (err) {
@@ -141,12 +136,12 @@ export async function sendPushNotification(
 
     logger.warn(
       {
-        type: "fcm_send_failed",
+        type: 'fcm_send_failed',
         err: err.message,
         code: err.code,
         isInvalidToken,
       },
-      "Firebase: push notification failed",
+      'Firebase: push notification failed'
     );
 
     return { success: false, error: err.message, isInvalidToken };
@@ -166,15 +161,14 @@ export async function sendPushNotification(
  * @returns {{ successCount: number, failureCount: number, invalidTokens: string[] }}
  */
 export async function sendMulticast(deviceTokens, notification, data = {}) {
-  if (!deviceTokens.length)
-    return { successCount: 0, failureCount: 0, invalidTokens: [] };
+  if (!deviceTokens.length) return { successCount: 0, failureCount: 0, invalidTokens: [] };
 
   const messaging = getMessaging();
 
   if (!messaging) {
     logger.info(
-      { type: "fcm_multicast_dev_mock", count: deviceTokens.length },
-      `Firebase [DEV]: multicast to ${deviceTokens.length} devices (not sent)`,
+      { type: 'fcm_multicast_dev_mock', count: deviceTokens.length },
+      `Firebase [DEV]: multicast to ${deviceTokens.length} devices (not sent)`
     );
     return {
       successCount: deviceTokens.length,
@@ -183,9 +177,7 @@ export async function sendMulticast(deviceTokens, notification, data = {}) {
     };
   }
 
-  const stringData = Object.fromEntries(
-    Object.entries(data).map(([k, v]) => [k, String(v)]),
-  );
+  const stringData = Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)]));
 
   // Split into batches of 500 (FCM limit)
   const batches = chunk(deviceTokens, 500);
@@ -199,8 +191,8 @@ export async function sendMulticast(deviceTokens, notification, data = {}) {
       notification: { title: notification.title, body: notification.body },
       data: stringData,
       android: {
-        priority: "high",
-        notification: { sound: "default", channelId: "resqid_alerts" },
+        priority: 'high',
+        notification: { sound: 'default', channelId: 'resqid_alerts' },
       },
     };
 
@@ -219,12 +211,12 @@ export async function sendMulticast(deviceTokens, notification, data = {}) {
 
   logger.info(
     {
-      type: "fcm_multicast_done",
+      type: 'fcm_multicast_done',
       successCount,
       failureCount,
       invalidCount: invalidTokens.length,
     },
-    "Firebase: multicast complete",
+    'Firebase: multicast complete'
   );
 
   return { successCount, failureCount, invalidTokens };
@@ -234,9 +226,9 @@ export async function sendMulticast(deviceTokens, notification, data = {}) {
 
 function isTokenInvalidError(err) {
   const invalidCodes = [
-    "messaging/invalid-registration-token",
-    "messaging/registration-token-not-registered",
-    "messaging/invalid-argument",
+    'messaging/invalid-registration-token',
+    'messaging/registration-token-not-registered',
+    'messaging/invalid-argument',
   ];
   return invalidCodes.includes(err?.code);
 }

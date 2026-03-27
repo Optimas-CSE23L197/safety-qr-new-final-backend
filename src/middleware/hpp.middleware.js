@@ -4,7 +4,7 @@
 // Prevents ?role=PARENT_USER&role=SUPER_ADMIN type attacks
 // =============================================================================
 
-import hpp from "hpp";
+import hpp from 'hpp';
 
 /**
  * hppProtection
@@ -14,8 +14,8 @@ import hpp from "hpp";
  */
 export const hppProtection = hpp({
   whitelist: [
-    "ids", // bulk operations: DELETE /students?ids[]=x&ids[]=y
-    "status", // filter by multiple statuses
-    "type", // filter by multiple types
+    'ids', // bulk operations: DELETE /students?ids[]=x&ids[]=y
+    'status', // filter by multiple statuses
+    'type', // filter by multiple types
   ],
 });

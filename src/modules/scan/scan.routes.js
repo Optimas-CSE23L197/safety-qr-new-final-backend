@@ -23,15 +23,15 @@
 //           perTokenScanLimit from rateLimit.middleware.js
 // =============================================================================
 
-import { Router } from "express";
-import { scanQr } from "./scan.controller.js";
-import { validate } from "../../middleware/validate.middleware.js";
+import { Router } from 'express';
+import { scanQr } from './scan.controller.js';
+import { validate } from '#middleware/validate.middleware.js';
 import {
   checkIpBlocked,
   publicEmergencyLimiter,
   perTokenScanLimit,
-} from "../../middleware/rateLimit.middleware.js";
-import { scanCodeSchema } from "./scan.validation.js";
+} from '#middleware/rateLimit.middleware.js';
+import { scanCodeSchema } from './scan.validation.js';
 
 const router = Router();
 
@@ -46,20 +46,20 @@ const router = Router();
 //   perTokenScanLimit    → Redis per-token 20/hr cap, persists anomalies to DB
 //   scanQr               → controller (crypto verify → DB → response)
 router.get(
-  "/:code",
-  validate(scanCodeSchema, "params"),
+  '/:code',
+  validate(scanCodeSchema, 'params'),
   checkIpBlocked,
   publicEmergencyLimiter,
   perTokenScanLimit,
-  scanQr,
+  scanQr
 );
 
 // Catch-all for malformed codes (wrong length, bad chars)
 // Hits immediately from Express param regex — no middleware runs for these.
-router.get("/:code", (_req, res) => {
+router.get('/:code', (_req, res) => {
   res.status(400).json({
     success: false,
-    message: "Invalid QR code format.",
+    message: 'Invalid QR code format.',
   });
 });
 

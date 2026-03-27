@@ -22,10 +22,10 @@
 //   - Dev mode: uses test credentials automatically
 // =============================================================================
 
-import Razorpay from "razorpay";
-import crypto from "crypto";
-import { ENV } from "./env.js";
-import { logger } from "./logger.js";
+import Razorpay from 'razorpay';
+import crypto from 'crypto';
+import { ENV } from './env.js';
+import { logger } from './logger.js';
 
 // ─── Client Singleton ─────────────────────────────────────────────────────────
 
@@ -49,7 +49,7 @@ export const razorpay = new Razorpay({
 export async function createOrder(amountPaise, options = {}) {
   const order = await razorpay.orders.create({
     amount: amountPaise,
-    currency: "INR",
+    currency: 'INR',
     receipt: options.receipt,
     notes: options.notes ?? {},
     // Payment expiry — 30 minutes to complete payment
@@ -58,12 +58,12 @@ export async function createOrder(amountPaise, options = {}) {
 
   logger.info(
     {
-      type: "razorpay_order_created",
+      type: 'razorpay_order_created',
       orderId: order.id,
       amount: amountPaise,
       receipt: options.receipt,
     },
-    `Razorpay: order created ${order.id}`,
+    `Razorpay: order created ${order.id}`
   );
 
   return order;
@@ -93,11 +93,11 @@ export async function createSubscription(planId, options = {}) {
 
   logger.info(
     {
-      type: "razorpay_subscription_created",
+      type: 'razorpay_subscription_created',
       subscriptionId: subscription.id,
       planId,
     },
-    `Razorpay: subscription created ${subscription.id}`,
+    `Razorpay: subscription created ${subscription.id}`
   );
 
   return subscription;
@@ -119,14 +119,14 @@ export function verifyWebhookSignature(rawBody, signature) {
   if (!signature) return false;
 
   const expectedSignature = crypto
-    .createHmac("sha256", ENV.RAZORPAY_WEBHOOK_SECRET)
+    .createHmac('sha256', ENV.RAZORPAY_WEBHOOK_SECRET)
     .update(rawBody)
-    .digest("hex");
+    .digest('hex');
 
   // Constant-time comparison to prevent timing attacks
   try {
-    const expected = Buffer.from(expectedSignature, "hex");
-    const received = Buffer.from(signature, "hex");
+    const expected = Buffer.from(expectedSignature, 'hex');
+    const received = Buffer.from(signature, 'hex');
     if (expected.length !== received.length) return false;
     return crypto.timingSafeEqual(expected, received);
   } catch {
@@ -149,13 +149,13 @@ export function verifyWebhookSignature(rawBody, signature) {
 export function verifyPaymentSignature(orderId, paymentId, signature) {
   const body = `${orderId}|${paymentId}`;
   const expectedSignature = crypto
-    .createHmac("sha256", ENV.RAZORPAY_KEY_SECRET)
+    .createHmac('sha256', ENV.RAZORPAY_KEY_SECRET)
     .update(body)
-    .digest("hex");
+    .digest('hex');
 
   try {
-    const expected = Buffer.from(expectedSignature, "hex");
-    const received = Buffer.from(signature, "hex");
+    const expected = Buffer.from(expectedSignature, 'hex');
+    const received = Buffer.from(signature, 'hex');
     if (expected.length !== received.length) return false;
     return crypto.timingSafeEqual(expected, received);
   } catch {
@@ -187,7 +187,7 @@ export async function fetchPayment(paymentId) {
  */
 export async function createRefund(paymentId, amountPaise, notes = {}) {
   const refundOptions = {
-    speed: "normal",
+    speed: 'normal',
     notes,
   };
 
@@ -199,12 +199,12 @@ export async function createRefund(paymentId, amountPaise, notes = {}) {
 
   logger.info(
     {
-      type: "razorpay_refund_created",
+      type: 'razorpay_refund_created',
       paymentId,
       refundId: refund.id,
-      amount: amountPaise ?? "full",
+      amount: amountPaise ?? 'full',
     },
-    `Razorpay: refund created ${refund.id}`,
+    `Razorpay: refund created ${refund.id}`
   );
 
   return refund;
@@ -219,22 +219,16 @@ export async function createRefund(paymentId, amountPaise, notes = {}) {
  * @param {string} subscriptionId  - Razorpay subscription ID
  * @param {boolean} cancelAtCycleEnd - If true, cancel at end of current cycle
  */
-export async function cancelSubscription(
-  subscriptionId,
-  cancelAtCycleEnd = true,
-) {
-  const result = await razorpay.subscriptions.cancel(
-    subscriptionId,
-    cancelAtCycleEnd,
-  );
+export async function cancelSubscription(subscriptionId, cancelAtCycleEnd = true) {
+  const result = await razorpay.subscriptions.cancel(subscriptionId, cancelAtCycleEnd);
 
   logger.info(
     {
-      type: "razorpay_subscription_cancelled",
+      type: 'razorpay_subscription_cancelled',
       subscriptionId,
       cancelAtCycleEnd,
     },
-    `Razorpay: subscription cancelled ${subscriptionId}`,
+    `Razorpay: subscription cancelled ${subscriptionId}`
   );
 
   return result;

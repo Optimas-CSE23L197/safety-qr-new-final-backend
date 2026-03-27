@@ -20,7 +20,7 @@
 //             - Non-HTTP(S) schemes
 //
 // USAGE:
-//   import { validateOutboundUrl } from "../../utils/security/ssrf.js";
+//   import { validateOutboundUrl } from '#utils/security/ssrf.js';
 //
 //   // In webhook.service.js before delivering:
 //   validateOutboundUrl(webhook.url); // throws ApiError if blocked
@@ -30,8 +30,8 @@
 //   validateOutboundUrl(req.body.avatarUrl);
 // =============================================================================
 
-import dns from "dns/promises";
-import { ApiError } from "../response/ApiError.js";
+import dns from 'dns/promises';
+import { ApiError } from './response/ApiError.js';
 
 // Private/reserved IP ranges that must never be reached from server
 const BLOCKED_IP_PATTERNS = [
@@ -40,7 +40,7 @@ const BLOCKED_IP_PATTERNS = [
   /^172\.(1[6-9]|2[0-9]|3[0-1])\./, // RFC 1918 private
   /^192\.168\./, // RFC 1918 private
   /^169\.254\./, // Link-local (AWS metadata endpoint lives here)
-  /^0\./, // "This" network
+  /^0\./, // 'This' network
   /^100\.(6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\./, // CGNAT
   /^::1$/, // IPv6 loopback
   /^fc00:/, // IPv6 unique local
@@ -49,14 +49,14 @@ const BLOCKED_IP_PATTERNS = [
 
 // Known cloud metadata hostnames — block by name even if IP is unknown
 const BLOCKED_HOSTNAMES = [
-  "metadata.google.internal", // GCP
-  "169.254.169.254", // AWS / Azure / GCP metadata IP
-  "metadata.azure.internal", // Azure
-  "instance-data", // old AWS
+  'metadata.google.internal', // GCP
+  '169.254.169.254', // AWS / Azure / GCP metadata IP
+  'metadata.azure.internal', // Azure
+  'instance-data', // old AWS
 ];
 
 // Only allow these URL schemes — no file://, ftp://, gopher://, etc.
-const ALLOWED_SCHEMES = ["http:", "https:"];
+const ALLOWED_SCHEMES = ['http:', 'https:'];
 
 // =============================================================================
 // Synchronous URL structure check (fast path — no DNS lookup)
@@ -67,7 +67,7 @@ export function validateOutboundUrl(rawUrl) {
   try {
     parsed = new URL(rawUrl);
   } catch {
-    throw new ApiError(400, "Invalid URL format");
+    throw new ApiError(400, 'Invalid URL format');
   }
 
   // Block non-HTTP schemes
@@ -79,17 +79,17 @@ export function validateOutboundUrl(rawUrl) {
 
   // Block known metadata hostnames
   if (BLOCKED_HOSTNAMES.includes(hostname)) {
-    throw new ApiError(400, "URL points to a blocked internal endpoint");
+    throw new ApiError(400, 'URL points to a blocked internal endpoint');
   }
 
   // Block if hostname looks like a raw IP in a blocked range
   if (isBlockedIp(hostname)) {
-    throw new ApiError(400, "URL resolves to a blocked IP range");
+    throw new ApiError(400, 'URL resolves to a blocked IP range');
   }
 
   // Block localhost variants
-  if (hostname === "localhost" || hostname === "0.0.0.0") {
-    throw new ApiError(400, "URL points to a blocked internal endpoint");
+  if (hostname === 'localhost' || hostname === '0.0.0.0') {
+    throw new ApiError(400, 'URL points to a blocked internal endpoint');
   }
 
   return parsed; // Return parsed URL for convenience
@@ -113,17 +113,14 @@ export async function validateOutboundUrlWithDns(rawUrl) {
       const addresses = await dns.resolve4(hostname); // resolve to IPv4
       for (const ip of addresses) {
         if (isBlockedIp(ip)) {
-          throw new ApiError(
-            400,
-            `URL hostname '${hostname}' resolves to a blocked IP address`,
-          );
+          throw new ApiError(400, `URL hostname '${hostname}' resolves to a blocked IP address`);
         }
       }
     } catch (err) {
       if (err instanceof ApiError) throw err;
       // DNS resolution failed — block the request
       // Don't reveal why (could help attacker tune their payload)
-      throw new ApiError(400, "URL validation failed");
+      throw new ApiError(400, 'URL validation failed');
     }
   }
 
@@ -135,12 +132,12 @@ export async function validateOutboundUrlWithDns(rawUrl) {
 // =============================================================================
 
 function isBlockedIp(ip) {
-  return BLOCKED_IP_PATTERNS.some((pattern) => pattern.test(ip));
+  return BLOCKED_IP_PATTERNS.some(pattern => pattern.test(ip));
 }
 
 function isIpAddress(str) {
   // Simple check: does it look like an IPv4 or IPv6 address?
-  return /^(\d{1,3}\.){3}\d{1,3}$/.test(str) || str.includes(":");
+  return /^(\d{1,3}\.){3}\d{1,3}$/.test(str) || str.includes(':');
 }
 
 // =============================================================================
@@ -157,7 +154,7 @@ function isIpAddress(str) {
 //             if (req.body.apiKey === storedApiKey) { ... }
 //
 //           "a..." vs "correctkey" → fails on char 0 → fast response
-//           "c..." vs "correctkey" → fails on char 1 → slightly slower
+//           "c...' vs 'correctkey' → fails on char 1 → slightly slower
 //           ... attacker narrows down each character
 //
 // SOLUTION: crypto.timingSafeEqual() from Node's built-in crypto module.
@@ -176,8 +173,8 @@ function isIpAddress(str) {
 //   ✗ Passwords → use bcrypt.compare()
 // =============================================================================
 
-import crypto from "crypto";
-import bcrypt from "bcrypt";
+import crypto from 'crypto';
+import bcrypt from 'bcrypt';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -187,13 +184,13 @@ const BCRYPT_ROUNDS = 12;
 // immediately (length itself leaks no useful info about the secret)
 // =============================================================================
 export function timingSafeCompare(a, b) {
-  if (typeof a !== "string" || typeof b !== "string") return false;
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
 
   // Inputs must be same byte length for timingSafeEqual
   // If lengths differ: we know they don't match, but we still do the
   // comparison to avoid leaking the length as timing info
-  const bufA = Buffer.from(a, "utf8");
-  const bufB = Buffer.from(b, "utf8");
+  const bufA = Buffer.from(a, 'utf8');
+  const bufB = Buffer.from(b, 'utf8');
 
   if (bufA.length !== bufB.length) {
     // Do a dummy comparison to consume similar time, then return false
@@ -210,7 +207,7 @@ export function timingSafeCompare(a, b) {
 // and later compare with timingSafeCompare(incoming, stored)
 // =============================================================================
 export function hashToken(rawToken) {
-  return crypto.createHash("sha256").update(rawToken).digest("hex");
+  return crypto.createHash('sha256').update(rawToken).digest('hex');
 }
 
 // =============================================================================
@@ -242,7 +239,7 @@ export async function verifyPassword(plainText, hash) {
 // Usage: signWebhookPayload(JSON.stringify(payload), webhookSecret)
 // =============================================================================
 export function signWebhookPayload(payload, secret) {
-  return crypto.createHmac("sha256", secret).update(payload).digest("hex");
+  return crypto.createHmac('sha256', secret).update(payload).digest('hex');
 }
 
 // =============================================================================
@@ -274,22 +271,22 @@ export function verifyWebhookSignature(payload, incomingSignature, secret) {
 //
 // WHY THIS WORKS:
 //   Bots hammering /register directly without going through /nonce first
-//   will get 400 on every attempt. They'd need to call /nonce per attempt,
+//   will get 400 on every attempt. They"d need to call /nonce per attempt,
 //   which is rate-limited separately (5/min/IP), making mass registration
 //   prohibitively slow.
 //
 // ADD TO ROUTES:
-//   router.get("/nonce", issueRegistrationNonce);         ← rate limited 5/min
-//   router.post("/register", requireRegistrationNonce, registerHandler);
+//   router.get("/nonce', issueRegistrationNonce);         ← rate limited 5/min
+//   router.post('/register', requireRegistrationNonce, registerHandler);
 // =============================================================================
 
-import { redis } from "../config/redis.js";
-import { timingSafeCompare, hashToken } from "../utils/security/hashUtil.js";
-import { ApiError } from "../utils/response/ApiError.js";
-import { v4 as uuidv4 } from "uuid";
+import { redis } from '#config/database/redis.js';
+import { timingSafeCompare, hashToken } from '#utils/security/hashUtil.js';
+import { ApiError } from '#utils/response/ApiError.js';
+import { v4 as uuidv4 } from 'uuid';
 
 const NONCE_TTL_SECONDS = 10 * 60; // 10 minutes
-const NONCE_PREFIX = "reg_nonce:";
+const NONCE_PREFIX = 'reg_nonce:';
 
 // =============================================================================
 // Route handler: GET /api/v1/auth/nonce
@@ -302,7 +299,7 @@ export async function issueRegistrationNonce(req, res) {
 
   // Key includes IP so nonces can't be shared across IPs
   const key = `${NONCE_PREFIX}${req.ip}:${hashedNonce}`;
-  await redis.setEx(key, NONCE_TTL_SECONDS, "1");
+  await redis.setEx(key, NONCE_TTL_SECONDS, '1');
 
   return res.status(200).json({
     success: true,
@@ -318,8 +315,8 @@ export async function issueRegistrationNonce(req, res) {
 export async function requireRegistrationNonce(req, res, next) {
   const { nonce } = req.body;
 
-  if (!nonce || typeof nonce !== "string") {
-    throw new ApiError(400, "Registration nonce is required");
+  if (!nonce || typeof nonce !== 'string') {
+    throw new ApiError(400, 'Registration nonce is required');
   }
 
   const hashedNonce = hashToken(nonce);
@@ -330,10 +327,7 @@ export async function requireRegistrationNonce(req, res, next) {
 
   if (!exists) {
     // Don't reveal whether it expired or was never issued
-    throw new ApiError(
-      400,
-      "Invalid or expired registration token. Please restart registration.",
-    );
+    throw new ApiError(400, 'Invalid or expired registration token. Please restart registration.');
   }
 
   // DELETE immediately — one-time use only
@@ -342,7 +336,7 @@ export async function requireRegistrationNonce(req, res, next) {
   const deleted = await redis.del(key);
   if (deleted === 0) {
     // Another concurrent request already consumed this nonce
-    throw new ApiError(400, "Registration token already used");
+    throw new ApiError(400, 'Registration token already used');
   }
 
   // Nonce is valid and consumed — proceed to registration handler

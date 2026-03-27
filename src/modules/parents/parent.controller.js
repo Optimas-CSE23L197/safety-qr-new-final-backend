@@ -4,16 +4,17 @@
 // Each is a thin HTTP wrapper — all logic in parent.service.js
 // =============================================================================
 
-import * as service from "./parent.service.js";
-import { requireOwnParent } from "./parent.validation.js";
-import { logger } from "../../config/logger.js";
+import * as service from './parent.service.js';
+import { requireOwnParent } from './parent.validation.js';
+import { logger } from '#config/logger.js';
+import { extractIp } from '#utils/network/extractIp.js'; // ✅ ADD THIS
 
 // For sendSms - you need to implement or import
-// import { sendSms } from "../../services/communication/sms.service.js";
+// import { sendSms } from '#services/communication/sms.service.js';
 
 // Temporary placeholder for sendSms (implement actual SMS service)
 const sendSms = async (phone, message) => {
-  logger.info({ phone, message }, "[DEV] SMS would be sent");
+  logger.info({ phone, message }, '[DEV] SMS would be sent');
   // TODO: Implement actual SMS via MSG91
 };
 
@@ -27,8 +28,8 @@ function handleError(res, err, context) {
   logger.error({ ...context, err: err.message }, `${context.fn} failed`);
   return res.status(500).json({
     success: false,
-    code: "INTERNAL_ERROR",
-    message: "Something went wrong",
+    code: 'INTERNAL_ERROR',
+    message: 'Something went wrong',
   });
 }
 
@@ -42,12 +43,12 @@ export async function getMe(req, res) {
     if (!data)
       return res.status(404).json({
         success: false,
-        code: "NOT_FOUND",
-        message: "Account not found",
+        code: 'NOT_FOUND',
+        message: 'Account not found',
       });
     return res.status(200).json({ success: true, data });
   } catch (err) {
-    return handleError(res, err, { fn: "getMe", parentId });
+    return handleError(res, err, { fn: 'getMe', parentId });
   }
 }
 
@@ -60,7 +61,7 @@ export async function getScanHistory(req, res) {
     const result = await service.getScanHistory(parentId, req.validatedQuery);
     return res.status(200).json({ success: true, data: result });
   } catch (err) {
-    return handleError(res, err, { fn: "getScanHistory", parentId });
+    return handleError(res, err, { fn: 'getScanHistory', parentId });
   }
 }
 
@@ -73,7 +74,7 @@ export async function updateProfile(req, res) {
     const result = await service.updateProfile(parentId, req.validatedBody);
     return res.status(200).json({ success: true, data: result });
   } catch (err) {
-    return handleError(res, err, { fn: "updateProfile", parentId });
+    return handleError(res, err, { fn: 'updateProfile', parentId });
   }
 }
 
@@ -86,7 +87,7 @@ export async function updateVisibility(req, res) {
     const result = await service.updateVisibility(parentId, req.validatedBody);
     return res.status(200).json({ success: true, data: result });
   } catch (err) {
-    return handleError(res, err, { fn: "updateVisibility", parentId });
+    return handleError(res, err, { fn: 'updateVisibility', parentId });
   }
 }
 
@@ -96,13 +97,10 @@ export async function updateNotifications(req, res) {
   if (!parentId) return;
 
   try {
-    const result = await service.updateNotifications(
-      parentId,
-      req.validatedBody,
-    );
+    const result = await service.updateNotifications(parentId, req.validatedBody);
     return res.status(200).json({ success: true, data: result });
   } catch (err) {
-    return handleError(res, err, { fn: "updateNotifications", parentId });
+    return handleError(res, err, { fn: 'updateNotifications', parentId });
   }
 }
 
@@ -112,13 +110,10 @@ export async function updateLocationConsent(req, res) {
   if (!parentId) return;
 
   try {
-    const result = await service.updateLocationConsent(
-      parentId,
-      req.validatedBody,
-    );
+    const result = await service.updateLocationConsent(parentId, req.validatedBody);
     return res.status(200).json({ success: true, data: result });
   } catch (err) {
-    return handleError(res, err, { fn: "updateLocationConsent", parentId });
+    return handleError(res, err, { fn: 'updateLocationConsent', parentId });
   }
 }
 
@@ -131,7 +126,7 @@ export async function lockCard(req, res) {
     const result = await service.lockCard(parentId, req.validatedBody);
     return res.status(200).json({ success: true, data: result });
   } catch (err) {
-    return handleError(res, err, { fn: "lockCard", parentId });
+    return handleError(res, err, { fn: 'lockCard', parentId });
   }
 }
 
@@ -141,13 +136,10 @@ export async function requestReplace(req, res) {
   if (!parentId) return;
 
   try {
-    const result = await service.requestCardReplacement(
-      parentId,
-      req.validatedBody,
-    );
+    const result = await service.requestCardReplacement(parentId, req.validatedBody);
     return res.status(201).json({ success: true, data: result });
   } catch (err) {
-    return handleError(res, err, { fn: "requestReplace", parentId });
+    return handleError(res, err, { fn: 'requestReplace', parentId });
   }
 }
 
@@ -158,9 +150,9 @@ export async function deleteAccount(req, res) {
 
   try {
     await service.deleteAccount(parentId);
-    return res.status(200).json({ success: true, message: "Account deleted" });
+    return res.status(200).json({ success: true, message: 'Account deleted' });
   } catch (err) {
-    return handleError(res, err, { fn: "deleteAccount", parentId });
+    return handleError(res, err, { fn: 'deleteAccount', parentId });
   }
 }
 
@@ -178,13 +170,10 @@ export async function getLocationHistory(req, res) {
   if (!parentId) return;
 
   try {
-    const result = await service.getLocationHistory(
-      parentId,
-      req.validatedQuery,
-    );
+    const result = await service.getLocationHistory(parentId, req.validatedQuery);
     return res.status(200).json({ success: true, data: result });
   } catch (err) {
-    return handleError(res, err, { fn: "getLocationHistory", parentId });
+    return handleError(res, err, { fn: 'getLocationHistory', parentId });
   }
 }
 
@@ -198,7 +187,7 @@ export async function getAnomalies(req, res) {
     const result = await service.getAnomalies(parentId, req.validatedQuery);
     return res.status(200).json({ success: true, data: result });
   } catch (err) {
-    return handleError(res, err, { fn: "getAnomalies", parentId });
+    return handleError(res, err, { fn: 'getAnomalies', parentId });
   }
 }
 
@@ -212,7 +201,7 @@ export async function getCards(req, res) {
     const result = await service.getCards(parentId);
     return res.status(200).json({ success: true, data: result });
   } catch (err) {
-    return handleError(res, err, { fn: "getCards", parentId });
+    return handleError(res, err, { fn: 'getCards', parentId });
   }
 }
 
@@ -226,7 +215,7 @@ export async function requestRenewal(req, res) {
     const result = await service.requestRenewal(parentId, req.validatedBody);
     return res.status(201).json({ success: true, data: result });
   } catch (err) {
-    return handleError(res, err, { fn: "requestRenewal", parentId });
+    return handleError(res, err, { fn: 'requestRenewal', parentId });
   }
 }
 
@@ -238,15 +227,10 @@ export async function changePhone(req, res) {
 
   try {
     const { new_phone, otp } = req.validatedBody;
-    const result = await service.changePhone(
-      parentId,
-      new_phone,
-      otp,
-      extractIp(req),
-    );
+    const result = await service.changePhone(parentId, new_phone, otp, extractIp(req));
     return res.status(200).json({ success: true, data: result });
   } catch (err) {
-    return handleError(res, err, { fn: "changePhone", parentId });
+    return handleError(res, err, { fn: 'changePhone', parentId });
   }
 }
 
@@ -268,8 +252,8 @@ export async function sendPhoneChangeOtp(req, res) {
     if (existing && existing.id !== parentId) {
       return res.status(409).json({
         success: false,
-        code: "PHONE_ALREADY_EXISTS",
-        message: "This phone number is already registered",
+        code: 'PHONE_ALREADY_EXISTS',
+        message: 'This phone number is already registered',
       });
     }
 
@@ -279,21 +263,18 @@ export async function sendPhoneChangeOtp(req, res) {
     await redis.setex(
       `otp:phone_change:${new_phone}`,
       300, // 5 minutes
-      JSON.stringify({ hash: hashed, phone: new_phone, parentId }),
+      JSON.stringify({ hash: hashed, phone: new_phone, parentId })
     );
 
     // Send SMS via MSG91
-    await sendSms(
-      new_phone,
-      `Your RESQID verification code is ${otp}. Valid for 5 minutes.`,
-    );
+    await sendSms(new_phone, `Your RESQID verification code is ${otp}. Valid for 5 minutes.`);
 
     return res.status(200).json({
       success: true,
-      message: "OTP sent successfully",
+      message: 'OTP sent successfully',
       expiresIn: 300,
     });
   } catch (err) {
-    return handleError(res, err, { fn: "sendPhoneChangeOtp", parentId });
+    return handleError(res, err, { fn: 'sendPhoneChangeOtp', parentId });
   }
 }

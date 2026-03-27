@@ -4,31 +4,30 @@
 // Prevents cross-tenant data leakage — every DB query must filter by school_id
 // =============================================================================
 
-import { prisma } from "../config/prisma.js";
-import { redis } from "../config/redis.js";
-import { ApiError } from "../utils/response/ApiError.js";
-import { asyncHandler } from "../utils/response/asyncHandler.js";
+import { prisma } from '#config/database/prisma.js';
+import { redis } from '#config/database/redis.js';
+import { ApiError } from '#utils/response/ApiError.js';
+import { asyncHandler } from '#utils/response/asyncHandler.js';
 
 const SCHOOL_CACHE_TTL = 5 * 60; // 5 minutes
 
 export const tenantScope = asyncHandler(async (req, _res, next) => {
   // Super admin — no tenant scope, can access all schools
-  if (req.role === "SUPER_ADMIN") {
+  if (req.role === 'SUPER_ADMIN') {
     req.schoolId = null;
     return next();
   }
 
   // School user — scope to their own school
-  if (req.role === "SCHOOL_USER") {
+  if (req.role === 'SCHOOL_USER') {
     const schoolId = req.user?.school_id;
     if (!schoolId) {
-      throw ApiError.forbidden("School user has no associated school");
+      throw ApiError.forbidden('School user has no associated school');
     }
 
     const school = await getSchool(schoolId);
-    if (!school) throw ApiError.notFound("School not found");
-    if (!school.is_active)
-      throw ApiError.forbidden("School account is inactive");
+    if (!school) throw ApiError.notFound('School not found');
+    if (!school.is_active) throw ApiError.forbidden('School account is inactive');
 
     req.schoolId = schoolId;
     req.school = school;
@@ -36,12 +35,12 @@ export const tenantScope = asyncHandler(async (req, _res, next) => {
   }
 
   // Parent — scoped to children's school(s) — handled per-request
-  if (req.role === "PARENT_USER") {
+  if (req.role === 'PARENT_USER') {
     req.schoolId = null; // parents can have children in multiple schools
     return next();
   }
 
-  throw ApiError.forbidden("Cannot determine tenant scope");
+  throw ApiError.forbidden('Cannot determine tenant scope');
 });
 
 async function getSchool(schoolId) {

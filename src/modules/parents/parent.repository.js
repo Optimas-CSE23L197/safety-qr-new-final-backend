@@ -3,164 +3,163 @@
 // ALL Prisma calls for the parent app. Nothing else.
 // =============================================================================
 
-import { prisma } from "../../config/prisma.js";
+import { prisma } from '#config/database/prisma.js';
 
 // ─── /me — Home data ──────────────────────────────────────────────────────────
 
 export async function getParentHomeData(parentId) {
-  const [parent, studentLinks, lastScan, anomaly, scanCount] =
-    await Promise.all([
-      prisma.parentUser.findUnique({
-        where: { id: parentId },
-        select: {
-          id: true,
-          name: true,
-          status: true,
-          is_phone_verified: true,
-          notificationPrefs: {
-            select: {
-              scan_notify_enabled: true,
-              scan_notify_push: true,
-              scan_notify_sms: true,
-              anomaly_notify_push: true,
-              anomaly_notify_sms: true,
-              card_expiry_notify: true,
-              quiet_hours_enabled: true,
-              quiet_hours_start: true,
-              quiet_hours_end: true,
+  const [parent, studentLinks, lastScan, anomaly, scanCount] = await Promise.all([
+    prisma.parentUser.findUnique({
+      where: { id: parentId },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        is_phone_verified: true,
+        notificationPrefs: {
+          select: {
+            scan_notify_enabled: true,
+            scan_notify_push: true,
+            scan_notify_sms: true,
+            anomaly_notify_push: true,
+            anomaly_notify_sms: true,
+            card_expiry_notify: true,
+            quiet_hours_enabled: true,
+            quiet_hours_start: true,
+            quiet_hours_end: true,
+          },
+        },
+      },
+    }),
+
+    // Full student tree — zero N+1
+    prisma.parentStudent.findMany({
+      where: { parent_id: parentId },
+      select: {
+        relationship: true,
+        is_primary: true,
+        student: {
+          select: {
+            id: true,
+            first_name: true,
+            last_name: true,
+            class: true,
+            section: true,
+            photo_url: true,
+            setup_stage: true,
+            school: {
+              select: { id: true, name: true, code: true, city: true },
+            },
+            tokens: {
+              where: {},
+              orderBy: [
+                // Fetch most recently created tokens — service picks best status
+                { created_at: 'desc' },
+              ],
+              take: 5, // fetch up to 5 so service can pick best status (ACTIVE > ISSUED > INACTIVE > REVOKED/EXPIRED)
+              select: {
+                id: true,
+                status: true,
+                expires_at: true,
+                activated_at: true,
+                assigned_at: true,
+                cards: {
+                  take: 1,
+                  select: { card_number: true },
+                },
+                qrAsset: {
+                  select: {
+                    public_url: true,
+                    generated_at: true,
+                    is_active: true,
+                  },
+                },
+              },
+            },
+            emergency: {
+              select: {
+                blood_group: true,
+                allergies: true,
+                conditions: true,
+                medications: true,
+                doctor_name: true,
+                doctor_phone_encrypted: true,
+                notes: true,
+                visibility: true,
+                is_visible: true,
+                contacts: {
+                  where: { is_active: true },
+                  orderBy: { priority: 'asc' },
+                  select: {
+                    id: true,
+                    name: true,
+                    phone_encrypted: true,
+                    relationship: true,
+                    priority: true,
+                    display_order: true,
+                    call_enabled: true,
+                    whatsapp_enabled: true,
+                  },
+                },
+              },
+            },
+            cardVisibility: {
+              select: {
+                visibility: true,
+                hidden_fields: true,
+                updated_by_parent: true,
+              },
+            },
+            locationConsent: {
+              select: { enabled: true },
             },
           },
         },
-      }),
+      },
+    }),
 
-      // Full student tree — zero N+1
-      prisma.parentStudent.findMany({
-        where: { parent_id: parentId },
-        select: {
-          relationship: true,
-          is_primary: true,
-          student: {
-            select: {
-              id: true,
-              first_name: true,
-              last_name: true,
-              class: true,
-              section: true,
-              photo_url: true,
-              setup_stage: true,
-              school: {
-                select: { id: true, name: true, code: true, city: true },
-              },
-              tokens: {
-                where: {},
-                orderBy: [
-                  // Fetch most recently created tokens — service picks best status
-                  { created_at: "desc" },
-                ],
-                take: 5, // fetch up to 5 so service can pick best status (ACTIVE > ISSUED > INACTIVE > REVOKED/EXPIRED)
-                select: {
-                  id: true,
-                  status: true,
-                  expires_at: true,
-                  activated_at: true,
-                  assigned_at: true,
-                  cards: {
-                    take: 1,
-                    select: { card_number: true },
-                  },
-                  qrAsset: {
-                    select: {
-                      public_url: true,
-                      generated_at: true,
-                      is_active: true,
-                    },
-                  },
-                },
-              },
-              emergency: {
-                select: {
-                  blood_group: true,
-                  allergies: true,
-                  conditions: true,
-                  medications: true,
-                  doctor_name: true,
-                  doctor_phone_encrypted: true,
-                  notes: true,
-                  visibility: true,
-                  is_visible: true,
-                  contacts: {
-                    where: { is_active: true },
-                    orderBy: { priority: "asc" },
-                    select: {
-                      id: true,
-                      name: true,
-                      phone_encrypted: true,
-                      relationship: true,
-                      priority: true,
-                      display_order: true,
-                      call_enabled: true,
-                      whatsapp_enabled: true,
-                    },
-                  },
-                },
-              },
-              cardVisibility: {
-                select: {
-                  visibility: true,
-                  hidden_fields: true,
-                  updated_by_parent: true,
-                },
-              },
-              locationConsent: {
-                select: { enabled: true },
-              },
-            },
-          },
-        },
-      }),
+    // Last scan across all students
+    prisma.scanLog.findFirst({
+      where: {
+        token: { student: { parents: { some: { parent_id: parentId } } } },
+      },
+      orderBy: { created_at: 'desc' },
+      select: {
+        id: true,
+        result: true,
+        ip_city: true,
+        ip_region: true,
+        ip_country: true,
+        scan_purpose: true,
+        created_at: true,
+        latitude: true,
+        longitude: true,
+      },
+    }),
 
-      // Last scan across all students
-      prisma.scanLog.findFirst({
-        where: {
-          token: { student: { parents: { some: { parent_id: parentId } } } },
-        },
-        orderBy: { created_at: "desc" },
-        select: {
-          id: true,
-          result: true,
-          ip_city: true,
-          ip_region: true,
-          ip_country: true,
-          scan_purpose: true,
-          created_at: true,
-          latitude: true,
-          longitude: true,
-        },
-      }),
+    // Unresolved anomaly
+    prisma.scanAnomaly.findFirst({
+      where: {
+        resolved: false,
+        token: { student: { parents: { some: { parent_id: parentId } } } },
+      },
+      orderBy: { created_at: 'desc' },
+      select: {
+        id: true,
+        anomaly_type: true,
+        severity: true,
+        reason: true,
+        created_at: true,
+      },
+    }),
 
-      // Unresolved anomaly
-      prisma.scanAnomaly.findFirst({
-        where: {
-          resolved: false,
-          token: { student: { parents: { some: { parent_id: parentId } } } },
-        },
-        orderBy: { created_at: "desc" },
-        select: {
-          id: true,
-          anomaly_type: true,
-          severity: true,
-          reason: true,
-          created_at: true,
-        },
-      }),
-
-      // Total scan count
-      prisma.scanLog.count({
-        where: {
-          token: { student: { parents: { some: { parent_id: parentId } } } },
-        },
-      }),
-    ]);
+    // Total scan count
+    prisma.scanLog.count({
+      where: {
+        token: { student: { parents: { some: { parent_id: parentId } } } },
+      },
+    }),
+  ]);
 
   return { parent, studentLinks, lastScan, anomaly, scanCount };
 }
@@ -172,7 +171,7 @@ export async function getScanHistory({ parentId, cursor, limit, filter }) {
 
   const rows = await prisma.scanLog.findMany({
     where,
-    orderBy: { created_at: "desc" },
+    orderBy: { created_at: 'desc' },
     take: limit + 1, // fetch one extra to detect hasMore
     ...(cursor && { cursor: { id: cursor }, skip: 1 }),
     select: {
@@ -199,7 +198,7 @@ export async function getScanHistory({ parentId, cursor, limit, filter }) {
     where: {
       token: { student: { parents: { some: { parent_id: parentId } } } },
     },
-    orderBy: { created_at: "desc" },
+    orderBy: { created_at: 'desc' },
     take: 20,
     select: {
       id: true,
@@ -218,32 +217,26 @@ function buildScanWhere(parentId, filter) {
   const base = {
     token: { student: { parents: { some: { parent_id: parentId } } } },
   };
-  if (filter === "emergency") return { ...base, scan_purpose: "EMERGENCY" };
-  if (filter === "success") return { ...base, result: "SUCCESS" };
-  if (filter === "flagged") return { ...base, result: { not: "SUCCESS" } };
+  if (filter === 'emergency') return { ...base, scan_purpose: 'EMERGENCY' };
+  if (filter === 'success') return { ...base, result: 'SUCCESS' };
+  if (filter === 'flagged') return { ...base, result: { not: 'SUCCESS' } };
   return base;
 }
 
 // ─── /me/profile — Batched profile update ─────────────────────────────────────
 
-export async function updateStudentProfile({
-  parentId,
-  studentId,
-  student,
-  emergency,
-  contacts,
-}) {
+export async function updateStudentProfile({ parentId, studentId, student, emergency, contacts }) {
   // Verify ownership first — parent must own this student
   const link = await prisma.parentStudent.findFirst({
     where: { parent_id: parentId, student_id: studentId },
   });
   if (!link)
-    throw Object.assign(
-      new Error("Student not found or not linked to this parent"),
-      { code: "FORBIDDEN", statusCode: 403 },
-    );
+    throw Object.assign(new Error('Student not found or not linked to this parent'), {
+      code: 'FORBIDDEN',
+      statusCode: 403,
+    });
 
-  return prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async tx => {
     const ops = [];
 
     // Update student fields if provided
@@ -252,7 +245,7 @@ export async function updateStudentProfile({
         tx.student.update({
           where: { id: studentId },
           data: student,
-        }),
+        })
       );
     }
 
@@ -263,7 +256,7 @@ export async function updateStudentProfile({
           where: { student_id: studentId },
           update: buildEmergencyData(emergency),
           create: { student_id: studentId, ...buildEmergencyData(emergency) },
-        }),
+        })
       );
     }
 
@@ -282,7 +275,7 @@ export async function updateStudentProfile({
           tx.emergencyContact.updateMany({
             where: { profile_id: existingProfile.id },
             data: { is_active: false },
-          }),
+          })
         );
 
         // Upsert each contact in new list
@@ -299,7 +292,7 @@ export async function updateStudentProfile({
                     ...buildContactData(c),
                     is_active: true,
                   },
-                }),
+                })
           );
         }
       }
@@ -344,12 +337,7 @@ function buildContactData(c) {
 
 // ─── /me/visibility ───────────────────────────────────────────────────────────
 
-export async function updateCardVisibility({
-  parentId,
-  studentId,
-  visibility,
-  hidden_fields,
-}) {
+export async function updateCardVisibility({ parentId, studentId, visibility, hidden_fields }) {
   await verifyStudentOwnership(parentId, studentId);
 
   return prisma.cardVisibility.upsert({
@@ -396,13 +384,13 @@ export async function lockStudentCard({ parentId, studentId }) {
 
   // Deactivate the student's active token
   const updated = await prisma.token.updateMany({
-    where: { student_id: studentId, status: "ACTIVE" },
-    data: { status: "INACTIVE" },
+    where: { student_id: studentId, status: 'ACTIVE' },
+    data: { status: 'INACTIVE' },
   });
 
   if (updated.count === 0) {
-    throw Object.assign(new Error("No active token found to lock"), {
-      code: "NO_ACTIVE_TOKEN",
+    throw Object.assign(new Error('No active token found to lock'), {
+      code: 'NO_ACTIVE_TOKEN',
       statusCode: 409,
     });
   }
@@ -420,7 +408,7 @@ export async function createReplaceRequest({ parentId, studentId, reason }) {
     data: {
       student_id: studentId,
       parent_id: parentId,
-      field_group: "CARD_REPLACEMENT",
+      field_group: 'CARD_REPLACEMENT',
       new_value: { reason },
     },
     select: { id: true, created_at: true },
@@ -433,7 +421,7 @@ export async function softDeleteParent(parentId) {
   return prisma.parentUser.update({
     where: { id: parentId },
     data: {
-      status: "DELETED",
+      status: 'DELETED',
       deleted_at: new Date(),
     },
   });
@@ -446,8 +434,8 @@ async function verifyStudentOwnership(parentId, studentId) {
     where: { parent_id: parentId, student_id: studentId },
   });
   if (!link) {
-    throw Object.assign(new Error("Student not linked to this parent"), {
-      code: "FORBIDDEN",
+    throw Object.assign(new Error('Student not linked to this parent'), {
+      code: 'FORBIDDEN',
       statusCode: 403,
     });
   }
@@ -456,14 +444,7 @@ async function verifyStudentOwnership(parentId, studentId) {
 // ─── /me/location-history ─────────────────────────────────────────────────────
 // NEW: Get location history for a student
 
-export async function getLocationHistory({
-  parentId,
-  studentId,
-  cursor,
-  limit,
-  fromDate,
-  toDate,
-}) {
+export async function getLocationHistory({ parentId, studentId, cursor, limit, fromDate, toDate }) {
   await verifyStudentOwnership(parentId, studentId);
 
   const where = {
@@ -474,7 +455,7 @@ export async function getLocationHistory({
 
   const rows = await prisma.locationEvent.findMany({
     where,
-    orderBy: { created_at: "desc" },
+    orderBy: { created_at: 'desc' },
     take: limit + 1,
     ...(cursor && { cursor: { id: cursor }, skip: 1 }),
     select: {
@@ -497,10 +478,7 @@ export async function getLocationHistory({
 // ─── /me/anomalies ───────────────────────────────────────────────────────────
 // NEW: Get anomalies for parent's students
 
-export async function getAnomalies(
-  parentId,
-  { cursor, limit, severity, resolved },
-) {
+export async function getAnomalies(parentId, { cursor, limit, severity, resolved }) {
   const where = {
     token: {
       student: {
@@ -513,7 +491,7 @@ export async function getAnomalies(
 
   const rows = await prisma.scanAnomaly.findMany({
     where,
-    orderBy: { created_at: "desc" },
+    orderBy: { created_at: 'desc' },
     take: limit + 1,
     ...(cursor && { cursor: { id: cursor }, skip: 1 }),
     include: {
@@ -564,7 +542,7 @@ export async function getCards(parentId) {
         },
       },
     },
-    orderBy: { created_at: "desc" },
+    orderBy: { created_at: 'desc' },
   });
 
   return cards;
@@ -584,16 +562,16 @@ export async function requestRenewal(parentId, { cardId, paymentMethod }) {
     },
   });
 
-  if (!card) throw new Error("Card not found");
+  if (!card) throw new Error('Card not found');
 
   // Create renewal request in ParentEditLog
   const log = await prisma.parentEditLog.create({
     data: {
       student_id: card.student_id,
       parent_id: parentId,
-      field_group: "CARD_REPLACEMENT",
+      field_group: 'CARD_REPLACEMENT',
       new_value: {
-        action: "RENEWAL_REQUEST",
+        action: 'RENEWAL_REQUEST',
         card_id: cardId,
         payment_method: paymentMethod,
         current_expiry: card.token?.expires_at,
@@ -617,13 +595,10 @@ async function verifyCardOwnership(parentId, cardId) {
   });
 
   if (!card) {
-    throw Object.assign(
-      new Error("Card not found or not linked to this parent"),
-      {
-        code: "FORBIDDEN",
-        statusCode: 403,
-      },
-    );
+    throw Object.assign(new Error('Card not found or not linked to this parent'), {
+      code: 'FORBIDDEN',
+      statusCode: 403,
+    });
   }
 
   return card;

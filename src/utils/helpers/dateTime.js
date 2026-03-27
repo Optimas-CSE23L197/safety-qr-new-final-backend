@@ -35,10 +35,10 @@ import {
   getDay,
   getHours,
   getMinutes,
-} from "date-fns";
-import { toZonedTime, fromZonedTime, formatInTimeZone } from "date-fns-tz";
+} from 'date-fns';
+import { toZonedTime, fromZonedTime, formatInTimeZone } from 'date-fns-tz';
 
-const IST_TZ = "Asia/Kolkata";
+const IST_TZ = 'Asia/Kolkata';
 
 // ─── Now ──────────────────────────────────────────────────────────────────────
 
@@ -49,7 +49,7 @@ export function nowIst() {
   return toZonedTime(new Date(), IST_TZ);
 }
 export function nowIstStr() {
-  return formatInTimeZone(new Date(), IST_TZ, "yyyy-MM-dd HH:mm:ss");
+  return formatInTimeZone(new Date(), IST_TZ, 'yyyy-MM-dd HH:mm:ss');
 }
 
 // ─── Token / Card Expiry ──────────────────────────────────────────────────────
@@ -96,13 +96,10 @@ export function isExpiringWithinDays(date, days) {
  * Returns the reminder window matched, or null
  * reminderDays: [30, 15, 7, 1] from SchoolSettings
  */
-export function shouldSendRenewalReminder(
-  expiryDate,
-  reminderDays = [30, 15, 7, 1],
-) {
+export function shouldSendRenewalReminder(expiryDate, reminderDays = [30, 15, 7, 1]) {
   const daysLeft = expiresInDays(expiryDate);
   if (daysLeft === null || daysLeft < 0) return null;
-  const matched = reminderDays.find((d) => daysLeft === d);
+  const matched = reminderDays.find(d => daysLeft === d);
   return matched ?? null;
 }
 
@@ -117,12 +114,7 @@ export function shouldSendRenewalReminder(
  * @param {Date} [date] - defaults to now
  */
 export function isWithinSchoolHours(settings, date = new Date()) {
-  const {
-    school_hours_start,
-    school_hours_end,
-    school_days,
-    timezone = IST_TZ,
-  } = settings;
+  const { school_hours_start, school_hours_end, school_days, timezone = IST_TZ } = settings;
 
   if (!school_hours_start || !school_hours_end) return true; // no config = no anomaly
 
@@ -134,8 +126,8 @@ export function isWithinSchoolHours(settings, date = new Date()) {
   if (!school_days.includes(normalizedDay)) return false;
 
   // Parse school hours
-  const [startH, startM] = school_hours_start.split(":").map(Number);
-  const [endH, endM] = school_hours_end.split(":").map(Number);
+  const [startH, startM] = school_hours_start.split(':').map(Number);
+  const [endH, endM] = school_hours_end.split(':').map(Number);
 
   const currentMinutes = getHours(zoned) * 60 + getMinutes(zoned);
   const startMinutes = startH * 60 + startM;
@@ -160,7 +152,7 @@ export function sessionExpiresAt(days = 30) {
  * formatDateIst(date, fmt?)
  * Format a UTC date in IST for display
  */
-export function formatDateIst(date, fmt = "dd MMM yyyy") {
+export function formatDateIst(date, fmt = 'dd MMM yyyy') {
   if (!date) return null;
   return formatInTimeZone(new Date(date), IST_TZ, fmt);
 }
@@ -171,12 +163,12 @@ export function formatDateIst(date, fmt = "dd MMM yyyy") {
  */
 export function formatDateTimeIst(date) {
   if (!date) return null;
-  return formatInTimeZone(new Date(date), IST_TZ, "dd MMM yyyy, hh:mm a");
+  return formatInTimeZone(new Date(date), IST_TZ, 'dd MMM yyyy, hh:mm a');
 }
 
 /**
  * timeAgo(date)
- * "5 minutes ago", "3 days ago" — for notification timestamps
+ * "5 minutes ago", '3 days ago' — for notification timestamps
  */
 export function timeAgo(date) {
   if (!date) return null;
@@ -190,9 +182,9 @@ export function timeAgo(date) {
  * Format: ORD-YYYY-NNNN (sequential part handled by caller)
  */
 export function orderNumberPrefix() {
-  return `ORD-${format(new Date(), "yyyy")}`;
+  return `ORD-${format(new Date(), 'yyyy')}`;
 }
 
 export function invoiceNumberPrefix() {
-  return `INV-${format(new Date(), "yyyy")}`;
+  return `INV-${format(new Date(), 'yyyy')}`;
 }

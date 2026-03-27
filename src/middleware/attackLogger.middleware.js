@@ -13,25 +13,25 @@
 // Running after sanitize means we log what was ATTEMPTED even after cleaning.
 // =============================================================================
 
-import { prisma } from "../config/prisma.js";
-import { logger } from "../config/logger.js";
+import { prisma } from '#config/database/prisma.js';
+import { logger } from '#config/logger.js';
 
 // ─── Attack Signatures ────────────────────────────────────────────────────────
 
 const ATTACK_PATTERNS = [
-  { pattern: /<script[\s\S]*?>[\s\S]*?<\/script>/gi, type: "XSS_SCRIPT_TAG" },
-  { pattern: /javascript\s*:/gi, type: "XSS_JS_PROTOCOL" },
-  { pattern: /on\w+\s*=\s*["'`]/gi, type: "XSS_EVENT_HANDLER" },
-  { pattern: /data\s*:\s*text\/html/gi, type: "XSS_DATA_URI" },
-  { pattern: /\$where|\$gt|\$lt|\$ne|\$in|\$nin/gi, type: "NOSQL_INJECTION" },
-  { pattern: /union\s+select/gi, type: "SQL_INJECTION_UNION" },
-  { pattern: /drop\s+table/gi, type: "SQL_INJECTION_DROP" },
-  { pattern: /insert\s+into/gi, type: "SQL_INJECTION_INSERT" },
+  { pattern: /<script[\s\S]*?>[\s\S]*?<\/script>/gi, type: 'XSS_SCRIPT_TAG' },
+  { pattern: /javascript\s*:/gi, type: 'XSS_JS_PROTOCOL' },
+  { pattern: /on\w+\s*=\s*[''`]/gi, type: 'XSS_EVENT_HANDLER' },
+  { pattern: /data\s*:\s*text\/html/gi, type: 'XSS_DATA_URI' },
+  { pattern: /\$where|\$gt|\$lt|\$ne|\$in|\$nin/gi, type: 'NOSQL_INJECTION' },
+  { pattern: /union\s+select/gi, type: 'SQL_INJECTION_UNION' },
+  { pattern: /drop\s+table/gi, type: 'SQL_INJECTION_DROP' },
+  { pattern: /insert\s+into/gi, type: 'SQL_INJECTION_INSERT' },
   {
     pattern: /__proto__|constructor\s*\[|prototype\s*\[/gi,
-    type: "PROTOTYPE_POLLUTION",
+    type: 'PROTOTYPE_POLLUTION',
   },
-  { pattern: /\.\.(\/|\\)/g, type: "PATH_TRAVERSAL" },
+  { pattern: /\.\.(\/|\\)/g, type: 'PATH_TRAVERSAL' },
 ];
 
 // ─── Scanner ──────────────────────────────────────────────────────────────────
@@ -39,7 +39,7 @@ const ATTACK_PATTERNS = [
 function scanForAttacks(obj, depth = 0) {
   if (depth > 5) return null;
 
-  if (typeof obj === "string") {
+  if (typeof obj === 'string') {
     for (const { pattern, type } of ATTACK_PATTERNS) {
       pattern.lastIndex = 0; // always reset — patterns use /g flag
       if (pattern.test(obj)) return type;
@@ -55,7 +55,7 @@ function scanForAttacks(obj, depth = 0) {
     return null;
   }
 
-  if (obj !== null && typeof obj === "object") {
+  if (obj !== null && typeof obj === 'object') {
     for (const val of Object.values(obj)) {
       const found = scanForAttacks(val, depth + 1);
       if (found) return found;
@@ -74,13 +74,13 @@ export const attackLogger = (req, _res, next) => {
   const attackType = scanForAttacks(req.body);
 
   if (attackType) {
-    const ip = req.ip ?? "unknown";
-    const ua = req.headers["user-agent"] ?? "unknown";
+    const ip = req.ip ?? 'unknown';
+    const ua = req.headers['user-agent'] ?? 'unknown';
 
     // Immediate structured log — visible in pino output right away
     logger.warn(
       {
-        type: "attack_detected",
+        type: 'attack_detected',
         attackType,
         ip,
         path: req.path,
@@ -88,7 +88,7 @@ export const attackLogger = (req, _res, next) => {
         requestId: req.id,
         ua,
       },
-      `⚠️  Attack attempt: ${attackType} from ${ip}`,
+      `⚠️  Attack attempt: ${attackType} from ${ip}`
     );
 
     // Persist to AuditLog — fire-and-forget, never block the request
@@ -96,10 +96,10 @@ export const attackLogger = (req, _res, next) => {
       .create({
         data: {
           actor_id: ip,
-          actor_type: "SYSTEM",
+          actor_type: 'SYSTEM',
           action: `ATTACK_ATTEMPT_${attackType}`,
-          entity: "Request",
-          entity_id: req.id ?? "unknown",
+          entity: 'Request',
+          entity_id: req.id ?? 'unknown',
           metadata: {
             attackType,
             ip,
@@ -113,11 +113,8 @@ export const attackLogger = (req, _res, next) => {
           user_agent: ua,
         },
       })
-      .catch((err) =>
-        logger.error(
-          { err, type: "attack_log_failed" },
-          "Failed to write attack AuditLog",
-        ),
+      .catch(err =>
+        logger.error({ err, type: 'attack_log_failed' }, 'Failed to write attack AuditLog')
       );
 
     // Upsert into ScanRateLimit — tracks repeat offenders
@@ -127,12 +124,12 @@ export const attackLogger = (req, _res, next) => {
         where: {
           identifier_identifier_type: {
             identifier: ip,
-            identifier_type: "IP",
+            identifier_type: 'IP',
           },
         },
         create: {
           identifier: ip,
-          identifier_type: "IP",
+          identifier_type: 'IP',
           count: 1,
           block_count: 1,
           blocked_reason: attackType,
@@ -146,11 +143,8 @@ export const attackLogger = (req, _res, next) => {
           last_hit: new Date(),
         },
       })
-      .catch((err) =>
-        logger.error(
-          { err, type: "scan_rate_limit_failed" },
-          "Failed to update ScanRateLimit",
-        ),
+      .catch(err =>
+        logger.error({ err, type: 'scan_rate_limit_failed' }, 'Failed to update ScanRateLimit')
       );
   }
 

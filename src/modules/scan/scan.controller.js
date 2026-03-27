@@ -12,11 +12,11 @@
 //           for anomaly threshold decisions without a redundant Redis read
 // =============================================================================
 
-import { resolveScan } from "./scan.service.js";
-import { ApiResponse } from "../../utils/response/ApiResponse.js";
-import { asyncHandler } from "../../utils/response/asyncHandler.js";
-import { extractIp } from "../../utils/network/extractIp.js";
-import crypto from "crypto";
+import { resolveScan } from './scan.service.js';
+import { ApiResponse } from '#utils/response/ApiResponse.js';
+import { asyncHandler } from '#utils/response/asyncHandler.js';
+import { extractIp } from '#utils/network/extractIp.js';
+import crypto from 'crypto';
 
 export const scanQr = asyncHandler(async (req, res) => {
   const startTime = Date.now();
@@ -25,15 +25,15 @@ export const scanQr = asyncHandler(async (req, res) => {
   // Simple device fingerprint — no PII, just for anomaly detection in ScanLog.
   // SHA-256 of UA + IP gives a stable 64-char hex; we only need the first 16.
   const deviceHash = crypto
-    .createHash("sha256")
-    .update(`${req.headers["user-agent"] ?? ""}:${extractIp(req)}`)
-    .digest("hex")
+    .createHash('sha256')
+    .update(`${req.headers['user-agent'] ?? ''}:${extractIp(req)}`)
+    .digest('hex')
     .slice(0, 16);
 
   const result = await resolveScan({
     code,
     ip: extractIp(req),
-    userAgent: req.headers["user-agent"] ?? null,
+    userAgent: req.headers['user-agent'] ?? null,
     deviceHash,
     startTime,
     // [FIX-1] perTokenScanLimit middleware sets req.scanCount before we get here.
@@ -43,5 +43,5 @@ export const scanQr = asyncHandler(async (req, res) => {
 
   // All states return 200 — the mobile scanner / PWA reads the `state` field.
   // Returning 404 for REVOKED/EXPIRED would leak token existence to attackers.
-  return res.json(ApiResponse.ok(result, "Scan resolved"));
+  return res.json(ApiResponse.ok(result, 'Scan resolved'));
 });

@@ -17,7 +17,7 @@
  * @returns {Function}  - wrapped function that catches rejections
  */
 
-export const asyncHandler = (fn) => {
+export const asyncHandler = fn => {
   // Preserve arity — Express uses fn.length to detect error middleware (4 args)
   if (fn.length === 4) {
     // Error middleware: (err, req, res, next)

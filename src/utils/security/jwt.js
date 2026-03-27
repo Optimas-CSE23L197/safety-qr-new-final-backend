@@ -8,33 +8,33 @@
 // Single-device: issuing new refresh token revokes all other sessions
 // =============================================================================
 
-import jwt from "jsonwebtoken";
-import { randomUUID } from "crypto"; // built-in — no extra dependency needed
-import { ENV } from "../../config/env.js";
-import { hashToken, generateSecureToken } from "./hashUtil.js";
+import jwt from 'jsonwebtoken';
+import { randomUUID } from 'crypto'; // built-in — no extra dependency needed
+import { ENV } from '#config/env.js';
+import { hashToken, generateSecureToken } from './hashUtil.js';
 
 // ─── Token Config per role ────────────────────────────────────────────────────
 const TOKEN_CONFIG = {
   PARENT_USER: {
-    accessTTL: "15m",
-    refreshTTL: "30d",
+    accessTTL: '15m',
+    refreshTTL: '30d',
     refreshTTLms: 30 * 24 * 60 * 60 * 1000,
   },
   ADMIN: {
-    accessTTL: "1h",
-    refreshTTL: "7d",
+    accessTTL: '1h',
+    refreshTTL: '7d',
     refreshTTLms: 7 * 24 * 60 * 60 * 1000,
   },
   SUPER_ADMIN: {
-    accessTTL: "30m",
-    refreshTTL: "24h",
+    accessTTL: '30m',
+    refreshTTL: '24h',
     refreshTTLms: 24 * 60 * 60 * 1000,
   },
 };
 
 const BASE_OPTIONS = {
-  issuer: "resqid",
-  audience: "resqid-api",
+  issuer: 'resqid',
+  audience: 'resqid-api',
 };
 
 // ─── Access Token ─────────────────────────────────────────────────────────────
@@ -52,7 +52,7 @@ const BASE_OPTIONS = {
  */
 export function signAccessToken({ userId, role, sessionId, schoolId = null }) {
   const config = TOKEN_CONFIG[role];
-  if (!config) throw new Error(`signAccessToken: unknown role '${role}'`);
+  if (!config) throw new Error(`signAccessToken: unknown role "${role}"`);
 
   // FIX 1: unique ID per token — this is the blacklist key
   const jti = randomUUID();
@@ -68,9 +68,9 @@ export function signAccessToken({ userId, role, sessionId, schoolId = null }) {
     ENV.JWT_ACCESS_SECRET,
     {
       ...BASE_OPTIONS,
-      algorithm: "HS256",
+      algorithm: 'HS256',
       expiresIn: config.accessTTL,
-    },
+    }
   );
 
   // Return both so callers can store jti in the Session record
@@ -84,7 +84,7 @@ export function signAccessToken({ userId, role, sessionId, schoolId = null }) {
 export function verifyAccessToken(token) {
   return jwt.verify(token, ENV.JWT_ACCESS_SECRET, {
     ...BASE_OPTIONS,
-    algorithms: ["HS256"], // explicit — reject any other algorithm
+    algorithms: ['HS256'], // explicit — reject any other algorithm
   });
 }
 
@@ -106,9 +106,9 @@ export function verifyAccessToken(token) {
  */
 export async function blacklistToken(jti, remainingTtlSeconds) {
   // Lazy import to avoid circular dependency at module load time
-  const { redis } = await import("../../config/redis.js");
+  const { redis } = await import('../../config/redis.js');
   const ttl = Math.max(Math.ceil(remainingTtlSeconds), 1);
-  await redis.setEx(`blacklist:${jti}`, ttl, "1");
+  await redis.setEx(`blacklist:${jti}`, ttl, '1');
 }
 
 /**
@@ -118,7 +118,7 @@ export async function blacklistToken(jti, remainingTtlSeconds) {
  * @returns {boolean}
  */
 export async function isTokenBlacklisted(jti) {
-  const { redis } = await import("../../config/redis.js");
+  const { redis } = await import('../../config/redis.js');
   const result = await redis.get(`blacklist:${jti}`);
   return result !== null;
 }
@@ -144,7 +144,7 @@ export function getRemainingTtlSeconds(decodedPayload) {
  */
 export function issueRefreshToken(role) {
   const config = TOKEN_CONFIG[role];
-  if (!config) throw new Error(`issueRefreshToken: unknown role '${role}'`);
+  if (!config) throw new Error(`issueRefreshToken: unknown role "${role}"`);
 
   const raw = generateSecureToken(); // 256-bit random
   const hash = hashToken(raw);
@@ -166,9 +166,7 @@ export function hashRefreshToken(rawToken) {
  * Returns TTL in milliseconds — used when setting cookie maxAge
  */
 export function getRefreshTokenTTL(role) {
-  return (
-    TOKEN_CONFIG[role]?.refreshTTLms ?? TOKEN_CONFIG.PARENT_USER.refreshTTLms
-  );
+  return TOKEN_CONFIG[role]?.refreshTTLms ?? TOKEN_CONFIG.PARENT_USER.refreshTTLms;
 }
 
 // ─── Token Pair ───────────────────────────────────────────────────────────────
@@ -194,11 +192,7 @@ export function issueTokenPair({ userId, role, sessionId, schoolId = null }) {
     sessionId,
     schoolId,
   });
-  const {
-    raw: refreshToken,
-    hash: refreshHash,
-    expiresAt,
-  } = issueRefreshToken(role);
+  const { raw: refreshToken, hash: refreshHash, expiresAt } = issueRefreshToken(role);
 
   // jti must be stored in Session record so logout can blacklist this specific token
   return { accessToken, jti, refreshToken, refreshHash, expiresAt };
@@ -213,12 +207,12 @@ export function issueTokenPair({ userId, role, sessionId, schoolId = null }) {
  */
 export function setRefreshCookie(res, rawRefreshToken, role) {
   const ttlMs = getRefreshTokenTTL(role);
-  res.cookie("__Host-refresh", rawRefreshToken, {
+  res.cookie('__Host-refresh', rawRefreshToken, {
     httpOnly: true,
-    secure: ENV.NODE_ENV === "production",
-    sameSite: "strict",
+    secure: ENV.NODE_ENV === 'production',
+    sameSite: 'strict',
     maxAge: ttlMs,
-    path: "/api/auth/refresh", // scope cookie to refresh endpoint only
+    path: '/api/auth/refresh', // scope cookie to refresh endpoint only
   });
 }
 
@@ -226,11 +220,11 @@ export function setRefreshCookie(res, rawRefreshToken, role) {
  * clearRefreshCookie(res)
  */
 export function clearRefreshCookie(res) {
-  res.clearCookie("__Host-refresh", {
+  res.clearCookie('__Host-refresh', {
     httpOnly: true,
-    secure: ENV.NODE_ENV === "production",
-    sameSite: "strict",
-    path: "/api/auth/refresh",
+    secure: ENV.NODE_ENV === 'production',
+    sameSite: 'strict',
+    path: '/api/auth/refresh',
   });
 }
 

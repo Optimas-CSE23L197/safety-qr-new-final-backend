@@ -1,352 +1,149 @@
-// =============================================================================
-// app.js — RESQID (UPDATED with Order Orchestrator)
-// =============================================================================
+// app.js — Corrected imports
 
-import express from "express";
-import cookieParser from "cookie-parser";
-import compression from "compression";
-import "dotenv/config";
+import express from 'express';
+import { ENV } from './config/env.js';
+import { logger } from './config/logger.js'; // Remove morganMiddleware import
 
-// ─── Config ───────────────────────────────────────────────────────────────────
-import { ENV } from "./config/env.js";
-import { logger } from "./config/logger.js";
+// ── Middleware imports ─────────────────────────────────────────────────────
+// helmet.middleware.js exports apiHelmet as default
+import { apiHelmet as helmet } from './middleware/helmet.middleware.js';
 
-// ─── Middleware ───────────────────────────────────────────────────────────────
-import { requestId } from "./middleware/requestId.middleware.js";
-import { httpLogger } from "./middleware/httpLogger.middleware.js";
-import { helmetMiddleware } from "./middleware/helmet.middleware.js";
-import {
-  corsMiddleware,
-  handleCorsError,
-} from "./middleware/cors.middleware.js";
-import { hppProtection } from "./middleware/hpp.middleware.js";
-import { sanitizeDeep } from "./middleware/sanitize.middleware.js";
-import { sanitizeXss } from "./middleware/xss.middleware.js";
-import { maintenanceMode } from "./middleware/maintenanceMode.middleware.js";
-import { apiVersion } from "./middleware/apiVersion.middleware.js";
-import { enforceContentType } from "./middleware/contentType.middleware.js";
-import { enforceRequestSize } from "./middleware/requestSize.middleware.js";
-import {
-  globalErrorHandler,
-  notFoundHandler,
-} from "./middleware/error.middleware.js";
-import { ipBlockMiddleware } from "./middleware/ipBlock.middleware.js";
-import { attackLogger } from "./middleware/attackLogger.middleware.js";
-import {
-  behavioralSecurity,
-  recordFailedAuth,
-  recordSuccessfulAuth,
-} from "./middleware/behavioralSecurity.middleware.js";
-import scanRoute from "./modules/scan/scan.routes.js";
+// cors.middleware.js exports corsMiddleware as default
+import { corsMiddleware as cors } from './middleware/cors.middleware.js';
 
-// ─── Routes ───────────────────────────────────────────────────────────────────
-import router from "./routes/index.js";
-import { accessLogger } from "./middleware/morgan.middleware.js";
+import { requestId } from './middleware/requestId.middleware.js';
+import { tenantScope } from './middleware/tenantScope.middleware.js';
+import { enforceContentType as contentType } from './middleware/contentType.middleware.js';
+import { sanitizeNoSql as sanitize } from './middleware/sanitize.middleware.js';
+import { sanitizeXss as xss } from './middleware/xss.middleware.js';
+import { hppProtection as hpp } from './middleware/hpp.middleware.js';
+import { enforceRequestSize as requestSize } from './middleware/requestSize.middleware.js';
+import { apiLimiter as rateLimit } from './middleware/rateLimit.middleware.js';
+import { apiSlowDown as slowDown } from './middleware/slowDown.middleware.js';
+import { ipBlockMiddleware as ipBlock } from './middleware/ipBlock.middleware.js';
+import { geoBlock } from './middleware/geoBlock.middleware.js';
+import { maintenanceMode } from './middleware/maintenanceMode.middleware.js';
+import { verifyDevice as deviceFingerprint } from './middleware/deviceFingerprint.middleware.js';
+import { behavioralSecurity } from './middleware/behavioralSecurity.middleware.js';
+import { attackLogger } from './middleware/attackLogger.middleware.js';
+import { auditLog } from './middleware/auditLog.middleware.js';
+import { apiVersion } from './middleware/apiVersion.middleware.js';
+import { httpLogger } from './middleware/httpLogger.middleware.js'; // Import httpLogger directly
+import { globalErrorHandler as errorHandler } from './middleware/error.middleware.js';
 
-function validateCloudflareRequest(req, res, next) {
-  if (!ENV.CLOUDFLARE_ONLY || ENV.NODE_ENV !== "production") {
-    return next();
-  }
+// ── Route imports ──────────────────────────────────────────────────────────
+import routes from './routes/index.js';
 
-  if (req.path === "/health" || req.path === "/api/health") {
-    return next();
-  }
+// ── Health / monitoring ────────────────────────────────────────────────────
+import { healthRouter } from './monitoring/health.js';
 
-  const cfConnectingIp = req.headers["cf-connecting-ip"];
-  if (!cfConnectingIp) {
-    logger.warn(
-      { ip: req.ip, path: req.path, requestId: req.id },
-      "Direct origin hit detected — possible Cloudflare bypass attempt",
-    );
-    return res.status(403).json({
-      success: false,
-      message: "Forbidden",
-      requestId: req.id,
-    });
-  }
+// ── Banner ─────────────────────────────────────────────────────────────────
+const MIDDLEWARE_REGISTRY = [
+  { name: 'request-id', desc: 'Attaches X-Request-ID to every request' },
+  { name: 'helmet', desc: 'Security headers (CSP, HSTS, XSS…)' },
+  { name: 'cors', desc: 'CORS policy enforcement' },
+  { name: 'content-type', desc: 'Enforces application/json on writes' },
+  { name: 'request-size', desc: 'Per-route body size limits' },
+  { name: 'ip-block', desc: 'Blocked IP list from Redis' },
+  { name: 'geo-block', desc: 'Country-level geo restrictions' },
+  { name: 'maintenance-mode', desc: 'Toggleable via Redis flag' },
+  { name: 'rate-limit', desc: 'API rate limiting' },
+  { name: 'slow-down', desc: 'Progressive delay before rate limit' },
+  { name: 'hpp', desc: 'HTTP param pollution protection' },
+  { name: 'sanitize', desc: 'Input sanitization (NoSQL injection)' },
+  { name: 'xss', desc: 'XSS payload stripping' },
+  { name: 'device-fingerprint', desc: 'Device ID validation' },
+  { name: 'behavioral-security', desc: 'Request pattern analysis' },
+  { name: 'attack-logger', desc: 'Logs suspicious requests to audit log' },
+  { name: 'http-logger', desc: 'HTTP access log' },
+  { name: 'api-version', desc: 'Attaches req.apiVersion from URL prefix' },
+  { name: 'tenant-scope', desc: 'Attaches req.schoolId from JWT' },
+  { name: 'audit-log', desc: 'Mutation audit trail → DB' },
+];
 
-  req.realIp = cfConnectingIp;
-  next();
+export function printMiddlewareTable() {
+  const c = {
+    reset: '\x1b[0m',
+    bold: '\x1b[1m',
+    dim: '\x1b[2m',
+    cyan: '\x1b[36m',
+    green: '\x1b[32m',
+    yellow: '\x1b[33m',
+    gray: '\x1b[90m',
+  };
+
+  const pad = (s, n) => String(s).padEnd(n);
+  const w1 = 22,
+    w2 = 46;
+  const line = `${c.gray}  ${'─'.repeat(w1 + w2 + 5)}${c.reset}`;
+
+  console.log(`\n${line}`);
+  console.log(
+    `  ${c.bold}${c.cyan}Active Middleware${c.reset}  ${c.dim}(registration order)${c.reset}`
+  );
+  console.log(line);
+
+  MIDDLEWARE_REGISTRY.forEach(({ name, desc }, i) => {
+    const num = c.gray + String(i + 1).padStart(2) + c.reset;
+    const dot = c.green + '●' + c.reset;
+    console.log(`  ${num} ${dot} ${c.bold}${pad(name, w1)}${c.reset}${c.dim}${desc}${c.reset}`);
+  });
+
+  console.log(`${line}\n`);
 }
 
-// =============================================================================
-// App Factory
-// =============================================================================
-
+// ── App factory ────────────────────────────────────────────────────────────
 export function createApp() {
-  logger.info("🟢 Creating Express app...");
   const app = express();
 
-  // ── [1] Trust Proxy ──────────────────────────────────────────────────────────
-  logger.info({ trustProxy: ENV.TRUST_PROXY }, "Setting trust proxy");
-  app.set("trust proxy", ENV.TRUST_PROXY);
-  app.disable("x-powered-by");
-  app.disable("etag");
+  // ── Trust proxy (Railway / Render / Heroku put a load balancer in front) ─
+  app.set('trust proxy', 1);
+  app.disable('x-powered-by');
 
-  // ── [2] Maintenance Mode ─────────────────────────────────────────────────────
-  logger.info("✅ Loading maintenance mode middleware");
-  app.use(maintenanceMode);
+  // ── Core body parsing ──────────────────────────────────────────────────
+  app.use(express.json({ limit: ENV.MAX_BODY_SIZE ?? '1mb' }));
+  app.use(express.urlencoded({ extended: true, limit: ENV.MAX_BODY_SIZE ?? '1mb' }));
 
-  // ── [3] Request ID ───────────────────────────────────────────────────────────
-  logger.info("✅ Loading request ID middleware");
-  app.use(requestId);
+  // ── Middleware stack (order matters) ───────────────────────────────────
+  app.use(requestId); // 1. ID first — everything else can log it
+  app.use(helmet); // 2. Security headers
+  app.use(cors); // 3. CORS
+  app.use(contentType); // 4. Content-type guard before reading body
+  app.use(requestSize); // 5. Body size limit
+  app.use(ipBlock); // 6. IP blocklist (fast reject)
+  app.use(geoBlock); // 7. Geo block (fast reject)
+  app.use(maintenanceMode); // 8. Maintenance flag
+  app.use(rateLimit); // 9. Rate limit
+  app.use(slowDown); // 10. Slow down before hard limit
+  app.use(hpp); // 11. Param pollution
+  app.use(sanitize); // 12. Input sanitize
+  app.use(xss); // 13. XSS strip
+  app.use(deviceFingerprint); // 14. Device ID
+  app.use(behavioralSecurity); // 15. Behavioral analysis
+  app.use(attackLogger); // 16. Attack logging
+  app.use(httpLogger); // 17. HTTP access log (was morganMiddleware)
+  app.use(apiVersion); // 18. API version from URL
+  app.use(tenantScope); // 19. Tenant scope from JWT (after auth on routes)
+  app.use(auditLog); // 20. Audit trail
 
-  // ── [4] HTTP Logger ──────────────────────────────────────────────────────────
-  logger.info("✅ Loading HTTP logger middleware");
-  app.use(accessLogger);
-  app.use(httpLogger);
+  // ── Health checks (no auth, no rate limit) ────────────────────────────
+  app.use('/health', healthRouter);
 
-  // ── [5] Security Headers ────────────────────────────────────────────────────
-  logger.info("✅ Loading Helmet security headers");
-  app.use(helmetMiddleware);
+  // ── API routes ─────────────────────────────────────────────────────────
+  app.use('/api', routes);
 
-  // ── [6] Permissions-Policy ──────────────────────────────────────────────────
-  app.use((_req, res, next) => {
-    res.setHeader(
-      "Permissions-Policy",
-      "geolocation=(), microphone=(), camera=(), payment=(), usb=(), fullscreen=()",
-    );
-    next();
+  // ── 404 handler ────────────────────────────────────────────────────────
+  app.use((req, res) => {
+    res.status(404).json({
+      success: false,
+      error: 'NOT_FOUND',
+      message: `Cannot ${req.method} ${req.originalUrl}`,
+      requestId: req.id,
+    });
   });
 
-  // ── [7] IP Block (Redis fast path) ──────────────────────────────────────────
-  logger.info("✅ Loading IP block middleware");
-  app.use(ipBlockMiddleware);
-
-  // ── [8] Cloudflare Request Validation ───────────────────────────────────────
-  logger.info(
-    { cloudflareOnly: ENV.CLOUDFLARE_ONLY },
-    "Loading Cloudflare validation middleware",
-  );
-  app.use(validateCloudflareRequest);
-
-  // ── [9] CORS ─────────────────────────────────────────────────────────────────
-  logger.info("✅ Loading CORS middleware");
-  app.use(corsMiddleware);
-  app.use(handleCorsError);
-
-  // ── [10] Health + Readiness Endpoints ───────────────────────────────────────
-  logger.info("✅ Registering health endpoints");
-  registerHealthEndpoints(app);
-
-  // ── [11] Request Size Limits ─────────────────────────────────────────────────
-  logger.info("✅ Loading request size limit middleware");
-  app.use(enforceRequestSize);
-
-  // ── [12] Content-Type Enforcement ───────────────────────────────────────────
-  logger.info("✅ Loading content-type enforcement middleware");
-  app.use(enforceContentType);
-
-  // ── [13] Body Parsing ────────────────────────────────────────────────────────
-  logger.info("✅ Loading body parsers (JSON, URL encoded)");
-  app.use(
-    express.json({
-      limit: "20kb",
-      strict: true,
-      type: ["application/json", "application/vnd.api+json"],
-    }),
-  );
-
-  // ── [14] Cookie Parser ───────────────────────────────────────────────────────
-  logger.info("✅ Loading cookie parser");
-  app.use(cookieParser());
-
-  // ── [15] HTTP Parameter Pollution ───────────────────────────────────────────
-  logger.info("✅ Loading HPP protection");
-  app.use(hppProtection);
-
-  // ── [16] Deep Object Sanitization ───────────────────────────────────────────
-  logger.info("✅ Loading deep sanitization middleware");
-  app.use(sanitizeDeep);
-
-  // ── [17] Attack Logger ───────────────────────────────────────────────────────
-  logger.info("✅ Loading attack logger middleware");
-  app.use(attackLogger);
-
-  // ── [18] XSS Sanitization ────────────────────────────────────────────────────
-  logger.info("✅ Loading XSS sanitization middleware");
-  app.use(sanitizeXss);
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // ║  BEHAVIORAL SECURITY MIDDLEWARE                                         ║
-  // ═══════════════════════════════════════════════════════════════════════════
-  logger.info("✅ Loading behavioral security middleware");
-  app.use(behavioralSecurity);
-
-  // ── [19] Public scan routes (exempt from auth) ──────────────────────────────
-  logger.info("✅ Registering public scan routes at /s");
-  app.use("/s", scanRoute);
-
-  // ── [20] API Version ─────────────────────────────────────────────────────────
-  logger.info("✅ Loading API version middleware");
-  app.use(apiVersion);
-
-  // ── [21] Compression ─────────────────────────────────────────────────────────
-  logger.info("✅ Loading compression middleware");
-  app.use(
-    compression({
-      level: 6,
-      threshold: 1024,
-      filter: (req, res) => {
-        if (req.headers["x-no-compression"]) return false;
-        return compression.filter(req, res);
-      },
-    }),
-  );
-
-  // ── [22] Application Routes ───────────────────────────────────────────────────
-  logger.info("✅ Registering application routes at /api/:version");
-  app.use("/api/:version", router);
-
-  // ── [23] 404 Handler ─────────────────────────────────────────────────────────
-  logger.info("✅ Loading 404 handler");
-  app.use(notFoundHandler);
-
-  // ── [24] Global Error Handler ────────────────────────────────────────────────
-  logger.info("✅ Loading global error handler");
-  app.use(globalErrorHandler);
-
-  logger.info(
-    {
-      type: "app_created",
-      env: ENV.NODE_ENV,
-      trustProxy: ENV.TRUST_PROXY,
-      port: ENV.PORT,
-      nodeVersion: process.version,
-    },
-    "✅ Express app created successfully!",
-  );
+  // ── Global error handler (must be last) ───────────────────────────────
+  app.use(errorHandler);
 
   return app;
-}
-
-// =============================================================================
-// Health + Readiness Endpoints (Enhanced with detailed logging)
-// =============================================================================
-
-function registerHealthEndpoints(app) {
-  // Simple liveness probe
-  app.get("/health", (_req, res) => {
-    res.status(200).json({
-      status: "ok",
-      uptime: Math.floor(process.uptime()),
-      timestamp: new Date().toISOString(),
-      env: ENV.NODE_ENV,
-    });
-  });
-
-  // Detailed readiness probe with service checks
-  app.get("/api/health", async (_req, res) => {
-    const startTime = Date.now();
-
-    logger.debug("Health check initiated");
-
-    const { checkPrismaHealth } = await import("./config/prisma.js");
-    const { checkRedisHealth } = await import("./config/redis.js");
-    const { getBehavioralReport } =
-      await import("./middleware/behavioralSecurity.middleware.js");
-
-    // Check queue health
-    let queueHealth = { status: "unknown" };
-    try {
-      const { getQueueHealth } =
-        await import("./modules/order_orchestrator/queues/queue.manager.js");
-      queueHealth = await getQueueHealth();
-    } catch (err) {
-      queueHealth = { status: "error", error: err.message };
-    }
-
-    const [db, cache, behavioral] = await Promise.allSettled([
-      checkPrismaHealth(),
-      checkRedisHealth(),
-      getBehavioralReport(),
-    ]);
-
-    const dbResult =
-      db.status === "fulfilled"
-        ? db.value
-        : { status: "error", error: db.reason?.message };
-    const cacheResult =
-      cache.status === "fulfilled"
-        ? cache.value
-        : { status: "error", error: cache.reason?.message };
-    const behavioralResult =
-      behavioral.status === "fulfilled"
-        ? behavioral.value
-        : { error: "unavailable" };
-
-    const allHealthy = dbResult.status === "ok" && cacheResult.status === "ok";
-    const responseTime = Date.now() - startTime;
-
-    logger.info(
-      {
-        health: allHealthy ? "healthy" : "degraded",
-        database: dbResult.status,
-        redis: cacheResult.status,
-        queues: queueHealth,
-        responseTimeMs: responseTime,
-        suspiciousIps: behavioralResult.totalSuspicious || 0,
-        blockedIps: behavioralResult.totalBlocked || 0,
-      },
-      `Health check completed: ${allHealthy ? "OK" : "DEGRADED"}`,
-    );
-
-    res.status(allHealthy ? 200 : 503).json({
-      status: allHealthy ? "ok" : "degraded",
-      timestamp: new Date().toISOString(),
-      uptime: Math.floor(process.uptime()),
-      responseTimeMs: responseTime,
-      version: process.env.npm_package_version ?? "unknown",
-      services: { database: dbResult, cache: cacheResult, queues: queueHealth },
-      security: {
-        suspiciousIps: behavioralResult.totalSuspicious || 0,
-        blockedIps: behavioralResult.totalBlocked || 0,
-      },
-    });
-  });
-
-  // Status endpoint with version info
-  app.get("/api/status", (_req, res) => {
-    logger.debug("Status endpoint called");
-    res.status(200).json({
-      status: "ok",
-      app: "resqid-api",
-      version: process.env.npm_package_version ?? "unknown",
-      env: ENV.NODE_ENV,
-      nodeVersion: process.version,
-      platform: process.platform,
-      arch: process.arch,
-      pid: process.pid,
-      memory: process.memoryUsage(),
-      timestamp: new Date().toISOString(),
-    });
-  });
-}
-
-// Graceful shutdown handler
-export async function gracefulShutdown(app) {
-  logger.info("🛑 Graceful shutdown initiated...");
-
-  try {
-    const { stopAllWorkers } =
-      await import("./modules/order_orchestrator/workers/index.js");
-    const { closeQueues } =
-      await import("./modules/order_orchestrator/queues/queue.manager.js");
-
-    await stopAllWorkers();
-    await closeQueues();
-    logger.info("✅ Order orchestrator workers stopped");
-  } catch (err) {
-    logger.error({ error: err.message }, "Error stopping orchestrator workers");
-  }
-
-  // Close server
-  if (app) {
-    app.close(() => {
-      logger.info("✅ HTTP server closed");
-      process.exit(0);
-    });
-  } else {
-    process.exit(0);
-  }
 }

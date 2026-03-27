@@ -4,9 +4,9 @@
 // Used in logs, error responses, and distributed tracing
 // =============================================================================
 
-import crypto from "crypto";
+import crypto from 'crypto';
 
-const HEADER = "x-request-id";
+const HEADER = 'x-request-id';
 const ID_REGEX = /^[a-zA-Z0-9_-]{8,64}$/; // safe format
 
 /**
@@ -20,15 +20,14 @@ export function requestId(req, res, next) {
   const clientId = req.headers[HEADER];
 
   // Accept client-provided ID only if it matches safe format
-  const id =
-    clientId && ID_REGEX.test(clientId) ? clientId : crypto.randomUUID();
+  const id = clientId && ID_REGEX.test(clientId) ? clientId : crypto.randomUUID();
 
   req.id = id;
   req.requestId = id; // alias for convenience
 
   // Echo back in response — client can correlate logs
   res.setHeader(HEADER, id);
-  res.setHeader("x-response-time-start", Date.now().toString());
+  res.setHeader('x-response-time-start', Date.now().toString());
 
   next();
 }

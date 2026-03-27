@@ -4,8 +4,8 @@
 // Public emergency endpoint has its own CORS policy (no credentials allowed)
 // =============================================================================
 
-import cors from "cors";
-import { ENV } from "../config/env.js";
+import cors from 'cors';
+import { ENV } from '#config/env.js';
 
 // ─── Allowed Origins ──────────────────────────────────────────────────────────
 
@@ -13,20 +13,18 @@ const DASHBOARD_ORIGINS = new Set(
   [
     ENV.SUPER_ADMIN_URL, // e.g. https://admin.resqid.in
     ENV.SCHOOL_ADMIN_URL, // e.g. https://app.resqid.in
-    ...(ENV.NODE_ENV === "development"
-      ? ["http://localhost:3000", "http://localhost:5173"]
-      : []),
-  ].filter(Boolean),
+    ...(ENV.NODE_ENV === 'development' ? ['http://localhost:3000', 'http://localhost:5173'] : []),
+  ].filter(Boolean)
 ); // FIX [#8]: filter removes undefined if env vars are unset
 
 // FIX [#8]: filter(Boolean) prevents undefined from being stored in the Set,
 // which would never match any real origin but pollutes the collection.
 const MOBILE_APP_ORIGINS = new Set(
   [
-    "capacitor://localhost", // Ionic Capacitor iOS/Android
-    "http://localhost", // local dev
+    'capacitor://localhost', // Ionic Capacitor iOS/Android
+    'http://localhost', // local dev
     ENV.MOBILE_APP_SCHEME, // custom deep link scheme if any
-  ].filter(Boolean),
+  ].filter(Boolean)
 );
 
 // ─── CORS Factory ─────────────────────────────────────────────────────────────
@@ -36,8 +34,8 @@ function buildCors(allowedOrigins, { credentials = true } = {}) {
     origin(origin, callback) {
       // Allow requests with no origin (server-to-server, curl in dev)
       if (!origin) {
-        if (ENV.NODE_ENV === "production") {
-          return callback(new Error("Origin required in production"));
+        if (ENV.NODE_ENV === 'production') {
+          return callback(new Error('Origin required in production'));
         }
         return callback(null, true);
       }
@@ -50,18 +48,9 @@ function buildCors(allowedOrigins, { credentials = true } = {}) {
       return callback(new Error(`CORS: origin '${origin}' not allowed`));
     },
     credentials,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "X-Request-ID",
-      "X-CSRF-Token",
-    ],
-    exposedHeaders: [
-      "X-Request-ID",
-      "X-RateLimit-Remaining",
-      "X-RateLimit-Reset",
-    ],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-CSRF-Token'],
+    exposedHeaders: ['X-Request-ID', 'X-RateLimit-Remaining', 'X-RateLimit-Reset'],
     maxAge: 600, // 10 min preflight cache
     optionsSuccessStatus: 204,
   });
@@ -81,10 +70,9 @@ export const dashboardCors = buildCors(DASHBOARD_ORIGINS, {
  * mobileCors — for /api/auth and /api/parents routes
  * Allows mobile app origins
  */
-export const mobileCors = buildCors(
-  new Set([...DASHBOARD_ORIGINS, ...MOBILE_APP_ORIGINS]),
-  { credentials: true },
-);
+export const mobileCors = buildCors(new Set([...DASHBOARD_ORIGINS, ...MOBILE_APP_ORIGINS]), {
+  credentials: true,
+});
 
 /**
  * publicCors — for /api/emergency (public QR scan endpoint)
@@ -92,10 +80,10 @@ export const mobileCors = buildCors(
  * credentials: false is critical — prevents cookie/session leakage
  */
 export const publicCors = cors({
-  origin: "*", // public endpoint — any origin allowed
+  origin: '*', // public endpoint — any origin allowed
   credentials: false, // MUST be false when origin: '*'
-  methods: ["GET", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "X-Request-ID"],
+  methods: ['GET', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'X-Request-ID'],
   maxAge: 300,
   optionsSuccessStatus: 204,
 });
@@ -110,13 +98,10 @@ export const corsMiddleware = mobileCors;
  * handleCorsError — must be registered after cors() to catch origin errors
  */
 export function handleCorsError(err, req, res, next) {
-  if (
-    err.message?.startsWith("CORS:") ||
-    err.message === "Origin required in production"
-  ) {
+  if (err.message?.startsWith('CORS:') || err.message === 'Origin required in production') {
     return res.status(403).json({
       success: false,
-      message: "CORS policy violation",
+      message: 'CORS policy violation',
       requestId: req.id,
     });
   }

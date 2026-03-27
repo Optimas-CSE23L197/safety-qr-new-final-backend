@@ -13,12 +13,12 @@
  * @returns {'IOS'|'ANDROID'|'WEB'}
  */
 export function parsePlatform(userAgent) {
-  if (!userAgent) return "WEB";
+  if (!userAgent) return 'WEB';
   const ua = userAgent.toLowerCase();
 
-  if (/iphone|ipad|ipod/.test(ua)) return "IOS";
-  if (/android/.test(ua)) return "ANDROID";
-  return "WEB";
+  if (/iphone|ipad|ipod/.test(ua)) return 'IOS';
+  if (/android/.test(ua)) return 'ANDROID';
+  return 'WEB';
 }
 
 /**
@@ -33,13 +33,13 @@ export function parseDeviceName(userAgent) {
   // iPhone
   const iphoneMatch = ua.match(/iPhone.*?OS ([\d_]+)/);
   if (iphoneMatch) {
-    return `iPhone (iOS ${iphoneMatch[1].replace(/_/g, ".")})`;
+    return `iPhone (iOS ${iphoneMatch[1].replace(/_/g, '.')})`;
   }
 
   // iPad
   const ipadMatch = ua.match(/iPad.*?OS ([\d_]+)/);
   if (ipadMatch) {
-    return `iPad (iPadOS ${ipadMatch[1].replace(/_/g, ".")})`;
+    return `iPad (iPadOS ${ipadMatch[1].replace(/_/g, '.')})`;
   }
 
   // Android
@@ -51,11 +51,11 @@ export function parseDeviceName(userAgent) {
   }
 
   // Desktop browsers
-  if (/windows/i.test(ua)) return "Windows PC";
-  if (/macintosh/i.test(ua)) return "Mac";
-  if (/linux/i.test(ua)) return "Linux";
+  if (/windows/i.test(ua)) return 'Windows PC';
+  if (/macintosh/i.test(ua)) return 'Mac';
+  if (/linux/i.test(ua)) return 'Linux';
 
-  return "Unknown Device";
+  return 'Unknown Device';
 }
 
 /**
@@ -66,7 +66,7 @@ export function parseOsVersion(userAgent) {
   if (!userAgent) return null;
 
   const iosMatch = userAgent.match(/OS ([\d_]+) like Mac/);
-  if (iosMatch) return iosMatch[1].replace(/_/g, ".");
+  if (iosMatch) return iosMatch[1].replace(/_/g, '.');
 
   const androidMatch = userAgent.match(/Android ([\d.]+)/);
   if (androidMatch) return androidMatch[1];
@@ -85,13 +85,13 @@ export function parseBrowserName(userAgent) {
   if (!userAgent) return null;
   const ua = userAgent.toLowerCase();
 
-  if (/edg\//.test(ua)) return "Edge";
-  if (/chrome\//.test(ua)) return "Chrome";
-  if (/firefox\//.test(ua)) return "Firefox";
-  if (/safari\//.test(ua)) return "Safari";
-  if (/opera\//.test(ua)) return "Opera";
+  if (/edg\//.test(ua)) return 'Edge';
+  if (/chrome\//.test(ua)) return 'Chrome';
+  if (/firefox\//.test(ua)) return 'Firefox';
+  if (/safari\//.test(ua)) return 'Safari';
+  if (/opera\//.test(ua)) return 'Opera';
 
-  return "Other";
+  return 'Other';
 }
 
 /**
@@ -104,27 +104,27 @@ export function isBotUserAgent(userAgent) {
   const ua = userAgent.toLowerCase();
 
   const botPatterns = [
-    "bot",
-    "crawler",
-    "spider",
-    "scraper",
-    "headless",
-    "python-requests",
-    "go-http-client",
-    "curl/",
-    "wget/",
-    "axios/",
-    "httpclient",
-    "okhttp",
-    "java/",
-    "libwww",
-    "postman",
-    "insomnia",
-    "httpie",
-    "node-fetch",
+    'bot',
+    'crawler',
+    'spider',
+    'scraper',
+    'headless',
+    'python-requests',
+    'go-http-client',
+    'curl/',
+    'wget/',
+    'axios/',
+    'httpclient',
+    'okhttp',
+    'java/',
+    'libwww',
+    'postman',
+    'insomnia',
+    'httpie',
+    'node-fetch',
   ];
 
-  return botPatterns.some((p) => ua.includes(p));
+  return botPatterns.some(p => ua.includes(p));
 }
 
 /**
@@ -135,11 +135,11 @@ export function isBotUserAgent(userAgent) {
  */
 export function deviceFingerprint(req) {
   const components = [
-    req.headers["user-agent"] ?? "",
-    req.headers["accept-language"] ?? "",
-    req.headers["accept-encoding"] ?? "",
-    parsePlatform(req.headers["user-agent"]),
-  ].join("|");
+    req.headers['user-agent'] ?? '',
+    req.headers['accept-language'] ?? '',
+    req.headers['accept-encoding'] ?? '',
+    parsePlatform(req.headers['user-agent']),
+  ].join('|');
 
   // Simple deterministic hash — not crypto-secure, just for dedup
   let hash = 0;
@@ -148,7 +148,7 @@ export function deviceFingerprint(req) {
     hash = (hash << 5) - hash + char;
     hash |= 0; // Convert to 32bit int
   }
-  return Math.abs(hash).toString(16).padStart(8, "0");
+  return Math.abs(hash).toString(16).padStart(8, '0');
 }
 
 /**
@@ -156,7 +156,7 @@ export function deviceFingerprint(req) {
  * All-in-one parser for DeviceLoginLog and ScanLog
  */
 export function parseUserAgentSummary(req) {
-  const ua = req.headers["user-agent"] ?? null;
+  const ua = req.headers['user-agent'] ?? null;
   return {
     userAgent: ua,
     platform: parsePlatform(ua),

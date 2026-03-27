@@ -5,8 +5,8 @@
 // On Redis failure → log warn, serve from DB (graceful degradation)
 // =============================================================================
 
-import { redis } from "../../config/redis.js";
-import { logger } from "../../config/logger.js";
+import { redis } from '#config/database/redis.js';
+import { logger } from '#config/logger.js';
 
 // ─── TTL Constants (seconds) ──────────────────────────────────────────────────
 export const TTL = {
@@ -27,17 +27,17 @@ export const TTL = {
 // All keys centralized — prevents typos and enables easy pattern-based invalidation
 
 export const CacheKey = {
-  school: (id) => `school:${id}`,
-  schoolSettings: (id) => `school:settings:${id}`,
-  session: (id) => `session:${id}`,
-  parentChildren: (parentId) => `parent:children:${parentId}`,
-  parentProfile: (parentId) => `parent:profile:${parentId}`,
-  tokenStatus: (tokenHash) => `token:status:${tokenHash}`,
-  emergencyPage: (tokenHash) => `emergency:${tokenHash}`,
-  blacklist: (tokenHash) => `blacklist:${tokenHash}`,
-  scanCount: (tokenHash) => `scan:count:${tokenHash}`,
-  otpBlock: (phone) => `otp:block:${phone}`,
-  ipBlock: (ip) => `ip:block:${ip}`,
+  school: id => `school:${id}`,
+  schoolSettings: id => `school:settings:${id}`,
+  session: id => `session:${id}`,
+  parentChildren: parentId => `parent:children:${parentId}`,
+  parentProfile: parentId => `parent:profile:${parentId}`,
+  tokenStatus: tokenHash => `token:status:${tokenHash}`,
+  emergencyPage: tokenHash => `emergency:${tokenHash}`,
+  blacklist: tokenHash => `blacklist:${tokenHash}`,
+  scanCount: tokenHash => `scan:count:${tokenHash}`,
+  otpBlock: phone => `otp:block:${phone}`,
+  ipBlock: ip => `ip:block:${ip}`,
   rateLimitKey: (id, type) => `rl:${type}:${id}`,
 };
 
@@ -53,10 +53,7 @@ export async function cacheGet(key) {
     if (value === null) return null;
     return JSON.parse(value);
   } catch (err) {
-    logger.warn(
-      { key, err: err.message },
-      "Cache GET failed — serving from DB",
-    );
+    logger.warn({ key, err: err.message }, 'Cache GET failed — serving from DB');
     return null;
   }
 }
@@ -70,7 +67,7 @@ export async function cacheSet(key, value, ttlSeconds) {
     await redis.setex(key, ttlSeconds, JSON.stringify(value));
     return true;
   } catch (err) {
-    logger.warn({ key, err: err.message }, "Cache SET failed");
+    logger.warn({ key, err: err.message }, 'Cache SET failed');
     return false;
   }
 }
@@ -84,7 +81,7 @@ export async function cacheDel(...keys) {
   try {
     return await redis.del(...keys);
   } catch (err) {
-    logger.warn({ keys, err: err.message }, "Cache DEL failed");
+    logger.warn({ keys, err: err.message }, 'Cache DEL failed');
     return 0;
   }
 }
@@ -97,25 +94,19 @@ export async function cacheDel(...keys) {
  */
 export async function cacheDelPattern(pattern) {
   try {
-    let cursor = "0";
+    let cursor = '0';
     let deleted = 0;
     do {
-      const [nextCursor, keys] = await redis.scan(
-        cursor,
-        "MATCH",
-        pattern,
-        "COUNT",
-        100,
-      );
+      const [nextCursor, keys] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
       cursor = nextCursor;
       if (keys.length) {
         await redis.del(...keys);
         deleted += keys.length;
       }
-    } while (cursor !== "0");
+    } while (cursor !== '0');
     return deleted;
   } catch (err) {
-    logger.warn({ pattern, err: err.message }, "Cache SCAN/DEL pattern failed");
+    logger.warn({ pattern, err: err.message }, 'Cache SCAN/DEL pattern failed');
     return 0;
   }
 }
@@ -129,7 +120,7 @@ export async function cacheExists(key) {
     const result = await redis.exists(key);
     return result === 1;
   } catch (err) {
-    logger.warn({ key, err: err.message }, "Cache EXISTS failed");
+    logger.warn({ key, err: err.message }, 'Cache EXISTS failed');
     return false;
   }
 }
@@ -180,7 +171,7 @@ export async function cacheIncr(key, ttlSeconds = null) {
     }
     return val;
   } catch (err) {
-    logger.warn({ key, err: err.message }, "Cache INCR failed");
+    logger.warn({ key, err: err.message }, 'Cache INCR failed');
     return 0;
   }
 }

@@ -12,30 +12,30 @@ export class ApiResponse {
   }
 
   // Static factories — send response directly
-  static ok(res, data = null, message = "Success") {
+  static ok(res, data = null, message = 'Success') {
     return new ApiResponse(200, message, data).send(res);
   }
 
-  static created(res, data = null, message = "Created successfully") {
+  static created(res, data = null, message = 'Created successfully') {
     return new ApiResponse(201, message, data).send(res);
   }
 
-  static accepted(res, data = null, message = "Accepted") {
+  static accepted(res, data = null, message = 'Accepted') {
     return new ApiResponse(202, message, data).send(res);
   }
 
-  static noContent(res, message = "Deleted successfully") {
+  static noContent(res, message = 'Deleted successfully') {
     return new ApiResponse(200, message, null).send(res);
   }
 
-  static paginated(res, data, meta, message = "Success") {
+  static paginated(res, data, meta, message = 'Success') {
     return new ApiResponse(200, message, data, meta).send(res);
   }
 
   // Send method
   send(res) {
-    if (!res || typeof res.status !== "function") {
-      throw new Error("Invalid response object passed to ApiResponse.send()");
+    if (!res || typeof res.status !== 'function') {
+      throw new Error('Invalid response object passed to ApiResponse.send()');
     }
     return res.status(this.statusCode).json(this.toJSON());
   }

@@ -17,9 +17,9 @@
 //   to this file or xss.middleware.js which follows the same convention.
 // =============================================================================
 
-import mongoSanitize from "express-mongo-sanitize";
-import { asyncHandler } from "../utils/response/asyncHandler.js";
-import { ApiError } from "../utils/response/ApiError.js";
+import mongoSanitize from 'express-mongo-sanitize';
+import { asyncHandler } from '#utils/response/asyncHandler.js';
+import { ApiError } from '#utils/response/ApiError.js';
 
 // ─── NoSQL Injection Sanitizer ────────────────────────────────────────────────
 
@@ -41,7 +41,7 @@ export const sanitizeNoSql = (req, res, next) => {
   let injectedKey = null;
 
   const middleware = mongoSanitize({
-    replaceWith: "_",
+    replaceWith: '_',
     allowDots: false,
     onSanitize: ({ key }) => {
       injectionDetected = true;
@@ -49,18 +49,16 @@ export const sanitizeNoSql = (req, res, next) => {
     },
   });
 
-  middleware(req, res, (err) => {
+  middleware(req, res, err => {
     if (err) return next(err);
 
     if (injectionDetected) {
       req.log?.warn(
         { key: injectedKey, userId: req.userId, ip: req.ip },
-        "NoSQL injection attempt blocked",
+        'NoSQL injection attempt blocked'
       );
 
-      return next(
-        ApiError.badRequest("Invalid characters detected in request"),
-      );
+      return next(ApiError.badRequest('Invalid characters detected in request'));
     }
 
     next();
@@ -69,7 +67,7 @@ export const sanitizeNoSql = (req, res, next) => {
 
 // ─── Deep Object Sanitizer ────────────────────────────────────────────────────
 
-const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 const MAX_DEPTH = 10;
 const MAX_STRING_LEN = 50_000; // 50KB max per string field
 
@@ -104,27 +102,25 @@ export const sanitizeDeep = asyncHandler(async (req, _res, next) => {
 
 function deepClean(obj, depth) {
   if (depth > MAX_DEPTH) {
-    throw new Error("Request payload nesting too deep");
+    throw new Error('Request payload nesting too deep');
   }
 
-  if (typeof obj === "string") {
+  if (typeof obj === 'string') {
     if (obj.length > MAX_STRING_LEN) {
-      throw new Error(
-        `String field exceeds maximum length of ${MAX_STRING_LEN}`,
-      );
+      throw new Error(`String field exceeds maximum length of ${MAX_STRING_LEN}`);
     }
     return obj;
   }
 
   if (Array.isArray(obj)) {
-    return obj.map((item) => deepClean(item, depth + 1));
+    return obj.map(item => deepClean(item, depth + 1));
   }
 
-  if (obj !== null && typeof obj === "object") {
+  if (obj !== null && typeof obj === 'object') {
     const clean = {};
     for (const [key, value] of Object.entries(obj)) {
       if (DANGEROUS_KEYS.has(key)) {
-        throw new Error("Prototype pollution attempt detected");
+        throw new Error('Prototype pollution attempt detected');
       }
       clean[key] = deepClean(value, depth + 1);
     }

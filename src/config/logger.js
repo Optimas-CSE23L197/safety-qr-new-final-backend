@@ -8,8 +8,8 @@
 // - Sentry integration for error/fatal level events
 // =============================================================================
 
-import pino from "pino";
-import { ENV } from "./env.js";
+import pino from 'pino';
+import { ENV } from './env.js';
 
 // ─── Sensitive Field Redaction ────────────────────────────────────────────────
 // Pino redacts these fields before writing — even if accidentally logged
@@ -18,39 +18,39 @@ import { ENV } from "./env.js";
 
 const REDACT_PATHS = [
   // Auth secrets
-  "password",
-  "password_hash",
-  "*.password",
-  "*.password_hash",
+  'password',
+  'password_hash',
+  '*.password',
+  '*.password_hash',
 
   // Tokens
-  "token",
-  "token_hash",
-  "refresh_token",
-  "access_token",
-  "*.token",
-  "*.token_hash",
-  "*.refresh_token",
+  'token',
+  'token_hash',
+  'refresh_token',
+  'access_token',
+  '*.token',
+  '*.token_hash',
+  '*.refresh_token',
 
   // OTP
-  "otp",
-  "otp_hash",
-  "*.otp",
-  "*.otp_hash",
+  'otp',
+  'otp_hash',
+  '*.otp',
+  '*.otp_hash',
 
   // PII — encrypted fields
-  "dob_encrypted",
-  "phone_encrypted",
-  "doctor_phone_encrypted",
-  "*.dob_encrypted",
-  "*.phone_encrypted",
-  "*.doctor_phone_encrypted",
+  'dob_encrypted',
+  'phone_encrypted',
+  'doctor_phone_encrypted',
+  '*.dob_encrypted',
+  '*.phone_encrypted',
+  '*.doctor_phone_encrypted',
 
   // Crypto secrets
-  "secret",
-  "private_key",
-  "*.secret",
-  "*.private_key",
+  'secret',
+  'private_key',
+  '*.secret',
+  '*.private_key',
 
   // HTTP headers — in case headers object is logged
   'req.headers["authorization"]',
@@ -59,10 +59,10 @@ const REDACT_PATHS = [
   'req.headers["x-api-key"]',
 
   // Payment
-  "cvv",
-  "card_number",
-  "*.cvv",
-  "*.card_number",
+  'cvv',
+  'card_number',
+  '*.cvv',
+  '*.card_number',
 ];
 
 // ─── Transport Config ─────────────────────────────────────────────────────────
@@ -76,7 +76,7 @@ function buildTransport() {
   // Never use internal pino-pretty transport — when only 1 target, pino.transport
   // is not called and a plain object is returned, causing stream.write crash.
   targets.push({
-    target: "pino/file",
+    target: 'pino/file',
     level: ENV.LOG_LEVEL,
     options: { destination: 1 }, // 1 = stdout
   });
@@ -84,7 +84,7 @@ function buildTransport() {
   // File transport — write to disk if LOG_FILE_PATH is set
   if (ENV.LOG_FILE_PATH) {
     targets.push({
-      target: "pino/file",
+      target: 'pino/file',
       level: ENV.LOG_LEVEL,
       options: {
         destination: ENV.LOG_FILE_PATH,
@@ -106,7 +106,7 @@ export const logger = pino(
 
     // Application context — on every log line
     base: {
-      app: "resqid",
+      app: 'resqid',
       env: ENV.NODE_ENV,
       pid: process.pid,
     },
@@ -117,7 +117,7 @@ export const logger = pino(
     // Redact sensitive fields before writing
     redact: {
       paths: REDACT_PATHS,
-      censor: "[REDACTED]",
+      censor: '[REDACTED]',
     },
 
     // Serialize Error objects properly
@@ -145,7 +145,7 @@ export const logger = pino(
     // Prevent crashes from circular references in logged objects
     safe: true,
   },
-  buildTransport(),
+  buildTransport()
 );
 
 // ─── Sentry Integration ───────────────────────────────────────────────────────
@@ -154,7 +154,7 @@ export const logger = pino(
 
 if (ENV.IS_PROD && ENV.SENTRY_DSN) {
   try {
-    const Sentry = await import("@sentry/node");
+    const Sentry = await import('@sentry/node');
 
     Sentry.init({
       dsn: ENV.SENTRY_DSN,
@@ -179,7 +179,7 @@ if (ENV.IS_PROD && ENV.SENTRY_DSN) {
       originalError(obj, msg, ...args);
       if (obj?.err || obj instanceof Error) {
         Sentry.captureException(obj?.err ?? obj, {
-          extra: typeof obj === "object" ? obj : { message: obj },
+          extra: typeof obj === 'object' ? obj : { message: obj },
         });
       }
     };
@@ -187,17 +187,14 @@ if (ENV.IS_PROD && ENV.SENTRY_DSN) {
     logger.fatal = (obj, msg, ...args) => {
       originalFatal(obj, msg, ...args);
       Sentry.captureException(obj?.err ?? obj, {
-        level: "fatal",
-        extra: typeof obj === "object" ? obj : { message: obj },
+        level: 'fatal',
+        extra: typeof obj === 'object' ? obj : { message: obj },
       });
     };
 
-    logger.info("Sentry error monitoring initialized");
+    logger.info('Sentry error monitoring initialized');
   } catch (e) {
-    logger.warn(
-      { err: e.message },
-      "Sentry init failed — continuing without it",
-    );
+    logger.warn({ err: e.message }, 'Sentry init failed — continuing without it');
   }
 }
 

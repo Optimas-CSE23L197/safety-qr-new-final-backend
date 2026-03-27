@@ -26,7 +26,7 @@
 //   Token → @@index([student_id])         — student join
 // =============================================================================
 
-import { prisma } from "../../../config/prisma.js";
+import { prisma } from '#config/database/prisma.js';
 
 /**
  * findTokens({ schoolId, status, search, skip, take })
@@ -38,7 +38,7 @@ export async function findTokens({ schoolId, status, search, skip, take }) {
   const [rows, total] = await Promise.all([
     prisma.token.findMany({
       where,
-      orderBy: { created_at: "desc" },
+      orderBy: { created_at: 'desc' },
       skip,
       take,
       select: {
@@ -79,7 +79,7 @@ export async function findTokens({ schoolId, status, search, skip, take }) {
  */
 export async function getTokenStats(schoolId) {
   const grouped = await prisma.token.groupBy({
-    by: ["status"],
+    by: ['status'],
     where: { school_id: schoolId },
     _count: { status: true },
   });
@@ -108,7 +108,7 @@ export async function getTokenStats(schoolId) {
 function buildWhere({ schoolId, status, search }) {
   const where = {
     school_id: schoolId,
-    ...(status && status !== "ALL" && { status }),
+    ...(status && status !== 'ALL' && { status }),
   };
 
   if (!search) return where;
@@ -117,12 +117,12 @@ function buildWhere({ schoolId, status, search }) {
   // token_hash is a hex string — ILIKE prefix match is efficient
   // student name search joins through relation — still one query
   where.OR = [
-    { token_hash: { startsWith: search, mode: "insensitive" } },
+    { token_hash: { startsWith: search, mode: 'insensitive' } },
     {
       student: {
         OR: [
-          { first_name: { contains: search, mode: "insensitive" } },
-          { last_name: { contains: search, mode: "insensitive" } },
+          { first_name: { contains: search, mode: 'insensitive' } },
+          { last_name: { contains: search, mode: 'insensitive' } },
         ],
       },
     },
@@ -143,7 +143,7 @@ function shapeToken(token) {
     created_at: token.created_at,
     batch_id: token.batch?.id ?? null,
     student_name: token.student
-      ? `${token.student.first_name ?? ""} ${token.student.last_name ?? ""}`.trim()
+      ? `${token.student.first_name ?? ''} ${token.student.last_name ?? ''}`.trim()
       : null,
   };
 }

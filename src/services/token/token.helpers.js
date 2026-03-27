@@ -4,15 +4,15 @@
 // No DB calls, no side effects — only crypto and transforms
 // =============================================================================
 
-import crypto from "crypto";
-import { ENV } from "../../config/env.js";
-import { TOKEN_BYTE_LENGTH } from "../../config/constants.js";
+import crypto from 'crypto';
+import { ENV } from '#config/env.js';
+import { TOKEN_BYTE_LENGTH } from '#config/constants.js';
 
 // =============================================================================
 // CONSTANTS — never in env, never in logs
 // =============================================================================
 
-const BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 
 // AES-SIV output is always 32 bytes → always 43 base62 chars
 // Derivation: 62^43 > 2^256 > 2^(32*8=256) ✓
@@ -36,18 +36,15 @@ const SCAN_CODE_LENGTH = 43;
 const deriveScanCodeKeys = () => {
   const secret = ENV.SCAN_CODE_SECRET;
 
-  if (
-    !secret ||
-    typeof secret !== "string" ||
-    !/^[0-9a-fA-F]{128}$/.test(secret)
-  ) {
+  if (!secret || typeof secret !== 'string' || !/^[0-9a-fA-F]{128}$/.test(secret)) {
+    // FIX 1 — error message (escape properly)
     throw new Error(
-      "[RESQID] SCAN_CODE_SECRET must be exactly 128 hex characters (64 bytes). " +
-        "Generate one with: node -e \"console.log(require('crypto').randomBytes(64).toString('hex'))\"",
+      `[RESQID] SCAN_CODE_SECRET must be exactly 128 hex characters (64 bytes). ` +
+        `Generate one with: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"`
     );
   }
 
-  const keyBuf = Buffer.from(secret, "hex");
+  const keyBuf = Buffer.from(secret, 'hex');
 
   return {
     K_MAC: keyBuf.subarray(0, 32),
@@ -68,7 +65,7 @@ const { K_MAC, K_ENC } = deriveScanCodeKeys();
  */
 export const generateRawToken = () => {
   const byteLength = parseInt(TOKEN_BYTE_LENGTH, 10) || 32;
-  return crypto.randomBytes(byteLength).toString("hex").toUpperCase();
+  return crypto.randomBytes(byteLength).toString('hex').toUpperCase();
 };
 
 /**
@@ -77,14 +74,12 @@ export const generateRawToken = () => {
  * @param {string} rawToken
  * @returns {string} hex digest
  */
-export const hashRawToken = (rawToken) => {
-  if (!rawToken || typeof rawToken !== "string") {
-    throw new TypeError("hashRawToken: rawToken must be a non-empty string");
+export const hashRawToken = rawToken => {
+  if (!rawToken || typeof rawToken !== 'string') {
+    throw new TypeError('hashRawToken: rawToken must be a non-empty string');
   }
-  return crypto
-    .createHmac("sha256", ENV.TOKEN_HASH_SECRET)
-    .update(rawToken)
-    .digest("hex");
+  // FIX 2 — HMAC
+  return crypto.createHmac('sha256', ENV.TOKEN_HASH_SECRET).update(rawToken).digest('hex');
 };
 
 // =============================================================================
@@ -100,11 +95,11 @@ export const hashRawToken = (rawToken) => {
  * which threw a validation error on every write. Prisma enum only has 2 values.
  *
  * @param {string} qrType — "SINGLE_BLANK" | "BULK_BLANK" | "SINGLE_PRE_DETAILS" | "BULK_PRE_DETAILS"
- * @returns {"BLANK"|"PRE_DETAILS"}
+ * @returns {"BLANK'|'PRE_DETAILS'}
  */
-export const toQrTypeEnum = (qrType) => {
-  if (qrType.includes("PRE_DETAILS")) return "PRE_DETAILS";
-  return "BLANK";
+export const toQrTypeEnum = qrType => {
+  if (qrType.includes('PRE_DETAILS')) return 'PRE_DETAILS';
+  return 'BLANK';
 };
 
 // =============================================================================
@@ -129,7 +124,7 @@ export const toQrTypeEnum = (qrType) => {
 //     limits on decoding, this is feasible over time.
 //
 //   Vulnerability 2 — UUID exposed in ciphertext:
-//     The Base62 encoding of the UUID is just a format transform — it's
+//     The Base62 encoding of the UUID is just a format transform — it"s
 //     completely reversible with no secret. Anyone who captures enough scan
 //     codes can trivially decode the UUID from the non-signature chars
 //     (positions 0-7 and 14-27), recover the token ID, and enumerate others.
@@ -138,7 +133,7 @@ export const toQrTypeEnum = (qrType) => {
 //   Vulnerability 3 — Structural distinguishability:
 //     A 28-char code with a 6-char block at position 8 has visible structure.
 //     Statistical analysis of a corpus of codes reveals the injection point,
-//     separating the "UUID component" from the "MAC component" entirely.
+//     separating the "UUID component' from the 'MAC component' entirely.
 //
 //   Vulnerability 4 — Birthday collisions on the MAC:
 //     With 36-bit tags, the birthday bound is ~2^18 = 262,144 codes. An
@@ -155,7 +150,7 @@ export const toQrTypeEnum = (qrType) => {
 //      printed card.
 //
 //   2. MISUSE-RESISTANT — even if the implementation has bugs in randomness,
-//      the security doesn't catastrophically collapse (unlike AES-GCM).
+//      the security doesn"t catastrophically collapse (unlike AES-GCM).
 //
 //   3. NO STRUCTURE LEAKAGE — the output is 32 bytes of pseudorandom data.
 //      An attacker cannot distinguish [SIV | ciphertext] from random noise
@@ -165,7 +160,7 @@ export const toQrTypeEnum = (qrType) => {
 //      Forgery requires 2^128 work even against an online oracle.
 //
 //   5. TWO-KEY SEPARATION — K_MAC is never used for encryption, K_ENC is
-//      never used for authentication. Compromise of one key doesn't
+//      never used for authentication. Compromise of one key doesn"t
 //      compromise the other's security property.
 //
 // HOW IT WORKS (this implementation):
@@ -192,29 +187,29 @@ export const toQrTypeEnum = (qrType) => {
 
 /**
  * Convert a UUID v4 string to a 16-byte Buffer.
- * "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" → 16 bytes
+ * 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' → 16 bytes
  */
-const uuidToBuffer = (uuid) => {
-  const hex = uuid.replace(/-/g, "");
+const uuidToBuffer = uuid => {
+  const hex = uuid.replace(/-/g, '');
   if (hex.length !== 32 || !/^[0-9a-fA-F]{32}$/.test(hex)) {
-    throw new ScanCodeError("DECODE_FAILED");
+    throw new ScanCodeError('DECODE_FAILED');
   }
-  return Buffer.from(hex, "hex");
+  return Buffer.from(hex, 'hex');
 };
 
 /**
  * Convert a 16-byte Buffer back to a UUID v4 string.
- * 16 bytes → "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+ * 16 bytes → 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
  */
-const bufferToUuid = (buf) => {
-  const hex = buf.toString("hex");
+const bufferToUuid = buf => {
+  const hex = buf.toString('hex');
   return [
     hex.slice(0, 8),
     hex.slice(8, 12),
     hex.slice(12, 16),
     hex.slice(16, 20),
     hex.slice(20, 32),
-  ].join("-");
+  ].join('-');
 };
 
 // ─── Base62 encode/decode (BigInt, fixed-width) ────────────────────────────────
@@ -229,18 +224,18 @@ const bufferToUuid = (buf) => {
  * @returns {string}
  */
 const base62Encode = (buf, width) => {
-  let num = BigInt("0x" + buf.toString("hex"));
-  let result = "";
+  let num = BigInt('0x' + buf.toString('hex'));
+  let result = '';
   while (num > 0n) {
     result = BASE62[Number(num % 62n)] + result;
     num /= 62n;
   }
-  return result.padStart(width, "0");
+  return result.padStart(width, '0');
 };
 
 /**
  * Base62-decode a string back to a Buffer of exactly `byteLength` bytes.
- * Throws ScanCodeError("MALFORMED") if any char is outside BASE62 alphabet.
+ * Throws ScanCodeError('MALFORMED') if any char is outside BASE62 alphabet.
  *
  * @param {string} str
  * @param {number} byteLength — expected output byte length
@@ -250,11 +245,11 @@ const base62Decode = (str, byteLength) => {
   let num = 0n;
   for (const char of str) {
     const idx = BASE62.indexOf(char);
-    if (idx === -1) throw new ScanCodeError("MALFORMED");
+    if (idx === -1) throw new ScanCodeError('MALFORMED');
     num = num * 62n + BigInt(idx);
   }
-  const hex = num.toString(16).padStart(byteLength * 2, "0");
-  return Buffer.from(hex, "hex");
+  const hex = num.toString(16).padStart(byteLength * 2, '0');
+  return Buffer.from(hex, 'hex');
 };
 
 // ─── CTR IV preparation (RFC 5297 §2.6) ───────────────────────────────────────
@@ -270,7 +265,7 @@ const base62Decode = (str, byteLength) => {
  * @param {Buffer} siv — 16-byte SIV
  * @returns {Buffer} 16-byte CTR IV (copy with bits cleared)
  */
-const sivToCtrIv = (siv) => {
+const sivToCtrIv = siv => {
   const ctrIv = Buffer.from(siv); // copy, never mutate SIV
   ctrIv[3] &= 0x7f; // clear bit 31
   ctrIv[7] &= 0x7f; // clear bit 63
@@ -287,7 +282,7 @@ const sivToCtrIv = (siv) => {
  * @returns {Buffer}
  */
 const aesCtr = (key, iv, input) => {
-  const cipher = crypto.createCipheriv("aes-256-ctr", key, iv);
+  const cipher = crypto.createCipheriv('aes-256-ctr', key, iv);
   return Buffer.concat([cipher.update(input), cipher.final()]);
 };
 
@@ -303,12 +298,8 @@ const aesCtr = (key, iv, input) => {
  * @param {Buffer} uuidBytes — 16-byte UUID
  * @returns {Buffer} 16-byte SIV
  */
-const computeSiv = (uuidBytes) => {
-  return crypto
-    .createHmac("sha256", K_MAC)
-    .update(uuidBytes)
-    .digest()
-    .subarray(0, 16);
+const computeSiv = uuidBytes => {
+  return crypto.createHmac('sha256', K_MAC).update(uuidBytes).digest().subarray(0, 16);
 };
 
 // =============================================================================
@@ -327,7 +318,7 @@ const computeSiv = (uuidBytes) => {
  * @param {string} tokenId — UUID v4 string from DB (e.g. "413fc503-844d-4c46-a558-4eaac4ac0ca3")
  * @returns {string} 43-char opaque scan code (base62)
  */
-export const generateScanCode = (tokenId) => {
+export const generateScanCode = tokenId => {
   const uuidBytes = uuidToBuffer(tokenId); // 16 bytes
   const siv = computeSiv(uuidBytes); // 16 bytes — auth tag
   const ctrIv = sivToCtrIv(siv); // 16 bytes — CTR IV (bits 31, 63 cleared)
@@ -348,17 +339,17 @@ export const generateScanCode = (tokenId) => {
  *
  * @param {string} code — 43-char base62 scan code from URL
  * @returns {string} tokenId UUID string
- * @throws {ScanCodeError} reason: "MALFORMED" | "INVALID_SIGNATURE" | "DECODE_FAILED"
+ * @throws {ScanCodeError} reason: "MALFORMED" | "INVALID_SIGNATURE' | 'DECODE_FAILED'
  */
-export const decodeScanCode = (code) => {
+export const decodeScanCode = code => {
   // ── Step 1: Validate format ──────────────────────────────────────────────
   if (
     !code ||
-    typeof code !== "string" ||
+    typeof code !== 'string' ||
     code.length !== SCAN_CODE_LENGTH ||
     !/^[0-9A-Za-z]+$/.test(code)
   ) {
-    throw new ScanCodeError("MALFORMED");
+    throw new ScanCodeError('MALFORMED');
   }
 
   // ── Step 2: Base62 decode → 32-byte Buffer ───────────────────────────────
@@ -367,7 +358,7 @@ export const decodeScanCode = (code) => {
     combined = base62Decode(code, 32);
   } catch (err) {
     if (err instanceof ScanCodeError) throw err;
-    throw new ScanCodeError("MALFORMED");
+    throw new ScanCodeError('MALFORMED');
   }
 
   // ── Step 3: Split SIV + ciphertext ───────────────────────────────────────
@@ -382,7 +373,7 @@ export const decodeScanCode = (code) => {
   try {
     uuidBytes = aesCtr(K_ENC, ctrIv, ciphertext);
   } catch {
-    throw new ScanCodeError("DECODE_FAILED");
+    throw new ScanCodeError('DECODE_FAILED');
   }
 
   // ── Step 6: Recompute expected SIV from decrypted UUID ────────────────────
@@ -391,14 +382,14 @@ export const decodeScanCode = (code) => {
   // ── Step 7: Timing-safe authentication check ─────────────────────────────
   // timingSafeEqual requires same-length Buffers — both are 16 bytes here.
   if (!crypto.timingSafeEqual(siv, expectedSiv)) {
-    throw new ScanCodeError("INVALID_SIGNATURE");
+    throw new ScanCodeError('INVALID_SIGNATURE');
   }
 
   // ── Step 8–9: Convert UUID bytes → UUID string ───────────────────────────
   try {
     return bufferToUuid(uuidBytes);
   } catch {
-    throw new ScanCodeError("DECODE_FAILED");
+    throw new ScanCodeError('DECODE_FAILED');
   }
 };
 
@@ -418,9 +409,9 @@ export class ScanCodeError extends Error {
  * Uses signed scan code — token UUID is never exposed in URL.
  *
  * @param {string} tokenId — UUID from DB (after token creation)
- * @returns {string} e.g. "https://resqid.in/s/5YbX2mKqf3AB9xP9nRtL3vWcUjAe4xQ"
+ * @returns {string} e.g. "https://resqid.in/s/5YbX2mKqf3AB9xP9nRtL3vWcUjAe4xQ'
  */
-export const buildScanUrl = (tokenId) => {
+export const buildScanUrl = tokenId => {
   const scanCode = generateScanCode(tokenId);
   return `${ENV.SCAN_BASE_URL}/${scanCode}`;
 };
@@ -437,12 +428,12 @@ export const buildScanUrl = (tokenId) => {
  * Card number is printed on physical card only — never used for DB lookup.
  * QR scan uses signed scan code (token UUID based) — not card number.
  *
- * @param {string} schoolCode — e.g. "DPS01"
+ * @param {string} schoolCode — e.g. 'DPS01'
  * @returns {string}
  */
-export const generateCardNumber = (schoolSerial) => {
-  const serial = String(schoolSerial).padStart(4, "0");
-  const hex = crypto.randomBytes(4).toString("hex").toUpperCase();
+export const generateCardNumber = schoolSerial => {
+  const serial = String(schoolSerial).padStart(4, '0');
+  const hex = crypto.randomBytes(4).toString('hex').toUpperCase();
   return `RQ-${serial}-${hex}`;
   // → RQ-0042-C0C3B7F4  (16 chars, always fixed)
 };
@@ -455,10 +446,10 @@ export const generateCardNumber = (schoolSerial) => {
  * This is intentional — blank cards have no school affiliation at print time.
  * School code is added when the token is assigned to a student.
  *
- * @returns {string} e.g. "RESQID-A3F9B2"
+ * @returns {string} e.g. 'RESQID-A3F9B2'
  */
 export const generateBlankCardNumber = () => {
-  const suffix = crypto.randomBytes(3).toString("hex").toUpperCase();
+  const suffix = crypto.randomBytes(3).toString('hex').toUpperCase();
   return `RESQID-${suffix}`;
 };
 
@@ -479,11 +470,7 @@ export const calculateExpiry = (validityMonths = 12) => {
   const currentDay = expiry.getDate();
   expiry.setDate(1);
   expiry.setMonth(expiry.getMonth() + validityMonths);
-  const maxDay = new Date(
-    expiry.getFullYear(),
-    expiry.getMonth() + 1,
-    0,
-  ).getDate();
+  const maxDay = new Date(expiry.getFullYear(), expiry.getMonth() + 1, 0).getDate();
   expiry.setDate(Math.min(currentDay, maxDay));
   return expiry;
 };
@@ -500,23 +487,20 @@ export const calculateExpiry = (validityMonths = 12) => {
  * @param {object} school — with subscriptions array
  * @returns {{ logoUrl: string|null, showSchoolName: boolean }}
  */
-export const resolveBranding = (school) => {
-  const paidPlans = ["GOVT_STANDARD", "PRIVATE_STANDARD", "ENTERPRISE"];
+export const resolveBranding = school => {
+  const paidPlans = ['GOVT_STANDARD', 'PRIVATE_STANDARD', 'ENTERPRISE'];
   const isPaid = paidPlans.includes(school.subscriptions?.[0]?.plan);
   return {
-    logoUrl:
-      isPaid && school.logo_url
-        ? school.logo_url
-        : ENV.RESQID_DEFAULT_LOGO_URL || null,
+    logoUrl: isPaid && school.logo_url ? school.logo_url : ENV.RESQID_DEFAULT_LOGO_URL || null,
     showSchoolName: isPaid,
   };
 };
 
 export const batchGenerateCardNumbers = (schoolSerial, count) => {
-  const serial = String(schoolSerial).padStart(4, "0");
+  const serial = String(schoolSerial).padStart(4, '0');
   const cardNumbers = [];
   for (let i = 0; i < count; i++) {
-    const randomHex = crypto.randomBytes(4).toString("hex").toUpperCase();
+    const randomHex = crypto.randomBytes(4).toString('hex').toUpperCase();
     cardNumbers.push(`RQ-${serial}-${randomHex}`);
   }
   return cardNumbers;

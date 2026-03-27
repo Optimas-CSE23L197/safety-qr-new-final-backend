@@ -12,19 +12,19 @@
 //
 // CHANGES FROM PREVIOUS VERSION:
 //   [FIX-1] createRegistrationNonce was importing crypto without importing it.
-//           Added missing `import crypto from "crypto"`.
+//           Added missing `import crypto from 'crypto'`.
 //   [FIX-2] Added findActiveNonceByTokenId — looks up an existing unexpired
 //           nonce FOR A TOKEN (not by nonce value). Used to deduplicate nonce
 //           creation on repeated UNASSIGNED scans (prevents nonce table flood).
 //           The existing findActiveNonce(nonce) is for the parent registration
 //           flow (lookup by nonce value) and is kept unchanged.
-//   [FIX-3] writeScanLog school_id sentinel — "unknown" is not a valid UUID
+//   [FIX-3] writeScanLog school_id sentinel — 'unknown' is not a valid UUID
 //           and will fail the FK constraint on ScanLog.school_id. Changed to
 //           the same null-safe sentinel UUID used for the token_id case.
 // =============================================================================
 
-import { prisma } from "../../config/prisma.js";
-import crypto from "crypto"; // [FIX-1] was missing — createRegistrationNonce crashed
+import { prisma } from '#config/database/prisma.js';
+import crypto from 'crypto'; // [FIX-1] was missing — createRegistrationNonce crashed
 
 // =============================================================================
 // TOKEN LOOKUP
@@ -38,7 +38,7 @@ import crypto from "crypto"; // [FIX-1] was missing — createRegistrationNonce 
  * @param {string} tokenId
  * @returns {object|null}
  */
-export const findTokenForScan = async (tokenId) => {
+export const findTokenForScan = async tokenId => {
   return prisma.token.findUnique({
     where: { id: tokenId },
     select: {
@@ -96,7 +96,7 @@ export const findTokenForScan = async (tokenId) => {
 
               contacts: {
                 where: { is_active: true },
-                orderBy: { display_order: "asc" },
+                orderBy: { display_order: 'asc' },
                 select: {
                   id: true,
                   name: true,
@@ -153,7 +153,7 @@ export const writeScanLog = ({
         location_derived: latitude != null,
         response_time_ms: responseTimeMs ?? null,
         scan_purpose: scanPurpose ?? null,
-        ip_capture_basis: "LEGITIMATE_INTEREST",
+        ip_capture_basis: 'LEGITIMATE_INTEREST',
       },
     })
     .catch(() => {}); // never throws
@@ -169,7 +169,7 @@ export const writeScanLog = ({
  * @param {string} nonce — the nonce value from the parent's registration request
  * @returns {object|null}
  */
-export const findActiveNonce = async (nonce) => {
+export const findActiveNonce = async nonce => {
   return prisma.registrationNonce.findFirst({
     where: {
       nonce,
@@ -193,7 +193,7 @@ export const findActiveNonce = async (nonce) => {
  * @param {string} tokenId
  * @returns {object|null} — { nonce, expires_at } or null
  */
-export const findActiveNonceByTokenId = async (tokenId) => {
+export const findActiveNonceByTokenId = async tokenId => {
   return prisma.registrationNonce.findFirst({
     where: {
       token_id: tokenId,
@@ -211,7 +211,7 @@ export const findActiveNonceByTokenId = async (tokenId) => {
  * Mark a registration nonce as used (consumed on parent register).
  * @param {string} nonceId
  */
-export const consumeNonce = async (nonceId) => {
+export const consumeNonce = async nonceId => {
   return prisma.registrationNonce.update({
     where: { id: nonceId },
     data: { used: true, used_at: new Date() },
@@ -226,8 +226,8 @@ export const consumeNonce = async (nonceId) => {
  * @param {string} tokenId
  * @returns {{ nonce: string, expiresAt: Date }}
  */
-export const createRegistrationNonce = async (tokenId) => {
-  const nonce = crypto.randomUUID().replace(/-/g, ""); // 32-char hex
+export const createRegistrationNonce = async tokenId => {
+  const nonce = crypto.randomUUID().replace(/-/g, ''); // 32-char hex
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 min
 
   await prisma.registrationNonce.create({

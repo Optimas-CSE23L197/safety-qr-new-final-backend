@@ -30,7 +30,7 @@
 //   Token       → @@index([school_id])      — school-scope guard
 // =============================================================================
 
-import { prisma } from "../../../config/prisma.js";
+import { prisma } from '#config/database/prisma.js';
 
 /**
  * findAnomalies({ schoolId, filter, type, skip, take })
@@ -44,8 +44,8 @@ export async function findAnomalies({ schoolId, filter, type, skip, take }) {
       where,
       orderBy: [
         // Unresolved always float to top within each group
-        { resolved: "asc" },
-        { created_at: "desc" },
+        { resolved: 'asc' },
+        { created_at: 'desc' },
       ],
       skip,
       take,
@@ -70,7 +70,7 @@ export async function findAnomalies({ schoolId, filter, type, skip, take }) {
             // Most recent ScanLog for this token — get ip/device context
             // Only the latest scan is relevant for anomaly display
             scans: {
-              orderBy: { created_at: "desc" },
+              orderBy: { created_at: 'desc' },
               take: 1,
               select: {
                 ip_address: true,
@@ -122,12 +122,7 @@ export async function getAnomalyStats(schoolId) {
  *
  * Returns: shaped anomaly | null
  */
-export async function resolveAnomaly({
-  anomalyId,
-  schoolId,
-  resolvedBy,
-  notes,
-}) {
+export async function resolveAnomaly({ anomalyId, schoolId, resolvedBy, notes }) {
   // updateMany used instead of update because Prisma's update()
   // doesn't support nested relation filters in WHERE for ownership check.
   // updateMany returns { count } — 0 means not found or wrong school.
@@ -170,7 +165,7 @@ export async function resolveAnomaly({
           token_hash: true,
           school_id: true,
           scans: {
-            orderBy: { created_at: "desc" },
+            orderBy: { created_at: 'desc' },
             take: 1,
             select: { ip_address: true, ip_city: true, user_agent: true },
           },
@@ -194,12 +189,12 @@ function buildWhere({ schoolId, filter, type }) {
   };
 
   // Resolved filter
-  if (filter === "UNRESOLVED") where.resolved = false;
-  else if (filter === "RESOLVED") where.resolved = true;
-  // "ALL" — no resolved filter
+  if (filter === 'UNRESOLVED') where.resolved = false;
+  else if (filter === 'RESOLVED') where.resolved = true;
+  // 'ALL' — no resolved filter
 
   // Anomaly type filter
-  if (type && type !== "ALL") {
+  if (type && type !== 'ALL') {
     where.anomaly_type = type;
   }
 
@@ -222,7 +217,7 @@ function shapeAnomaly(anomaly) {
     reason: anomaly.reason,
     token_hash: anomaly.token?.token_hash ?? null,
     student_name: anomaly.token?.student
-      ? `${anomaly.token.student.first_name ?? ""} ${anomaly.token.student.last_name ?? ""}`.trim() ||
+      ? `${anomaly.token.student.first_name ?? ''} ${anomaly.token.student.last_name ?? ''}`.trim() ||
         null
       : null,
     // Location/device from most recent scan on this token
@@ -239,34 +234,34 @@ function shapeAnomaly(anomaly) {
 
 /**
  * Lightweight UA parser — same as scanlog.repository.js.
- * Returns { browser, platform } for "Chrome/Android" display format.
+ * Returns { browser, platform } for 'Chrome/Android' display format.
  */
 function parseUserAgent(ua) {
   if (!ua) return { browser: null, platform: null };
 
   const browser = /Edg\//.test(ua)
-    ? "Edge"
+    ? 'Edge'
     : /OPR\//.test(ua)
-      ? "Opera"
+      ? 'Opera'
       : /Chrome\//.test(ua)
-        ? "Chrome"
+        ? 'Chrome'
         : /Firefox\//.test(ua)
-          ? "Firefox"
+          ? 'Firefox'
           : /Safari\//.test(ua)
-            ? "Safari"
-            : "Browser";
+            ? 'Safari'
+            : 'Browser';
 
   const platform = /Android/.test(ua)
-    ? "Android"
+    ? 'Android'
     : /iPhone|iPad/.test(ua)
-      ? "iOS"
+      ? 'iOS'
       : /Windows/.test(ua)
-        ? "Windows"
+        ? 'Windows'
         : /Linux/.test(ua)
-          ? "Linux"
+          ? 'Linux'
           : /Mac/.test(ua)
-            ? "macOS"
-            : "Unknown";
+            ? 'macOS'
+            : 'Unknown';
 
   return { browser, platform };
 }

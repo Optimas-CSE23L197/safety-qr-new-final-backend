@@ -3,13 +3,13 @@
 // Zod schemas for all 4 token generation endpoints
 // =============================================================================
 
-import { z } from "zod";
+import { z } from 'zod';
 
 // =============================================================================
 // SHARED
 // =============================================================================
 
-const uuidSchema = z.string().uuid("Must be a valid UUID");
+const uuidSchema = z.string().uuid('Must be a valid UUID');
 
 // =============================================================================
 // 1. SINGLE BLANK TOKEN

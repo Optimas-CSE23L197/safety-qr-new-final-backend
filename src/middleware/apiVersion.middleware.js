@@ -26,27 +26,27 @@
 //   - Old app versions get a 410 Gone with upgrade instructions
 // =============================================================================
 
-import { ApiError } from "../utils/response/ApiError.js";
-import { asyncHandler } from "../utils/response/asyncHandler.js";
+import { ApiError } from '#utils/response/ApiError.js';
+import { asyncHandler } from '#utils/response/asyncHandler.js';
 
 // ─── Version Config ───────────────────────────────────────────────────────────
 
-const SUPPORTED_VERSIONS = new Set(["v1"]); // add "v2" when released
-const DEPRECATED_VERSIONS = new Set([]); // move "v1" here when v2 ships
-const DEFAULT_VERSION = "v1";
-const VERSION_HEADER = "api-version";
+const SUPPORTED_VERSIONS = new Set(['v1']); // add "v2' when released
+const DEPRECATED_VERSIONS = new Set([]); // move 'v1' here when v2 ships
+const DEFAULT_VERSION = 'v1';
+const VERSION_HEADER = 'api-version';
 
 // Routes that are version-free — always served on current implementation
 const VERSION_FREE_PREFIXES = [
-  "/api/emergency", // public QR scan — must always work regardless of app version
-  "/health",
-  "/api/health",
-  "/api/webhooks", // external providers don't send API-Version header
+  '/api/emergency', // public QR scan — must always work regardless of app version
+  '/health',
+  '/api/health',
+  '/api/webhooks', // external providers don"t send API-Version header
 ];
 
 // Sunset dates for deprecated versions (informational — shown in response)
 const SUNSET_DATES = {
-  // "v1": "2026-12-31"  — fill in when v2 ships
+  // "v1': '2026-12-31'  — fill in when v2 ships
 };
 
 // ─── Core Middleware ──────────────────────────────────────────────────────────
@@ -58,7 +58,7 @@ const SUNSET_DATES = {
  */
 export const apiVersion = asyncHandler(async (req, _res, next) => {
   // Skip version-free routes
-  if (VERSION_FREE_PREFIXES.some((p) => req.path.startsWith(p))) {
+  if (VERSION_FREE_PREFIXES.some(p => req.path.startsWith(p))) {
     req.apiVersion = DEFAULT_VERSION;
     return next();
   }
@@ -74,7 +74,7 @@ export const apiVersion = asyncHandler(async (req, _res, next) => {
   // Reject completely unknown versions
   if (!SUPPORTED_VERSIONS.has(version) && !DEPRECATED_VERSIONS.has(version)) {
     throw ApiError.badRequest(
-      `Unsupported API version '${version}'. Supported: [${[...SUPPORTED_VERSIONS].join(", ")}]`,
+      `Unsupported API version '${version}'. Supported: [${[...SUPPORTED_VERSIONS].join(', ')}]`
     );
   }
 
@@ -83,9 +83,9 @@ export const apiVersion = asyncHandler(async (req, _res, next) => {
     const sunset = SUNSET_DATES[version];
     throw ApiError.create(
       410,
-      `API version '${version}' has been discontinued.${
-        sunset ? ` It was sunset on ${sunset}.` : ""
-      } Please upgrade to v${getLatestVersion()}.`,
+      `API version '${version}" has been discontinued.${
+        sunset ? ` It was sunset on ${sunset}.` : ''
+      } Please upgrade to v${getLatestVersion()}.`
     );
   }
 
@@ -105,7 +105,7 @@ function extractVersionFromUrl(path) {
 function normalizeVersion(raw) {
   if (!raw) return null;
   const trimmed = raw.trim().toLowerCase();
-  // Accept "1", "v1", "1.0"
+  // Accept "1", "v1', '1.0'
   const match = trimmed.match(/^v?(\d+)/);
   if (match) return `v${match[1]}`;
   return null;
@@ -113,7 +113,7 @@ function normalizeVersion(raw) {
 
 function getLatestVersion() {
   const versions = [...SUPPORTED_VERSIONS]
-    .map((v) => parseInt(v.replace("v", ""), 10))
+    .map(v => parseInt(v.replace('v', ''), 10))
     .sort((a, b) => b - a);
   return `v${versions[0]}`;
 }

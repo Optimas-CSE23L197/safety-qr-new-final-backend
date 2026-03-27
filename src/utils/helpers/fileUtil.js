@@ -10,8 +10,8 @@
 // Read the actual file magic bytes to determine real MIME type.
 // =============================================================================
 
-import path from "path";
-import crypto from "crypto";
+import path from 'path';
+import crypto from 'crypto';
 
 // ─── Allowed File Types ────────────────────────────────────────────────────────
 
@@ -21,39 +21,39 @@ import crypto from "crypto";
  */
 export const ALLOWED_TYPES = {
   STUDENT_PHOTO: {
-    mimes: ["image/jpeg", "image/png", "image/webp"],
-    extensions: [".jpg", ".jpeg", ".png", ".webp"],
+    mimes: ['image/jpeg', 'image/png', 'image/webp'],
+    extensions: ['.jpg', '.jpeg', '.png', '.webp'],
     maxBytes: 5 * 1024 * 1024, // 5MB
     magic: {
-      "image/jpeg": ["ffd8ff"],
-      "image/png": ["89504e47"],
-      "image/webp": ["52494646"],
+      'image/jpeg': ['ffd8ff'],
+      'image/png': ['89504e47'],
+      'image/webp': ['52494646'],
     },
   },
   SCHOOL_LOGO: {
-    mimes: ["image/jpeg", "image/png", "image/svg+xml"],
-    extensions: [".jpg", ".jpeg", ".png", ".svg"],
+    mimes: ['image/jpeg', 'image/png', 'image/svg+xml'],
+    extensions: ['.jpg', '.jpeg', '.png', '.svg'],
     maxBytes: 2 * 1024 * 1024, // 2MB
     magic: {
-      "image/jpeg": ["ffd8ff"],
-      "image/png": ["89504e47"],
-      "image/svg+xml": ["3c737667", "3c3f786d", "3c21444f"], // <svg, <?xm, <!DO
+      'image/jpeg': ['ffd8ff'],
+      'image/png': ['89504e47'],
+      'image/svg+xml': ['3c737667', '3c3f786d', '3c21444f'], // <svg, <?xm, <!DO
     },
   },
   CARD_PDF: {
-    mimes: ["application/pdf"],
-    extensions: [".pdf"],
+    mimes: ['application/pdf'],
+    extensions: ['.pdf'],
     maxBytes: 20 * 1024 * 1024, // 20MB — batch PDFs can be large
     magic: {
-      "application/pdf": ["25504446"], // %PDF
+      'application/pdf': ['25504446'], // %PDF
     },
   },
   QR_IMAGE: {
-    mimes: ["image/png"],
-    extensions: [".png"],
+    mimes: ['image/png'],
+    extensions: ['.png'],
     maxBytes: 500 * 1024, // 500KB — QR codes are small
     magic: {
-      "image/png": ["89504e47"],
+      'image/png': ['89504e47'],
     },
   },
 };
@@ -71,18 +71,14 @@ export const ALLOWED_TYPES = {
 export function getMimeFromBuffer(buffer) {
   if (!Buffer.isBuffer(buffer) || buffer.length < 4) return null;
 
-  const hex = buffer.slice(0, 8).toString("hex").toLowerCase();
+  const hex = buffer.slice(0, 8).toString('hex').toLowerCase();
 
-  if (hex.startsWith("ffd8ff")) return "image/jpeg";
-  if (hex.startsWith("89504e47")) return "image/png";
-  if (hex.startsWith("52494646")) return "image/webp"; // RIFF....WEBP
-  if (hex.startsWith("25504446")) return "application/pdf";
-  if (
-    hex.startsWith("3c737667") ||
-    hex.startsWith("3c3f786d") ||
-    hex.startsWith("3c21444f")
-  )
-    return "image/svg+xml";
+  if (hex.startsWith('ffd8ff')) return 'image/jpeg';
+  if (hex.startsWith('89504e47')) return 'image/png';
+  if (hex.startsWith('52494646')) return 'image/webp'; // RIFF....WEBP
+  if (hex.startsWith('25504446')) return 'application/pdf';
+  if (hex.startsWith('3c737667') || hex.startsWith('3c3f786d') || hex.startsWith('3c21444f'))
+    return 'image/svg+xml';
 
   return null;
 }
@@ -116,7 +112,7 @@ export function validateFile(file, uploadContext) {
   if (!config.extensions.includes(ext)) {
     return {
       valid: false,
-      reason: `Invalid file extension '${ext}'. Allowed: ${config.extensions.join(", ")}`,
+      reason: `Invalid file extension "${ext}". Allowed: ${config.extensions.join(', ')}`,
     };
   }
 
@@ -126,7 +122,7 @@ export function validateFile(file, uploadContext) {
     if (!detectedMime) {
       return {
         valid: false,
-        reason: "Could not determine file type from content",
+        reason: 'Could not determine file type from content',
       };
     }
     if (!config.mimes.includes(detectedMime)) {
@@ -140,7 +136,7 @@ export function validateFile(file, uploadContext) {
     if (!expectedMimes) {
       return {
         valid: false,
-        reason: "File extension does not match file content",
+        reason: 'File extension does not match file content',
       };
     }
   }
@@ -161,17 +157,17 @@ export function validateFile(file, uploadContext) {
  *   qr-codes/token-abc123_2024_01.png
  *   card-pdfs/batch-xyz_2024_01.pdf
  *
- * @param {'student-photos'|'school-logos'|'qr-codes'|'card-pdfs'} context
+ * @param {'student-photos'|'school-logos'|'qr-codes"|"card-pdfs"} context
  * @param {string} entityId  - Student ID, School ID, Token ID, etc.
  * @param {string} originalName
  * @returns {string}
  */
 export function generateStoragePath(context, entityId, originalName) {
   const ext = path.extname(originalName).toLowerCase();
-  const randomHex = crypto.randomBytes(4).toString("hex");
+  const randomHex = crypto.randomBytes(4).toString('hex');
   const date = new Date();
   const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, '0');
 
   return `${context}/${year}/${month}/${entityId}_${randomHex}${ext}`;
 }
@@ -190,7 +186,7 @@ export function generateQrStoragePath(tokenId) {
  */
 export function generateCardPdfPath(batchId) {
   const date = new Date();
-  const stamp = `${date.getFullYear()}_${String(date.getMonth() + 1).padStart(2, "0")}`;
+  const stamp = `${date.getFullYear()}_${String(date.getMonth() + 1).padStart(2, '0')}`;
   return `card-pdfs/batch-${batchId}_${stamp}.pdf`;
 }
 
@@ -201,11 +197,11 @@ export function generateCardPdfPath(batchId) {
  * Human-readable file size: 1048576 → "1.00 MB"
  */
 export function formatBytes(bytes, decimals = 2) {
-  if (bytes === 0) return "0 Bytes";
+  if (bytes === 0) return '0 Bytes';
 
   const k = 1024;
   const dm = decimals < 0 ? 0 : decimals;
-  const sizes = ["Bytes", "KB", "MB", "GB"];
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
 
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
@@ -216,7 +212,7 @@ export function formatBytes(bytes, decimals = 2) {
  * Safe extension extraction — always lowercase
  */
 export function getExtension(filename) {
-  if (!filename) return "";
+  if (!filename) return '';
   return path.extname(filename).toLowerCase();
 }
 
@@ -224,12 +220,12 @@ export function getExtension(filename) {
  * isImage(mimeType)
  */
 export function isImage(mimeType) {
-  return typeof mimeType === "string" && mimeType.startsWith("image/");
+  return typeof mimeType === 'string' && mimeType.startsWith('image/');
 }
 
 /**
  * isPdf(mimeType)
  */
 export function isPdf(mimeType) {
-  return mimeType === "application/pdf";
+  return mimeType === 'application/pdf';
 }

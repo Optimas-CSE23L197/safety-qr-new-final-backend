@@ -27,16 +27,16 @@
 //           redis.ttl calls updated to use middlewareRedis for consistency.
 // =============================================================================
 
-import { rateLimit } from "express-rate-limit";
-import { RedisStore } from "rate-limit-redis";
+import { rateLimit } from 'express-rate-limit';
+import { RedisStore } from 'rate-limit-redis';
 // ✅ [FIX-1] Use middlewareRedis — enableOfflineQueue: true so Lua script
 // loading in the RedisStore constructor works at module load time.
 // Never use the `redis` (HTTP-path) singleton here.
-import { middlewareRedis } from "../config/redis.js";
-import { asyncHandler } from "../utils/response/asyncHandler.js";
-import { prisma } from "../config/prisma.js";
-import { extractIp } from "../utils/network/extractIp.js";
-import { logger } from "../config/logger.js";
+import { middlewareRedis } from '#config/database/redis.js';
+import { asyncHandler } from '#utils/response/asyncHandler.js';
+import { prisma } from '#config/database/prisma.js';
+import { extractIp } from '#utils/network/extractIp.js';
+import { logger } from '#config/logger.js';
 
 // =============================================================================
 // REDIS STORE FACTORY
@@ -48,7 +48,7 @@ import { logger } from "../config/logger.js";
  * rate-limit-redis v4 calls sendCommand(commandName, ...args).
  * ioredis exposes this pattern via .call(command, ...args).
  *
- * @param {string} prefix — Redis key prefix e.g. "rl:scan:"
+ * @param {string} prefix — Redis key prefix e.g. 'rl:scan:'
  */
 function makeRedisStore(prefix) {
   return new RedisStore({
@@ -64,15 +64,13 @@ function makeRedisStore(prefix) {
 
 function onLimitReached(req, res) {
   // Log to DB async for anomaly detection — non-blocking, never throws.
-  logRateLimitHit(req).catch((e) =>
-    logger.warn({ err: e.message }, "Rate limit hit logging failed"),
-  );
+  logRateLimitHit(req).catch(e => logger.warn({ err: e.message }, 'Rate limit hit logging failed'));
 
   res.status(429).json({
     success: false,
-    message: "Too many requests — please slow down",
+    message: 'Too many requests — please slow down',
     requestId: req.id,
-    retryAfter: Math.ceil(res.getHeader("Retry-After") ?? 60),
+    retryAfter: Math.ceil(res.getHeader('Retry-After') ?? 60),
   });
 }
 
@@ -93,8 +91,8 @@ export const publicEmergencyLimiter = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  store: makeRedisStore("rl:emergency:"),
-  keyGenerator: (req) => extractIp(req),
+  store: makeRedisStore('rl:emergency:'),
+  keyGenerator: req => extractIp(req),
   handler: onLimitReached,
   skipSuccessfulRequests: false,
 });
@@ -112,8 +110,8 @@ export const authLimiter = rateLimit({
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
-  store: makeRedisStore("rl:auth:"),
-  keyGenerator: (req) => extractIp(req),
+  store: makeRedisStore('rl:auth:'),
+  keyGenerator: req => extractIp(req),
   handler: onLimitReached,
   skipSuccessfulRequests: false,
 });
@@ -144,13 +142,13 @@ export const otpLimiter = asyncHandler(async (req, res, next) => {
     const ttl = await middlewareRedis.ttl(key);
     return res.status(429).json({
       success: false,
-      message: "Too many OTP requests for this number",
+      message: 'Too many OTP requests for this number',
       retryAfter: ttl,
       requestId: req.id,
     });
   }
 
-  res.setHeader("X-OTP-Remaining", Math.max(0, 3 - current));
+  res.setHeader('X-OTP-Remaining', Math.max(0, 3 - current));
   next();
 });
 
@@ -166,8 +164,8 @@ export const apiLimiter = rateLimit({
   max: 300,
   standardHeaders: true,
   legacyHeaders: false,
-  store: makeRedisStore("rl:api:"),
-  keyGenerator: (req) => req.userId ?? extractIp(req),
+  store: makeRedisStore('rl:api:'),
+  keyGenerator: req => req.userId ?? extractIp(req),
   handler: onLimitReached,
   skipSuccessfulRequests: false,
 });
@@ -184,8 +182,8 @@ export const uploadLimiter = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  store: makeRedisStore("rl:upload:"),
-  keyGenerator: (req) => req.userId ?? extractIp(req),
+  store: makeRedisStore('rl:upload:'),
+  keyGenerator: req => req.userId ?? extractIp(req),
   handler: onLimitReached,
 });
 
@@ -202,8 +200,8 @@ export const dashboardLimiter = rateLimit({
   max: 500,
   standardHeaders: true,
   legacyHeaders: false,
-  store: makeRedisStore("rl:dashboard:"),
-  keyGenerator: (req) => req.userId ?? extractIp(req),
+  store: makeRedisStore('rl:dashboard:'),
+  keyGenerator: req => req.userId ?? extractIp(req),
   handler: onLimitReached,
   skipSuccessfulRequests: true,
 });
@@ -220,8 +218,8 @@ export const tokenGenerationLimiter = rateLimit({
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
-  store: makeRedisStore("rl:token-gen:"),
-  keyGenerator: (req) => req.userId ?? extractIp(req),
+  store: makeRedisStore('rl:token-gen:'),
+  keyGenerator: req => req.userId ?? extractIp(req),
   handler: onLimitReached,
 });
 
@@ -252,13 +250,13 @@ export const perTokenScanLimit = asyncHandler(async (req, res, next) => {
   }
 
   if (current > 20) {
-    persistTokenBlock(scanCode, current).catch((e) =>
-      logger.warn({ err: e.message }, "Token block persist failed"),
+    persistTokenBlock(scanCode, current).catch(e =>
+      logger.warn({ err: e.message }, 'Token block persist failed')
     );
 
     return res.status(429).json({
       success: false,
-      message: "This QR code has been scanned too many times recently",
+      message: 'This QR code has been scanned too many times recently',
       requestId: req.id,
     });
   }
@@ -284,7 +282,7 @@ export const checkIpBlocked = asyncHandler(async (req, res, next) => {
     where: {
       identifier_identifier_type: {
         identifier: ip,
-        identifier_type: "IP",
+        identifier_type: 'IP',
       },
     },
     select: { blocked_until: true, blocked_reason: true },
@@ -293,7 +291,7 @@ export const checkIpBlocked = asyncHandler(async (req, res, next) => {
   if (block?.blocked_until && new Date(block.blocked_until) > new Date()) {
     return res.status(403).json({
       success: false,
-      message: "IP address is temporarily blocked",
+      message: 'IP address is temporarily blocked',
       requestId: req.id,
     });
   }
@@ -313,7 +311,7 @@ export const checkIpBlocked = asyncHandler(async (req, res, next) => {
  */
 async function logRateLimitHit(req) {
   const ip = extractIp(req);
-  const identifierType = req.userId ? "DEVICE" : "IP";
+  const identifierType = req.userId ? 'DEVICE' : 'IP';
   const identifier = req.userId ?? ip;
 
   await prisma.scanRateLimit.upsert({
@@ -346,7 +344,7 @@ async function persistTokenBlock(scanCode, count) {
     where: {
       identifier_identifier_type: {
         identifier: scanCode,
-        identifier_type: "TOKEN",
+        identifier_type: 'TOKEN',
       },
     },
     update: {
@@ -354,17 +352,17 @@ async function persistTokenBlock(scanCode, count) {
       last_hit: new Date(),
       block_count: { increment: 1 },
       blocked_until: new Date(Date.now() + 60 * 60 * 1000),
-      blocked_reason: "Per-token scan limit exceeded",
+      blocked_reason: 'Per-token scan limit exceeded',
     },
     create: {
       identifier: scanCode,
-      identifier_type: "TOKEN",
+      identifier_type: 'TOKEN',
       count,
       window_start: new Date(),
       last_hit: new Date(),
       block_count: 1,
       blocked_until: new Date(Date.now() + 60 * 60 * 1000),
-      blocked_reason: "Per-token scan limit exceeded",
+      blocked_reason: 'Per-token scan limit exceeded',
     },
   });
 }

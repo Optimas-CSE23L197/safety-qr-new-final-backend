@@ -16,13 +16,13 @@
 // Header: X-Device-ID  (FCM/APNS device token or stable device fingerprint)
 // =============================================================================
 
-import { prisma } from "../config/prisma.js";
-import { redis } from "../config/redis.js";
-import { ApiError } from "../utils/response/ApiError.js";
-import { asyncHandler } from "../utils/response/asyncHandler.js";
+import { prisma } from '#config/database/prisma.js';
+import { redis } from '#config/database/redis.js';
+import { ApiError } from '#utils/response/ApiError.js';
+import { asyncHandler } from '#utils/response/asyncHandler.js';
 
 const DEVICE_CACHE_TTL = 60; // 1 minute — hot path, cache aggressively
-const DEVICE_HEADER = "x-device-id";
+const DEVICE_HEADER = 'x-device-id';
 
 // ─── Core Middleware ──────────────────────────────────────────────────────────
 
@@ -39,20 +39,18 @@ const DEVICE_HEADER = "x-device-id";
  */
 export const verifyDevice = asyncHandler(async (req, _res, next) => {
   // Only enforce for mobile app (PARENT_USER)
-  if (req.role !== "PARENT_USER") return next();
+  if (req.role !== 'PARENT_USER') return next();
 
   const deviceToken = req.headers[DEVICE_HEADER];
 
   if (!deviceToken) {
-    throw ApiError.unauthorized(
-      "Device identification header missing (X-Device-ID required)",
-    );
+    throw ApiError.unauthorized('Device identification header missing (X-Device-ID required)');
   }
 
   const device = await getDevice(req.userId, deviceToken);
 
   if (!device) {
-    throw ApiError.unauthorized("Device not recognized — please log in again");
+    throw ApiError.unauthorized('Device not recognized — please log in again');
   }
 
   // Device must belong to this parent
@@ -62,25 +60,21 @@ export const verifyDevice = asyncHandler(async (req, _res, next) => {
       {
         claimedUserId: req.userId,
         deviceOwnerId: device.parent_id,
-        deviceToken: deviceToken.slice(0, 16) + "...", // partial for logs
+        deviceToken: deviceToken.slice(0, 16) + '...', // partial for logs
       },
-      "Device fingerprint mismatch — token used by wrong parent",
+      'Device fingerprint mismatch — token used by wrong parent'
     );
-    throw ApiError.unauthorized("Device does not belong to this account");
+    throw ApiError.unauthorized('Device does not belong to this account');
   }
 
   // Device must be the currently active device
   if (!device.is_active) {
-    throw ApiError.unauthorized(
-      "This device has been logged out — please log in again",
-    );
+    throw ApiError.unauthorized('This device has been logged out — please log in again');
   }
 
   // Device must not have a logged_out_at timestamp
   if (device.logged_out_at) {
-    throw ApiError.unauthorized(
-      "This device session has ended — please log in again",
-    );
+    throw ApiError.unauthorized('This device session has ended — please log in again');
   }
 
   // Attach device info to request for downstream use
@@ -88,11 +82,8 @@ export const verifyDevice = asyncHandler(async (req, _res, next) => {
   req.devicePlatform = device.platform;
 
   // Update last_seen_at async — non-blocking
-  updateDeviceLastSeen(device.id).catch((e) =>
-    req.log?.warn(
-      { deviceId: device.id, err: e.message },
-      "Failed to update device last_seen_at",
-    ),
+  updateDeviceLastSeen(device.id).catch(e =>
+    req.log?.warn({ deviceId: device.id, err: e.message }, 'Failed to update device last_seen_at')
   );
 
   next();

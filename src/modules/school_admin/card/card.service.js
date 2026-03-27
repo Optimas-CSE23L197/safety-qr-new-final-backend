@@ -3,14 +3,13 @@
 // Responsibility: orchestration + cache. No Prisma.
 // =============================================================================
 
-import * as repo from "./card.repository.js";
-import { cacheAside, cacheDel } from "../../../utils/cache/cache.js";
-import { buildOffsetMeta } from "../../../utils/response/paginate.js";
+import * as repo from './card.repository.js';
+import { cacheAside, cacheDel } from '#utils/cache/cache.js';
+import { buildOffsetMeta } from '#utils/response/paginate.js';
 
 // Cache only the PENDING count for the dashboard badge — not the full list
 // Full list is not cached (dynamic filters + pagination make it impractical)
-const PENDING_COUNT_KEY = (schoolId) =>
-  `card_requests:pending_count:${schoolId}`;
+const PENDING_COUNT_KEY = schoolId => `card_requests:pending_count:${schoolId}`;
 const PENDING_COUNT_TTL = 60; // 1 minute
 
 export async function listCardRequests(schoolId, query) {

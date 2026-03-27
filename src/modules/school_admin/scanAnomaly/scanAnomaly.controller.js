@@ -2,15 +2,15 @@
 // modules/school_admin/anomalies/anomaly.controller.js — RESQID
 // =============================================================================
 
-import { getAnomalyInventory, resolveAnomaly } from "./scanAnomaly.service.js";
-import { logger } from "../../../config/logger.js";
+import { getAnomalyInventory, resolveAnomaly } from './scanAnomaly.service.js';
+import { logger } from '#config/logger.js';
 
 /**
  * GET /api/school-admin/:schoolId/anomalies
  *
  * Query params (all optional):
  *   filter  — "UNRESOLVED" (default) | "RESOLVED" | "ALL"
- *   type    — "ALL" (default) | any AnomalyType enum value
+ *   type    — 'ALL' (default) | any AnomalyType enum value
  *   page    — positive integer  (default: 1)
  *   limit   — 1–100            (default: 20)
  *
@@ -31,14 +31,11 @@ export async function listAnomalies(req, res) {
     const result = await getAnomalyInventory(schoolId, req.validatedQuery);
     return res.status(200).json({ success: true, data: result });
   } catch (err) {
-    logger.error(
-      { schoolId, err: err.message },
-      "Anomaly inventory fetch failed",
-    );
+    logger.error({ schoolId, err: err.message }, 'Anomaly inventory fetch failed');
     return res.status(500).json({
       success: false,
-      code: "INTERNAL_ERROR",
-      message: "Failed to fetch anomalies",
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch anomalies',
     });
   }
 }
@@ -47,7 +44,7 @@ export async function listAnomalies(req, res) {
  * PATCH /api/school-admin/:schoolId/anomalies/:anomalyId/resolve
  *
  * Body (optional):
- *   { notes: "Confirmed school trip." }
+ *   { notes: 'Confirmed school trip.' }
  *
  * Response:
  * {
@@ -74,21 +71,18 @@ export async function resolveAnomalyHandler(req, res) {
     if (!anomaly) {
       return res.status(404).json({
         success: false,
-        code: "NOT_FOUND",
-        message: "Anomaly not found or already resolved",
+        code: 'NOT_FOUND',
+        message: 'Anomaly not found or already resolved',
       });
     }
 
     return res.status(200).json({ success: true, data: { anomaly } });
   } catch (err) {
-    logger.error(
-      { schoolId, anomalyId, err: err.message },
-      "Anomaly resolve failed",
-    );
+    logger.error({ schoolId, anomalyId, err: err.message }, 'Anomaly resolve failed');
     return res.status(500).json({
       success: false,
-      code: "INTERNAL_ERROR",
-      message: "Failed to resolve anomaly",
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to resolve anomaly',
     });
   }
 }

@@ -5,13 +5,13 @@
 // Stateless — no Redis/DB needed
 // =============================================================================
 
-import crypto from "crypto";
-import { ENV } from "../../config/env.js";
+import crypto from 'crypto';
+import { ENV } from '#config/env.js';
 
 const TOKEN_BYTES = 32;
-const SEPARATOR = ".";
-const COOKIE_NAME = "__Host-csrf";
-const HEADER_NAME = "x-csrf-token";
+const SEPARATOR = '.';
+const COOKIE_NAME = '__Host-csrf';
+const HEADER_NAME = 'x-csrf-token';
 const TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 // ─── Generate ─────────────────────────────────────────────────────────────────
@@ -24,7 +24,7 @@ const TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
  * @returns {{ token: string, cookieValue: string }}
  */
 export function generateCsrfToken() {
-  const token = crypto.randomBytes(TOKEN_BYTES).toString("hex");
+  const token = crypto.randomBytes(TOKEN_BYTES).toString('hex');
   const signature = signCsrfToken(token);
 
   return {
@@ -36,11 +36,8 @@ export function generateCsrfToken() {
 // ─── Sign / Verify ────────────────────────────────────────────────────────────
 
 export function signCsrfToken(token) {
-  if (!ENV.CSRF_SECRET) throw new Error("CSRF_SECRET not set");
-  return crypto
-    .createHmac("sha256", ENV.CSRF_SECRET)
-    .update(token)
-    .digest("hex");
+  if (!ENV.CSRF_SECRET) throw new Error('CSRF_SECRET not set');
+  return crypto.createHmac('sha256', ENV.CSRF_SECRET).update(token).digest('hex');
 }
 
 /**
@@ -65,10 +62,7 @@ export function verifyCsrfPair(headerToken, cookieValue) {
   const expectedSignature = signCsrfToken(cookieToken);
 
   try {
-    return crypto.timingSafeEqual(
-      Buffer.from(cookieSignature),
-      Buffer.from(expectedSignature),
-    );
+    return crypto.timingSafeEqual(Buffer.from(cookieSignature), Buffer.from(expectedSignature));
   } catch {
     return false;
   }
@@ -79,19 +73,19 @@ export function verifyCsrfPair(headerToken, cookieValue) {
 export function setCsrfCookie(res, cookieValue) {
   res.cookie(COOKIE_NAME, cookieValue, {
     httpOnly: false, // MUST be false — JS needs to read it
-    secure: ENV.NODE_ENV === "production",
-    sameSite: "strict",
+    secure: ENV.NODE_ENV === 'production',
+    sameSite: 'strict',
     maxAge: TTL_MS,
-    path: "/",
+    path: '/',
   });
 }
 
 export function clearCsrfCookie(res) {
   res.clearCookie(COOKIE_NAME, {
     httpOnly: false,
-    secure: ENV.NODE_ENV === "production",
-    sameSite: "strict",
-    path: "/",
+    secure: ENV.NODE_ENV === 'production',
+    sameSite: 'strict',
+    path: '/',
   });
 }
 

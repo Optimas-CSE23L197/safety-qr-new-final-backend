@@ -2,8 +2,8 @@
 // modules/school_admin/card_requests/cardRequests.controller.js — RESQID
 // =============================================================================
 
-import { listCardRequests, submitCardRequest } from "./card.service.js";
-import { logger } from "../../../config/logger.js";
+import { listCardRequests, submitCardRequest } from './card.service.js';
+import { logger } from '#config/logger.js';
 
 /**
  * GET /api/school-admin/:schoolId/card-requests
@@ -16,11 +16,11 @@ export async function getCardRequests(req, res) {
     const result = await listCardRequests(schoolId, req.validatedQuery);
     return res.status(200).json({ success: true, data: result });
   } catch (err) {
-    logger.error({ schoolId, err: err.message }, "Card requests list failed");
+    logger.error({ schoolId, err: err.message }, 'Card requests list failed');
     return res.status(500).json({
       success: false,
-      code: "INTERNAL_ERROR",
-      message: "Failed to fetch card requests",
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch card requests',
     });
   }
 }
@@ -37,25 +37,18 @@ export async function createCardRequest(req, res) {
   const schoolUserId = req.userId; // from authenticate middleware
 
   try {
-    const order = await submitCardRequest(
-      schoolId,
-      schoolUserId,
-      req.validatedBody,
-    );
+    const order = await submitCardRequest(schoolId, schoolUserId, req.validatedBody);
     return res.status(201).json({
       success: true,
-      message: "Card request submitted successfully",
+      message: 'Card request submitted successfully',
       data: order,
     });
   } catch (err) {
-    logger.error(
-      { schoolId, err: err.message },
-      "Card request creation failed",
-    );
+    logger.error({ schoolId, err: err.message }, 'Card request creation failed');
     return res.status(500).json({
       success: false,
-      code: "INTERNAL_ERROR",
-      message: "Failed to submit card request",
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to submit card request',
     });
   }
 }

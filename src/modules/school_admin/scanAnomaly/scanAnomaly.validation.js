@@ -2,26 +2,25 @@
 // modules/school_admin/anomalies/anomaly.validation.js — RESQID
 // =============================================================================
 
-import { z } from "zod";
+import { z } from 'zod';
 
-const UUID_REGEX =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 // All AnomalyType values from schema
 const ANOMALY_TYPES = [
-  "HIGH_FREQUENCY",
-  "MULTIPLE_LOCATIONS",
-  "SUSPICIOUS_IP",
-  "AFTER_HOURS",
-  "BULK_SCRAPING",
-  "HONEYPOT_TRIGGERED",
-  "REPEATED_FAILURE",
+  'HIGH_FREQUENCY',
+  'MULTIPLE_LOCATIONS',
+  'SUSPICIOUS_IP',
+  'AFTER_HOURS',
+  'BULK_SCRAPING',
+  'HONEYPOT_TRIGGERED',
+  'REPEATED_FAILURE',
 ];
 
 // ─── Shared: schoolId param guard ─────────────────────────────────────────────
 
 const paramsSchema = z.object({
-  schoolId: z.string().regex(UUID_REGEX, "schoolId must be a valid UUID v4"),
+  schoolId: z.string().regex(UUID_REGEX, 'schoolId must be a valid UUID v4'),
 });
 
 function validateSchoolParam(req, res) {
@@ -29,7 +28,7 @@ function validateSchoolParam(req, res) {
   if (!result.success) {
     res.status(400).json({
       success: false,
-      code: "VALIDATION_ERROR",
+      code: 'VALIDATION_ERROR',
       errors: result.error.flatten().fieldErrors,
     });
     return null;
@@ -39,8 +38,8 @@ function validateSchoolParam(req, res) {
   if (req.user?.school_id !== result.data.schoolId) {
     res.status(403).json({
       success: false,
-      code: "FORBIDDEN",
-      message: "You do not have access to this school",
+      code: 'FORBIDDEN',
+      message: 'You do not have access to this school',
     });
     return null;
   }
@@ -53,10 +52,10 @@ function validateSchoolParam(req, res) {
 const listQuerySchema = z.object({
   // Resolved filter
   // UNRESOLVED (default) | RESOLVED | ALL
-  filter: z.enum(["ALL", "UNRESOLVED", "RESOLVED"]).default("UNRESOLVED"),
+  filter: z.enum(['ALL', 'UNRESOLVED', 'RESOLVED']).default('UNRESOLVED'),
 
   // Narrow by anomaly type
-  type: z.enum(["ALL", ...ANOMALY_TYPES]).default("ALL"),
+  type: z.enum(['ALL', ...ANOMALY_TYPES]).default('ALL'),
 
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -70,7 +69,7 @@ export function validateListAnomalies(req, res, next) {
   if (!queryResult.success) {
     return res.status(400).json({
       success: false,
-      code: "VALIDATION_ERROR",
+      code: 'VALIDATION_ERROR',
       errors: queryResult.error.flatten().fieldErrors,
     });
   }
@@ -83,8 +82,8 @@ export function validateListAnomalies(req, res, next) {
 // ─── PATCH /:schoolId/anomalies/:anomalyId/resolve ────────────────────────────
 
 const resolveParamsSchema = z.object({
-  schoolId: z.string().regex(UUID_REGEX, "schoolId must be a valid UUID v4"),
-  anomalyId: z.string().regex(UUID_REGEX, "anomalyId must be a valid UUID v4"),
+  schoolId: z.string().regex(UUID_REGEX, 'schoolId must be a valid UUID v4'),
+  anomalyId: z.string().regex(UUID_REGEX, 'anomalyId must be a valid UUID v4'),
 });
 
 const resolveBodySchema = z.object({
@@ -93,7 +92,7 @@ const resolveBodySchema = z.object({
     .string()
     .max(1000)
     .optional()
-    .transform((v) => v?.trim() || null),
+    .transform(v => v?.trim() || null),
 });
 
 export function validateResolveAnomaly(req, res, next) {
@@ -102,7 +101,7 @@ export function validateResolveAnomaly(req, res, next) {
   if (!paramsResult.success) {
     return res.status(400).json({
       success: false,
-      code: "VALIDATION_ERROR",
+      code: 'VALIDATION_ERROR',
       errors: paramsResult.error.flatten().fieldErrors,
     });
   }
@@ -111,8 +110,8 @@ export function validateResolveAnomaly(req, res, next) {
   if (req.user?.school_id !== paramsResult.data.schoolId) {
     return res.status(403).json({
       success: false,
-      code: "FORBIDDEN",
-      message: "You do not have access to this school",
+      code: 'FORBIDDEN',
+      message: 'You do not have access to this school',
     });
   }
 
@@ -120,7 +119,7 @@ export function validateResolveAnomaly(req, res, next) {
   if (!bodyResult.success) {
     return res.status(400).json({
       success: false,
-      code: "VALIDATION_ERROR",
+      code: 'VALIDATION_ERROR',
       errors: bodyResult.error.flatten().fieldErrors,
     });
   }

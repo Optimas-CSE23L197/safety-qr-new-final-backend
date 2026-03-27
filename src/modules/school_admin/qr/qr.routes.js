@@ -7,45 +7,32 @@
 //   POST /api/school-admin/:schoolId/qr/:studentId/assign      — assign token
 // =============================================================================
 
-import { Router } from "express";
-import {
-  authenticate,
-  requireSchoolUser,
-} from "../../../middleware/auth.middleware.js";
-import {
-  validateListQr,
-  validateGetStudentQr,
-  validateAssignToken,
-} from "./qr.validation.js";
-import { listQr, getQrDetail, assignTokenToStudent } from "./qr.controller.js";
+import { Router } from 'express';
+import { authenticate, requireSchoolUser } from '#middleware/auth.middleware.js';
+import { validateListQr, validateGetStudentQr, validateAssignToken } from './qr.validation.js';
+import { listQr, getQrDetail, assignTokenToStudent } from './qr.controller.js';
 
 const router = Router();
 
 // List students with QR status
-router.get(
-  "/:schoolId/qr",
-  authenticate,
-  requireSchoolUser,
-  validateListQr,
-  listQr,
-);
+router.get('/:schoolId/qr', authenticate, requireSchoolUser, validateListQr, listQr);
 
 // Single student QR detail
 router.get(
-  "/:schoolId/qr/:studentId",
+  '/:schoolId/qr/:studentId',
   authenticate,
   requireSchoolUser,
   validateGetStudentQr,
-  getQrDetail,
+  getQrDetail
 );
 
 // Assign unassigned token to student
 router.post(
-  "/:schoolId/qr/:studentId/assign",
+  '/:schoolId/qr/:studentId/assign',
   authenticate,
   requireSchoolUser,
   validateAssignToken,
-  assignTokenToStudent,
+  assignTokenToStudent
 );
 
 export default router;

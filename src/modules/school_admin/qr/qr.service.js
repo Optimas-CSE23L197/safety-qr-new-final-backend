@@ -19,12 +19,12 @@
 //   After assign → invalidate student cache + token stats cache
 // =============================================================================
 
-import * as repo from "./qr.repository.js";
-import { cacheAside, cacheDel } from "../../../utils/cache/cache.js";
-import { buildOffsetMeta } from "../../../utils/response/paginate.js";
-import { invalidateTokenStats } from "../tokens/token.service.js";
+import * as repo from './qr.repository.js';
+import { cacheAside, cacheDel } from '#utils/cache/cache.js';
+import { buildOffsetMeta } from '#utils/response/paginate.js';
+import { invalidateTokenStats } from './tokens/token.service.js';
 
-const STUDENT_QR_KEY = (studentId) => `qr:student:${studentId}`;
+const STUDENT_QR_KEY = studentId => `qr:student:${studentId}`;
 const STUDENT_QR_TTL = 5 * 60; // 5 minutes
 
 // ─── List ─────────────────────────────────────────────────────────────────────
@@ -51,7 +51,7 @@ export async function listStudentsWithQr(schoolId, query) {
 
 export async function getStudentQr(studentId, schoolId) {
   return cacheAside(STUDENT_QR_KEY(studentId), STUDENT_QR_TTL, () =>
-    repo.findStudentQrDetail(studentId, schoolId),
+    repo.findStudentQrDetail(studentId, schoolId)
   );
 }
 
@@ -65,10 +65,7 @@ export async function assignToken(schoolId, studentId, tokenId) {
   });
 
   // Invalidate caches — token stats and student QR detail are now stale
-  await Promise.all([
-    cacheDel(STUDENT_QR_KEY(studentId)),
-    invalidateTokenStats(schoolId),
-  ]);
+  await Promise.all([cacheDel(STUDENT_QR_KEY(studentId)), invalidateTokenStats(schoolId)]);
 
   return result;
 }

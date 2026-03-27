@@ -4,8 +4,8 @@
 // dynamic — search/filter/sort combinations make caching impractical).
 // =============================================================================
 
-import * as repo from "./students.repository.js";
-import { buildOffsetMeta } from "../../../utils/response/paginate.js";
+import * as repo from './students.repository.js';
+import { buildOffsetMeta } from '#utils/response/paginate.js';
 
 /**
  * getStudentList(schoolId, query)
@@ -13,16 +13,7 @@ import { buildOffsetMeta } from "../../../utils/response/paginate.js";
  * Builds pagination meta from results.
  */
 export async function getStudentList(schoolId, query) {
-  const {
-    page,
-    limit,
-    search,
-    class: cls,
-    section,
-    token_status,
-    sort_field,
-    sort_dir,
-  } = query;
+  const { page, limit, search, class: cls, section, token_status, sort_field, sort_dir } = query;
   const skip = (page - 1) * limit;
 
   const { students, total } = await repo.findStudents({

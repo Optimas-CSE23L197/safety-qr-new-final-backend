@@ -7,8 +7,8 @@
 // HMAC     → phone_index (deterministic, searchable) — see encryption.js
 // =============================================================================
 
-import bcrypt from "bcrypt";
-import crypto from "crypto";
+import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 
 // ─── Bcrypt — Password Hashing ────────────────────────────────────────────────
 // Cost factor 12 = ~300ms on modern hardware — right balance for production
@@ -22,12 +22,12 @@ const BCRYPT_ROUNDS = 12;
  * Returns bcrypt hash string — safe to store in DB
  */
 export async function hashPassword(plaintext) {
-  if (!plaintext || typeof plaintext !== "string") {
-    throw new TypeError("hashPassword: plaintext must be a non-empty string");
+  if (!plaintext || typeof plaintext !== 'string') {
+    throw new TypeError('hashPassword: plaintext must be a non-empty string');
   }
   // Bcrypt silently truncates at 72 bytes — reject longer passwords
-  if (Buffer.byteLength(plaintext, "utf8") > 72) {
-    throw new Error("Password exceeds maximum length (72 bytes)");
+  if (Buffer.byteLength(plaintext, 'utf8') > 72) {
+    throw new Error('Password exceeds maximum length (72 bytes)');
   }
   return bcrypt.hash(plaintext, BCRYPT_ROUNDS);
 }
@@ -57,10 +57,10 @@ export async function verifyPassword(plaintext, hash) {
  * @returns {string} 64-char hex
  */
 export function hashToken(rawToken) {
-  if (!rawToken || typeof rawToken !== "string") {
-    throw new TypeError("hashToken: rawToken must be a non-empty string");
+  if (!rawToken || typeof rawToken !== 'string') {
+    throw new TypeError('hashToken: rawToken must be a non-empty string');
   }
-  return crypto.createHash("sha256").update(rawToken).digest("hex");
+  return crypto.createHash('sha256').update(rawToken).digest('hex');
 }
 
 /**
@@ -69,8 +69,8 @@ export function hashToken(rawToken) {
  * OTP should always be a numeric string
  */
 export function hashOtp(otp) {
-  if (!otp) throw new TypeError("hashOtp: otp must be provided");
-  return crypto.createHash("sha256").update(String(otp)).digest("hex");
+  if (!otp) throw new TypeError('hashOtp: otp must be provided');
+  return crypto.createHash('sha256').update(String(otp)).digest('hex');
 }
 
 // ─── Timing-Safe Comparison ───────────────────────────────────────────────────
@@ -83,7 +83,7 @@ export function hashOtp(otp) {
  * @returns {boolean}
  */
 export function timingSafeEqual(a, b) {
-  if (typeof a !== "string" || typeof b !== "string") return false;
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
 
   try {
     // Buffers must be same length for timingSafeEqual
@@ -107,7 +107,7 @@ export function timingSafeEqual(a, b) {
  * @returns {string} 64-char hex
  */
 export function generateSecureToken() {
-  return crypto.randomBytes(32).toString("hex");
+  return crypto.randomBytes(32).toString('hex');
 }
 
 /**
@@ -119,7 +119,7 @@ export function generateOtp(length = 6) {
   const max = Math.pow(10, length);
   // Generate random bytes and convert to number
   const randomValue = crypto.randomInt(0, max);
-  return String(randomValue).padStart(length, "0");
+  return String(randomValue).padStart(length, '0');
 }
 
 /**
@@ -127,5 +127,5 @@ export function generateOtp(length = 6) {
  * Short random hex nonce for CSRF, idempotency keys
  */
 export function generateNonce(bytes = 16) {
-  return crypto.randomBytes(bytes).toString("hex");
+  return crypto.randomBytes(bytes).toString('hex');
 }

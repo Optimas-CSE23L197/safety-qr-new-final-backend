@@ -21,48 +21,48 @@
 //   - Public emergency (GET): 0 — no body allowed at all
 // =============================================================================
 
-import { ApiError } from "../utils/response/ApiError.js";
-import { asyncHandler } from "../utils/response/asyncHandler.js";
+import { ApiError } from '#utils/response/ApiError.js';
+import { asyncHandler } from '#utils/response/asyncHandler.js';
 
 // ─── Size Limit Definitions ───────────────────────────────────────────────────
 // All in bytes
 
 const SIZES = {
-  KB: (n) => n * 1024,
-  MB: (n) => n * 1024 * 1024,
+  KB: n => n * 1024,
+  MB: n => n * 1024 * 1024,
 };
 
 // Route prefix → max body size in bytes
 // Checked in order — first match wins
 const ROUTE_LIMITS = [
   // Auth — tiny payloads only
-  { prefix: "/api/auth/otp", limit: SIZES.KB(2) },
-  { prefix: "/api/auth/login", limit: SIZES.KB(2) },
-  { prefix: "/api/auth/refresh", limit: SIZES.KB(1) },
-  { prefix: "/api/auth", limit: SIZES.KB(5) },
+  { prefix: '/api/auth/otp', limit: SIZES.KB(2) },
+  { prefix: '/api/auth/login', limit: SIZES.KB(2) },
+  { prefix: '/api/auth/refresh', limit: SIZES.KB(1) },
+  { prefix: '/api/auth', limit: SIZES.KB(5) },
 
   // Emergency profile — medical text, no binary
-  { prefix: "/api/parents/emergency", limit: SIZES.KB(10) },
-  { prefix: "/api/parents/contacts", limit: SIZES.KB(10) },
+  { prefix: '/api/parents/emergency', limit: SIZES.KB(10) },
+  { prefix: '/api/parents/contacts', limit: SIZES.KB(10) },
 
   // Parent app — general profile updates
-  { prefix: "/api/parents", limit: SIZES.KB(50) },
+  { prefix: '/api/parents', limit: SIZES.KB(50) },
 
   // Public emergency endpoint — GET only, no body
-  { prefix: "/api/emergency", limit: 0 },
+  { prefix: '/api/emergency', limit: 0 },
 
   // School admin — bulk student imports can be larger
-  { prefix: "/api/school-admin/students/bulk", limit: SIZES.KB(500) },
-  { prefix: "/api/school-admin", limit: SIZES.KB(100) },
+  { prefix: '/api/school-admin/students/bulk', limit: SIZES.KB(500) },
+  { prefix: '/api/school-admin', limit: SIZES.KB(100) },
 
   // Super admin — platform management
-  { prefix: "/api/super-admin", limit: SIZES.KB(200) },
+  { prefix: '/api/super-admin', limit: SIZES.KB(200) },
 
   // Webhook — raw body from Razorpay, allow up to 50KB
-  { prefix: "/api/webhooks", limit: SIZES.KB(50) },
+  { prefix: '/api/webhooks', limit: SIZES.KB(50) },
 
   // Default
-  { prefix: "/", limit: SIZES.KB(20) },
+  { prefix: '/', limit: SIZES.KB(20) },
 ];
 
 // ─── Core Middleware ──────────────────────────────────────────────────────────
@@ -78,9 +78,9 @@ const ROUTE_LIMITS = [
  */
 export const enforceRequestSize = asyncHandler(async (req, _res, next) => {
   // GET, HEAD, OPTIONS have no body
-  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
 
-  const contentLength = req.headers["content-length"];
+  const contentLength = req.headers['content-length'];
 
   // No Content-Length header — chunked transfer or empty body
   // Let Express's json() limit handle it — skip here
@@ -93,13 +93,13 @@ export const enforceRequestSize = asyncHandler(async (req, _res, next) => {
 
   // Route explicitly has 0 limit — no body allowed
   if (limit === 0 && bodySize > 0) {
-    throw ApiError.badRequest("Request body not allowed on this endpoint");
+    throw ApiError.badRequest('Request body not allowed on this endpoint');
   }
 
   if (bodySize > limit) {
     throw ApiError.create(
       413,
-      `Request body too large — max ${formatBytes(limit)} allowed, received ${formatBytes(bodySize)}`,
+      `Request body too large — max ${formatBytes(limit)} allowed, received ${formatBytes(bodySize)}`
     );
   }
 
@@ -116,7 +116,7 @@ function resolveLimit(path) {
 }
 
 function formatBytes(bytes) {
-  if (bytes === 0) return "0 bytes";
+  if (bytes === 0) return '0 bytes';
   if (bytes < 1024) return `${bytes}B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;

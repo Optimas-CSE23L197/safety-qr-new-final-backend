@@ -4,13 +4,13 @@
 // NO Prisma calls here — all DB access goes through dashboard.repository.js
 // =============================================================================
 
-import { cacheAside, cacheDel } from "../../../utils/cache/cache.js";
-import * as repo from "./dashboard.repository.js";
+import { cacheAside, cacheDel } from '#utils/cache/cache.js';
+import * as repo from './dashboard.repository.js';
 
 // ─── Cache Config ─────────────────────────────────────────────────────────────
 // TTL: 2 minutes — dashboard is a summary view, slight staleness is fine.
 // On a school refreshing 10x/day, this reduces DB hits from 10 → 1 per 2min window.
-const DASHBOARD_KEY = (schoolId) => `dashboard:${schoolId}`;
+const DASHBOARD_KEY = schoolId => `dashboard:${schoolId}`;
 const DASHBOARD_TTL = 2 * 60; // 120 seconds
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -20,9 +20,7 @@ const DASHBOARD_TTL = 2 * 60; // 120 seconds
  * Tries Redis first. On miss → fetches from DB via repository → caches result.
  */
 export async function getDashboardData(schoolId) {
-  return cacheAside(DASHBOARD_KEY(schoolId), DASHBOARD_TTL, () =>
-    buildDashboard(schoolId),
-  );
+  return cacheAside(DASHBOARD_KEY(schoolId), DASHBOARD_TTL, () => buildDashboard(schoolId));
 }
 
 /**
@@ -47,25 +45,18 @@ export async function invalidateDashboard(schoolId) {
  */
 async function buildDashboard(schoolId) {
   // All 6 repository calls run in parallel — none depend on each other
-  const [
-    studentCounts,
-    tokenData,
-    scanRaw,
-    recentAnomalies,
-    pendingRequests,
-    subscription,
-  ] = await Promise.all([
-    repo.getStudentCounts(schoolId),
-    repo.getTokenBreakdown(schoolId),
-    repo.getScanLogsLast7Days(schoolId),
-    repo.getRecentAnomalies(schoolId),
-    repo.getPendingParentRequests(schoolId),
-    repo.getSubscription(schoolId),
-  ]);
+  const [studentCounts, tokenData, scanRaw, recentAnomalies, pendingRequests, subscription] =
+    await Promise.all([
+      repo.getStudentCounts(schoolId),
+      repo.getTokenBreakdown(schoolId),
+      repo.getScanLogsLast7Days(schoolId),
+      repo.getRecentAnomalies(schoolId),
+      repo.getPendingParentRequests(schoolId),
+      repo.getSubscription(schoolId),
+    ]);
 
   // ── Scan trend: pivot raw rows into per-day buckets ────────────────────────
-  const { scanTrend, todayScans, scanTrendUp, scanChangePercent } =
-    buildScanTrend(scanRaw);
+  const { scanTrend, todayScans, scanTrendUp, scanChangePercent } = buildScanTrend(scanRaw);
 
   return {
     stats: {
@@ -102,7 +93,7 @@ async function buildDashboard(schoolId) {
  * }
  */
 function buildScanTrend(rawScans) {
-  // Build a map: "14 Mar" → { date, success, failed }
+  // Build a map: '14 Mar' → { date, success, failed }
   const dayMap = new Map();
 
   for (const scan of rawScans) {
@@ -111,7 +102,7 @@ function buildScanTrend(rawScans) {
       dayMap.set(key, { date: key, success: 0, failed: 0 });
     }
     const entry = dayMap.get(key);
-    if (scan.result === "SUCCESS") {
+    if (scan.result === 'SUCCESS') {
       entry.success += 1;
     } else {
       entry.failed += 1;
@@ -120,7 +111,7 @@ function buildScanTrend(rawScans) {
 
   // Fill all 7 days — ensures chart always has 7 bars even on zero-scan days
   const scanTrend = buildDayLabels(7).map(
-    (key) => dayMap.get(key) ?? { date: key, success: 0, failed: 0 },
+    key => dayMap.get(key) ?? { date: key, success: 0, failed: 0 }
   );
 
   // Today and yesterday derived from the same in-memory map — zero extra queries
@@ -154,12 +145,12 @@ function daysAgo(n) {
   return new Date(Date.now() - n * 24 * 60 * 60 * 1000);
 }
 
-/** "14 Mar" — IST locale, used as both map key and chart x-axis label */
+/** '14 Mar' — IST locale, used as both map key and chart x-axis label */
 function toDayLabel(date) {
-  return new Date(date).toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    timeZone: "Asia/Kolkata",
+  return new Date(date).toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    timeZone: 'Asia/Kolkata',
   });
 }
 

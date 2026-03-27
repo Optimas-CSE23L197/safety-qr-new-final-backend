@@ -2,19 +2,15 @@
 // modules/school_admin/notifications/notification.controller.js — RESQID
 // =============================================================================
 
-import {
-  getNotificationInventory,
-  markOneRead,
-  markAllRead,
-} from "./notification.service.js";
-import { logger } from "../../../config/logger.js";
+import { getNotificationInventory, markOneRead, markAllRead } from './notification.service.js';
+import { logger } from '#config/logger.js';
 
 /**
  * GET /api/school-admin/:schoolId/notifications
  *
  * Query params (all optional):
  *   filter  — "ALL" (default) | "UNREAD" | any NotificationType value
- *             e.g. "SCAN_ANOMALY" | "CARD_EXPIRING" | "SYSTEM" etc.
+ *             e.g. "SCAN_ANOMALY" | "CARD_EXPIRING" | 'SYSTEM' etc.
  *   page    — positive integer  (default: 1)
  *   limit   — 1–100            (default: 20)
  *
@@ -35,14 +31,11 @@ export async function listNotifications(req, res) {
     const result = await getNotificationInventory(schoolId, req.validatedQuery);
     return res.status(200).json({ success: true, data: result });
   } catch (err) {
-    logger.error(
-      { schoolId, err: err.message },
-      "Notification list fetch failed",
-    );
+    logger.error({ schoolId, err: err.message }, 'Notification list fetch failed');
     return res.status(500).json({
       success: false,
-      code: "INTERNAL_ERROR",
-      message: "Failed to fetch notifications",
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch notifications',
     });
   }
 }
@@ -71,21 +64,18 @@ export async function markNotificationRead(req, res) {
     if (!notification) {
       return res.status(404).json({
         success: false,
-        code: "NOT_FOUND",
-        message: "Notification not found or already read",
+        code: 'NOT_FOUND',
+        message: 'Notification not found or already read',
       });
     }
 
     return res.status(200).json({ success: true, data: { notification } });
   } catch (err) {
-    logger.error(
-      { schoolId, notificationId, err: err.message },
-      "Mark notification read failed",
-    );
+    logger.error({ schoolId, notificationId, err: err.message }, 'Mark notification read failed');
     return res.status(500).json({
       success: false,
-      code: "INTERNAL_ERROR",
-      message: "Failed to mark notification as read",
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to mark notification as read',
     });
   }
 }
@@ -109,14 +99,11 @@ export async function markAllNotificationsRead(req, res) {
     const result = await markAllRead(schoolId);
     return res.status(200).json({ success: true, data: result });
   } catch (err) {
-    logger.error(
-      { schoolId, err: err.message },
-      "Mark all notifications read failed",
-    );
+    logger.error({ schoolId, err: err.message }, 'Mark all notifications read failed');
     return res.status(500).json({
       success: false,
-      code: "INTERNAL_ERROR",
-      message: "Failed to mark all notifications as read",
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to mark all notifications as read',
     });
   }
 }

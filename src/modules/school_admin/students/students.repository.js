@@ -24,7 +24,7 @@
 //   Both share the same WHERE clause — built once, used twice.
 // =============================================================================
 
-import { prisma } from "../../../config/prisma.js";
+import { prisma } from '#config/database/prisma.js';
 
 /**
  * findStudents({ schoolId, skip, take, search, class, section, tokenStatus, sortField, sortDir })
@@ -60,15 +60,15 @@ export async function findStudents({
     // Prisma generates: WHERE (first_name ILIKE $1 OR last_name ILIKE $2)
     ...(search && {
       OR: [
-        { first_name: { contains: search, mode: "insensitive" } },
-        { last_name: { contains: search, mode: "insensitive" } },
+        { first_name: { contains: search, mode: 'insensitive' } },
+        { last_name: { contains: search, mode: 'insensitive' } },
       ],
     }),
 
     // Class filter — exact match on the class string e.g. "Class 6"
     ...(cls && { class: cls }),
 
-    // Section filter — exact match e.g. "A"
+    // Section filter — exact match e.g. 'A'
     ...(section && { section }),
 
     // Token status filter — filter via the student's tokens relation
@@ -86,7 +86,7 @@ export async function findStudents({
   // ── Build ORDER BY ────────────────────────────────────────────────────────
   // sortField is whitelisted in validation — safe to use directly
   const orderBy =
-    sortField === "first_name"
+    sortField === 'first_name'
       ? [{ first_name: sortDir }, { last_name: sortDir }] // sort by full name
       : [{ [sortField]: sortDir }];
 
@@ -111,7 +111,7 @@ export async function findStudents({
         tokens: {
           where: { school_id: schoolId },
           select: { status: true },
-          orderBy: { created_at: "desc" },
+          orderBy: { created_at: 'desc' },
           take: 1, // only latest token
         },
 
@@ -127,7 +127,7 @@ export async function findStudents({
   ]);
 
   // ── Shape response to match frontend expectations ─────────────────────────
-  const students = rows.map((s) => ({
+  const students = rows.map(s => ({
     id: s.id,
     first_name: s.first_name,
     last_name: s.last_name,
@@ -174,7 +174,7 @@ export async function getStudentById(schoolId, studentId) {
 
       // Current token
       tokens: {
-        where: { status: { in: ["ACTIVE", "ISSUED"] } },
+        where: { status: { in: ['ACTIVE', 'ISSUED'] } },
         select: {
           id: true,
           status: true,
@@ -187,7 +187,7 @@ export async function getStudentById(schoolId, studentId) {
             select: { public_url: true },
           },
         },
-        orderBy: { created_at: "desc" },
+        orderBy: { created_at: 'desc' },
         take: 1,
       },
 
@@ -235,7 +235,7 @@ export async function getStudentById(schoolId, studentId) {
               call_enabled: true,
               whatsapp_enabled: true,
             },
-            orderBy: { priority: "asc" },
+            orderBy: { priority: 'asc' },
           },
         },
       },
@@ -251,14 +251,14 @@ export async function getStudentById(schoolId, studentId) {
           location_derived: true,
           created_at: true,
         },
-        orderBy: { created_at: "desc" },
+        orderBy: { created_at: 'desc' },
         take: 20,
       },
 
       // Card details
       cards: {
         where: {
-          token: { status: { in: ["ACTIVE", "ISSUED"] } },
+          token: { status: { in: ['ACTIVE', 'ISSUED'] } },
         },
         select: {
           id: true,
@@ -272,7 +272,7 @@ export async function getStudentById(schoolId, studentId) {
           },
         },
         take: 1,
-        orderBy: { created_at: "desc" },
+        orderBy: { created_at: 'desc' },
       },
 
       // Recent location events (last 10)
@@ -285,7 +285,7 @@ export async function getStudentById(schoolId, studentId) {
           source: true,
           created_at: true,
         },
-        orderBy: { created_at: "desc" },
+        orderBy: { created_at: 'desc' },
         take: 10,
       },
 
@@ -305,7 +305,7 @@ export async function getStudentById(schoolId, studentId) {
   return {
     ...student,
     current_token: student.tokens[0] || null,
-    parent_details: student.parents.map((p) => ({
+    parent_details: student.parents.map(p => ({
       ...p.parent,
       relationship: p.relationship,
       is_primary: p.is_primary,

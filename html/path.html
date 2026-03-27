@@ -1,0 +1,1357 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Backend Architecture Guide</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --bg: #0a0c10;
+        --bg2: #111318;
+        --bg3: #181c23;
+        --border: #222630;
+        --border2: #2e3340;
+        --text: #e8eaf0;
+        --muted: #6b7280;
+        --dim: #3d4455;
+        --accent: #4ade80;
+        --accent2: #22d3ee;
+        --accent3: #f59e0b;
+        --accent4: #f472b6;
+        --accent5: #a78bfa;
+        --red: #f87171;
+        --mono: "JetBrains Mono", monospace;
+        --sans: "Syne", sans-serif;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--sans);
+        font-size: 15px;
+        line-height: 1.6;
+        min-height: 100vh;
+      }
+
+      /* ── Layout ── */
+      .shell {
+        display: flex;
+        min-height: 100vh;
+      }
+
+      .sidebar {
+        width: 220px;
+        flex-shrink: 0;
+        background: var(--bg2);
+        border-right: 1px solid var(--border);
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        overflow-y: auto;
+        padding: 28px 0;
+      }
+
+      .sidebar-logo {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+        color: var(--muted);
+        padding: 0 20px 20px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .sidebar-logo span {
+        color: var(--accent);
+      }
+
+      .sidebar nav {
+        padding: 16px 0;
+      }
+
+      .nav-section {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--dim);
+        padding: 12px 20px 4px;
+      }
+
+      .nav-link {
+        display: block;
+        padding: 6px 20px;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--muted);
+        text-decoration: none;
+        transition:
+          color 0.15s,
+          background 0.15s;
+        border-left: 2px solid transparent;
+      }
+
+      .nav-link:hover,
+      .nav-link.active {
+        color: var(--text);
+        background: rgba(255, 255, 255, 0.03);
+        border-left-color: var(--accent);
+      }
+
+      .main {
+        flex: 1;
+        min-width: 0;
+        padding: 48px 56px 80px;
+        max-width: 900px;
+      }
+
+      /* ── Typography ── */
+      h1 {
+        font-size: 36px;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        line-height: 1.1;
+        margin-bottom: 8px;
+      }
+
+      h1 .hl {
+        color: var(--accent);
+      }
+
+      .tagline {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 40px;
+        letter-spacing: 0.05em;
+      }
+
+      h2 {
+        font-size: 20px;
+        font-weight: 700;
+        margin: 56px 0 20px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      h2 .num {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--muted);
+        background: var(--bg3);
+        border: 1px solid var(--border);
+        padding: 2px 8px;
+        border-radius: 4px;
+      }
+
+      h3 {
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin: 28px 0 10px;
+      }
+
+      p {
+        color: #9ca3af;
+        margin-bottom: 14px;
+        line-height: 1.75;
+      }
+
+      strong {
+        color: var(--text);
+        font-weight: 600;
+      }
+
+      /* ── Code blocks ── */
+      .code-wrap {
+        background: var(--bg2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+        margin: 20px 0;
+      }
+
+      .code-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 16px;
+        background: var(--bg3);
+        border-bottom: 1px solid var(--border);
+      }
+
+      .code-label {
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--muted);
+        letter-spacing: 0.06em;
+      }
+
+      .copy-btn {
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--muted);
+        background: none;
+        border: 1px solid var(--border2);
+        border-radius: 4px;
+        padding: 2px 8px;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+
+      .copy-btn:hover {
+        color: var(--accent);
+        border-color: var(--accent);
+      }
+
+      pre {
+        font-family: var(--mono);
+        font-size: 12.5px;
+        line-height: 1.8;
+        padding: 20px 20px;
+        overflow-x: auto;
+        color: #c9d1d9;
+        tab-size: 2;
+      }
+
+      .c-dir {
+        color: var(--accent2);
+      }
+      .c-file {
+        color: #c9d1d9;
+      }
+      .c-com {
+        color: var(--dim);
+        font-style: italic;
+      }
+      .c-key {
+        color: var(--accent);
+      }
+      .c-str {
+        color: var(--accent3);
+      }
+      .c-fn {
+        color: var(--accent5);
+      }
+      .c-kw {
+        color: var(--accent2);
+      }
+      .c-red {
+        color: var(--red);
+      }
+
+      /* ── Cards ── */
+      .card-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin: 20px 0;
+      }
+      .card-grid-3 {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 12px;
+        margin: 20px 0;
+      }
+
+      .card {
+        background: var(--bg2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 16px;
+        transition: border-color 0.2s;
+      }
+
+      .card:hover {
+        border-color: var(--border2);
+      }
+
+      .card-title {
+        font-family: var(--mono);
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--accent);
+        margin-bottom: 6px;
+      }
+
+      .card p {
+        font-size: 13px;
+        margin: 0;
+      }
+
+      /* ── Rules ── */
+      .rules {
+        list-style: none;
+        margin: 20px 0;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .rule {
+        display: flex;
+        gap: 14px;
+        align-items: flex-start;
+        padding: 14px 16px;
+        background: var(--bg2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        border-left: 3px solid var(--accent);
+      }
+
+      .rule-num {
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--accent);
+        background: rgba(74, 222, 128, 0.08);
+        border-radius: 4px;
+        padding: 2px 7px;
+        flex-shrink: 0;
+        margin-top: 1px;
+      }
+
+      .rule-body {
+        flex: 1;
+      }
+
+      .rule-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text);
+        margin-bottom: 4px;
+      }
+
+      .rule-desc {
+        font-size: 13px;
+        color: var(--muted);
+        margin: 0;
+      }
+
+      .rule-code {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--accent3);
+        background: rgba(245, 158, 11, 0.07);
+        border: 1px solid rgba(245, 158, 11, 0.15);
+        border-radius: 4px;
+        padding: 6px 10px;
+        margin-top: 8px;
+        display: block;
+        white-space: pre;
+      }
+
+      /* ── Scale path ── */
+      .scale-step {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 4px;
+      }
+
+      .scale-line {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        flex-shrink: 0;
+      }
+
+      .scale-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: var(--accent);
+        flex-shrink: 0;
+        margin-top: 4px;
+        box-shadow: 0 0 10px rgba(74, 222, 128, 0.35);
+      }
+
+      .scale-dot.phase2 {
+        background: var(--accent2);
+        box-shadow: 0 0 10px rgba(34, 211, 238, 0.35);
+      }
+      .scale-dot.phase3 {
+        background: var(--accent5);
+        box-shadow: 0 0 10px rgba(167, 139, 250, 0.35);
+      }
+
+      .scale-connector {
+        width: 1px;
+        flex: 1;
+        background: var(--border2);
+        min-height: 30px;
+      }
+
+      .scale-content {
+        flex: 1;
+        padding-bottom: 28px;
+      }
+
+      .scale-tag {
+        font-family: var(--mono);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin-bottom: 4px;
+      }
+
+      .scale-tag.phase2 {
+        color: var(--accent2);
+      }
+      .scale-tag.phase3 {
+        color: var(--accent5);
+      }
+
+      .scale-title {
+        font-size: 15px;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+      .scale-desc {
+        font-size: 13px;
+        color: #6b7280;
+      }
+
+      /* ── Callout ── */
+      .callout {
+        border: 1px solid var(--border);
+        border-left: 3px solid var(--accent3);
+        background: rgba(245, 158, 11, 0.05);
+        border-radius: 6px;
+        padding: 14px 16px;
+        margin: 20px 0;
+      }
+
+      .callout.warn {
+        border-left-color: var(--red);
+        background: rgba(248, 113, 113, 0.05);
+      }
+      .callout.info {
+        border-left-color: var(--accent2);
+        background: rgba(34, 211, 238, 0.05);
+      }
+
+      .callout-label {
+        font-family: var(--mono);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        margin-bottom: 6px;
+        color: var(--accent3);
+      }
+
+      .callout.warn .callout-label {
+        color: var(--red);
+      }
+      .callout.info .callout-label {
+        color: var(--accent2);
+      }
+
+      .callout p {
+        font-size: 13px;
+        margin: 0;
+      }
+
+      /* ── Badge ── */
+      .badge {
+        display: inline-block;
+        font-family: var(--mono);
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        padding: 2px 8px;
+        border-radius: 4px;
+        margin-right: 4px;
+        vertical-align: middle;
+      }
+
+      .badge-green {
+        background: rgba(74, 222, 128, 0.12);
+        color: var(--accent);
+        border: 1px solid rgba(74, 222, 128, 0.2);
+      }
+      .badge-blue {
+        background: rgba(34, 211, 238, 0.12);
+        color: var(--accent2);
+        border: 1px solid rgba(34, 211, 238, 0.2);
+      }
+      .badge-yellow {
+        background: rgba(245, 158, 11, 0.12);
+        color: var(--accent3);
+        border: 1px solid rgba(245, 158, 11, 0.2);
+      }
+      .badge-red {
+        background: rgba(248, 113, 113, 0.12);
+        color: var(--red);
+        border: 1px solid rgba(248, 113, 113, 0.2);
+      }
+      .badge-purple {
+        background: rgba(167, 139, 250, 0.12);
+        color: var(--accent5);
+        border: 1px solid rgba(167, 139, 250, 0.2);
+      }
+
+      /* ── Decision table ── */
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+        margin: 16px 0;
+      }
+
+      thead tr {
+        border-bottom: 1px solid var(--border2);
+      }
+      th {
+        text-align: left;
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted);
+        letter-spacing: 0.06em;
+        padding: 8px 12px;
+      }
+      td {
+        padding: 9px 12px;
+        color: #9ca3af;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+      }
+      tr:last-child td {
+        border-bottom: none;
+      }
+      tr:hover td {
+        background: rgba(255, 255, 255, 0.015);
+      }
+      td:first-child {
+        color: var(--text);
+        font-weight: 500;
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+
+      /* ── Scrollbar ── */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: var(--bg2);
+      }
+      ::-webkit-scrollbar-thumb {
+        background: var(--border2);
+        border-radius: 3px;
+      }
+
+      /* ── Section divider ── */
+      .divider {
+        border: none;
+        border-top: 1px solid var(--border);
+        margin: 48px 0 0;
+      }
+
+      /* ── Responsive ── */
+      @media (max-width: 768px) {
+        .sidebar {
+          display: none;
+        }
+        .main {
+          padding: 28px 20px 60px;
+        }
+        .card-grid,
+        .card-grid-3 {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <!-- ── Sidebar ── -->
+      <aside class="sidebar">
+        <div class="sidebar-logo">Backend<span>Arch</span> v1</div>
+        <nav>
+          <div class="nav-section">Contents</div>
+          <a href="#structure" class="nav-link">Folder structure</a>
+          <a href="#decisions" class="nav-link">Design decisions</a>
+          <a
+            href="#decisions"
+            class="nav-link"
+            style="padding-left: 32px; font-size: 12px"
+            >What goes where</a
+          >
+          <a href="#scaling" class="nav-link">Scaling path</a>
+          <a href="#rules" class="nav-link">5 dev rules</a>
+          <div class="nav-section" style="margin-top: 16px">Quick ref</div>
+          <a href="#modules" class="nav-link">Module anatomy</a>
+          <a href="#env" class="nav-link">Config &amp; env</a>
+          <a href="#workers" class="nav-link">Workers</a>
+        </nav>
+      </aside>
+
+      <!-- ── Main ── -->
+      <main class="main">
+        <h1><span class="hl">Node.js</span><br />Architecture Guide</h1>
+        <p class="tagline">
+          // for 3–5 devs · Railway · PostgreSQL + Redis + BullMQ · multi-tenant
+        </p>
+
+        <!-- ════════════════════════════════════════
+       SECTION 1 — FOLDER STRUCTURE
+  ═══════════════════════════════════════════ -->
+        <h2 id="structure"><span class="num">01</span> Folder structure</h2>
+
+        <p>
+          This is the entire repo layout. Everything a new developer needs to
+          find is one folder deep from
+          <code
+            style="
+              font-family: var(--mono);
+              font-size: 12px;
+              color: var(--accent2);
+            "
+            >src/</code
+          >. No surprise subdirectories.
+        </p>
+
+        <div class="code-wrap">
+          <div class="code-header">
+            <span class="code-label">DIRECTORY TREE</span>
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+          </div>
+          <pre><span class="c-dir">src/</span>
+<span class="c-com">│</span>
+<span class="c-com">├── config/                   # All env vars, db, mailer, redis, queues</span>
+<span class="c-dir">│   ├── env.js                </span><span class="c-com"># zod-validated process.env — only place to read env</span>
+<span class="c-dir">│   ├── prisma.js             </span><span class="c-com"># Prisma client singleton</span>
+<span class="c-dir">│   ├── redis.js              </span><span class="c-com"># ioredis singleton</span>
+<span class="c-dir">│   ├── queue.js              </span><span class="c-com"># BullMQ connection factory</span>
+<span class="c-dir">│   ├── mailer.js             </span><span class="c-com"># Nodemailer / SendGrid setup</span>
+<span class="c-dir">│   └── constants.js          </span><span class="c-com"># App-wide constants (roles, statuses, limits)</span>
+<span class="c-com">│</span>
+<span class="c-com">├── middleware/               # Express middleware (request lifecycle)</span>
+<span class="c-dir">│   ├── auth.js               </span><span class="c-com"># JWT verification + attach req.user</span>
+<span class="c-dir">│   ├── rbac.js               </span><span class="c-com"># Role check factory: rbac('school_admin')</span>
+<span class="c-dir">│   ├── tenant.js             </span><span class="c-com"># Attach req.tenantId from JWT / subdomain</span>
+<span class="c-dir">│   ├── validate.js           </span><span class="c-com"># Zod request validation wrapper</span>
+<span class="c-dir">│   ├── rateLimit.js          </span><span class="c-com"># Per-route rate limiters</span>
+<span class="c-dir">│   ├── errorHandler.js       </span><span class="c-com"># Global error handler (last middleware)</span>
+<span class="c-dir">│   └── requestId.js          </span><span class="c-com"># Attach unique ID to every request</span>
+<span class="c-com">│</span>
+<span class="c-com">├── modules/                  # ★ Feature domains — one folder per feature</span>
+<span class="c-dir">│   ├── auth/</span>
+<span class="c-dir">│   │   ├── auth.controller.js    </span><span class="c-com"># HTTP in/out only. No business logic.</span>
+<span class="c-dir">│   │   ├── auth.service.js       </span><span class="c-com"># Business logic. Calls repository + other services.</span>
+<span class="c-dir">│   │   ├── auth.repository.js    </span><span class="c-com"># ALL Prisma queries for auth. Nothing else.</span>
+<span class="c-dir">│   │   ├── auth.routes.js        </span><span class="c-com"># Express router for this module</span>
+<span class="c-dir">│   │   ├── auth.validation.js    </span><span class="c-com"># Zod schemas for request bodies</span>
+<span class="c-dir">│   │   └── auth.test.js          </span><span class="c-com"># Tests live next to the module</span>
+<span class="c-dir">│   │</span>
+<span class="c-dir">│   ├── school/               </span><span class="c-com"># Tenant management (CRUD, settings)</span>
+<span class="c-dir">│   │   ├── school.controller.js</span>
+<span class="c-dir">│   │   ├── school.service.js</span>
+<span class="c-dir">│   │   ├── school.repository.js</span>
+<span class="c-dir">│   │   ├── school.routes.js</span>
+<span class="c-dir">│   │   └── school.validation.js</span>
+<span class="c-dir">│   │</span>
+<span class="c-dir">│   ├── student/              </span><span class="c-com"># Student records, bulk import</span>
+<span class="c-dir">│   │   ├── student.controller.js</span>
+<span class="c-dir">│   │   ├── student.service.js</span>
+<span class="c-dir">│   │   ├── student.repository.js</span>
+<span class="c-dir">│   │   ├── student.routes.js</span>
+<span class="c-dir">│   │   └── student.validation.js</span>
+<span class="c-dir">│   │</span>
+<span class="c-dir">│   ├── parent/               </span><span class="c-com"># Parent portal (read-only, notifications)</span>
+<span class="c-dir">│   │   └── ... (same 5 files)</span>
+<span class="c-dir">│   │</span>
+<span class="c-dir">│   ├── scan/                 </span><span class="c-com"># QR scan processing + anomaly detection</span>
+<span class="c-dir">│   │   ├── scan.controller.js</span>
+<span class="c-dir">│   │   ├── scan.service.js       </span><span class="c-com"># Anomaly logic lives here</span>
+<span class="c-dir">│   │   ├── scan.repository.js</span>
+<span class="c-dir">│   │   ├── scan.routes.js        </span><span class="c-com"># Public route — no auth required</span>
+<span class="c-dir">│   │   ├── scan.validation.js</span>
+<span class="c-dir">│   │   └── scan.worker.js        </span><span class="c-com"># Async post-scan tasks (notify, log)</span>
+<span class="c-dir">│   │</span>
+<span class="c-dir">│   ├── token/                </span><span class="c-com"># Student token/card lifecycle</span>
+<span class="c-dir">│   │   ├── token.controller.js</span>
+<span class="c-dir">│   │   ├── token.service.js</span>
+<span class="c-dir">│   │   ├── token.repository.js</span>
+<span class="c-dir">│   │   ├── token.routes.js</span>
+<span class="c-dir">│   │   ├── token.validation.js</span>
+<span class="c-dir">│   │   └── token.worker.js       </span><span class="c-com"># Batch token generation job</span>
+<span class="c-dir">│   │</span>
+<span class="c-dir">│   ├── card/                 </span><span class="c-com"># Card design generation (CPU heavy)</span>
+<span class="c-dir">│   │   ├── card.controller.js</span>
+<span class="c-dir">│   │   ├── card.service.js</span>
+<span class="c-dir">│   │   ├── card.repository.js</span>
+<span class="c-dir">│   │   ├── card.routes.js</span>
+<span class="c-dir">│   │   ├── card.validation.js</span>
+<span class="c-dir">│   │   └── card.worker.js        </span><span class="c-com"># CPU work must run in worker, never in request</span>
+<span class="c-dir">│   │</span>
+<span class="c-dir">│   ├── order/                </span><span class="c-com"># Order pipeline state machine</span>
+<span class="c-dir">│   │   ├── order.controller.js</span>
+<span class="c-dir">│   │   ├── order.service.js      </span><span class="c-com"># Orchestrates pipeline steps</span>
+<span class="c-dir">│   │   ├── order.repository.js</span>
+<span class="c-dir">│   │   ├── order.routes.js</span>
+<span class="c-dir">│   │   ├── order.validation.js</span>
+<span class="c-dir">│   │   ├── order.states.js       </span><span class="c-com"># State machine definition (allowed transitions)</span>
+<span class="c-dir">│   │   └── order.worker.js       </span><span class="c-com"># Advance pipeline steps asynchronously</span>
+<span class="c-dir">│   │</span>
+<span class="c-dir">│   └── notification/         </span><span class="c-com"># Email + SMS dispatch</span>
+<span class="c-dir">│       ├── notification.service.js  </span><span class="c-com"># Picks email vs SMS, applies templates</span>
+<span class="c-dir">│       ├── notification.worker.js   </span><span class="c-com"># Always async — never send in a request</span>
+<span class="c-dir">│       └── templates/</span>
+<span class="c-dir">│           ├── email/</span>
+<span class="c-dir">│           └── sms/</span>
+<span class="c-com">│</span>
+<span class="c-com">├── integrations/            # Third-party API wrappers (thin, stateless)</span>
+<span class="c-dir">│   ├── email/               </span><span class="c-com"># SendGrid / SES — pick one per ENV</span>
+<span class="c-dir">│   ├── sms/                 </span><span class="c-com"># MSG91 / Twilio</span>
+<span class="c-dir">│   ├── storage/             </span><span class="c-com"># S3 / R2 — upload, sign, delete</span>
+<span class="c-dir">│   └── payment/             </span><span class="c-com"># Razorpay / Stripe (add when needed)</span>
+<span class="c-com">│</span>
+<span class="c-com">├── shared/                  # Shared code modules can import from here only</span>
+<span class="c-dir">│   ├── errors.js            </span><span class="c-com"># ApiError class + error codes</span>
+<span class="c-dir">│   ├── response.js          </span><span class="c-com"># success() / paginate() response helpers</span>
+<span class="c-dir">│   ├── asyncHandler.js      </span><span class="c-com"># Wraps async controllers to catch errors</span>
+<span class="c-dir">│   ├── pagination.js        </span><span class="c-com"># Cursor/offset pagination helpers</span>
+<span class="c-dir">│   └── crypto.js            </span><span class="c-com"># Hash, encrypt, sign utilities</span>
+<span class="c-com">│</span>
+<span class="c-com">├── workers/                 # Worker process entry point + registry</span>
+<span class="c-dir">│   ├── index.js             </span><span class="c-com"># Imports and starts all workers</span>
+<span class="c-dir">│   └── registry.js          </span><span class="c-com"># Maps queue names → worker files</span>
+<span class="c-com">│</span>
+<span class="c-com">├── jobs/                    # Cron / scheduled jobs (not queue workers)</span>
+<span class="c-dir">│   ├── scheduler.js         </span><span class="c-com"># node-cron setup</span>
+<span class="c-dir">│   ├── invoice.job.js       </span><span class="c-com"># Monthly invoice generation</span>
+<span class="c-dir">│   └── cleanup.job.js       </span><span class="c-com"># Stale data / session cleanup</span>
+<span class="c-com">│</span>
+<span class="c-com">├── routes/                  # App-level router — imports all module routes</span>
+<span class="c-dir">│   └── index.js             </span><span class="c-com"># Mounts /api/v1/..., /api/public/..., /webhooks/</span>
+<span class="c-com">│</span>
+<span class="c-com">├── webhooks/                # Inbound webhooks (payment, email events)</span>
+<span class="c-dir">│   ├── razorpay.js</span>
+<span class="c-dir">│   └── sendgrid.js</span>
+<span class="c-com">│</span>
+<span class="c-com">├── app.js                   # Express app setup (no listen() call)</span>
+<span class="c-com">├── server.js                # process.listen — imports app.js</span>
+<span class="c-com">└── worker.js                # Worker process entry — separate from server.js</span></pre>
+        </div>
+
+        <!-- ════════════════════════════════════════
+       SECTION 1b — MODULE ANATOMY
+  ═══════════════════════════════════════════ -->
+        <h2 id="modules">
+          <span class="num">01b</span> Module anatomy — 5-file pattern
+        </h2>
+
+        <p>
+          Every module follows the exact same 5-file pattern. When a developer
+          opens any module folder, they always know what each file does.
+        </p>
+
+        <div class="card-grid">
+          <div class="card">
+            <div class="card-title">*.controller.js</div>
+            <p>
+              Parse request, call service, send response.
+              <strong>No business logic.</strong> No DB calls. Usually 5–15
+              lines per endpoint.
+            </p>
+          </div>
+          <div class="card">
+            <div class="card-title">*.service.js</div>
+            <p>
+              Business logic. Calls repository + integrations.
+              <strong>No direct Prisma.</strong> No req/res objects. Throwable
+              errors only.
+            </p>
+          </div>
+          <div class="card">
+            <div class="card-title">*.repository.js</div>
+            <p>
+              <strong>All database queries live here.</strong> Returns plain
+              objects. No business logic. One function per query.
+            </p>
+          </div>
+          <div class="card">
+            <div class="card-title">*.routes.js</div>
+            <p>
+              Express Router. Apply middleware here: auth, rbac, validate,
+              rateLimit. Mount in routes/index.js.
+            </p>
+          </div>
+          <div class="card">
+            <div class="card-title">*.validation.js</div>
+            <p>
+              Zod schemas for req.body, req.query, req.params. Exported and used
+              by validate() middleware.
+            </p>
+          </div>
+          <div class="card">
+            <div class="card-title">
+              *.worker.js <span class="badge badge-yellow">optional</span>
+            </div>
+            <p>
+              BullMQ worker for this module. Only present if the module has
+              async jobs. Registered in workers/registry.js.
+            </p>
+          </div>
+        </div>
+
+        <p>Module example — a controller calling a service:</p>
+
+        <div class="code-wrap">
+          <div class="code-header">
+            <span class="code-label">scan/scan.controller.js</span>
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+          </div>
+          <pre><span class="c-kw">import</span> { scanService } <span class="c-kw">from</span> <span class="c-str">'./scan.service.js'</span><span class="c-com">;</span>
+<span class="c-kw">import</span> { success } <span class="c-kw">from</span> <span class="c-str">'../../shared/response.js'</span><span class="c-com">;</span>
+
+<span class="c-kw">export const</span> <span class="c-fn">processScan</span> = <span class="c-fn">asyncHandler</span>(<span class="c-kw">async</span> (req, res) => {
+  <span class="c-kw">const</span> result = <span class="c-kw">await</span> scanService.<span class="c-fn">process</span>(req.body, req.tenantId);
+  <span class="c-fn">success</span>(res, result, <span class="c-str">'Scan recorded'</span>);
+});</pre>
+        </div>
+
+        <!-- ════════════════════════════════════════
+       SECTION 2 — DESIGN DECISIONS
+  ═══════════════════════════════════════════ -->
+        <h2 id="decisions"><span class="num">02</span> Design decisions</h2>
+
+        <h3>Why each folder exists</h3>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Folder</th>
+              <th>Responsibility</th>
+              <th>What NOT to put here</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>config/</td>
+              <td>Singletons, env vars, external connections</td>
+              <td>Business logic, request handling</td>
+            </tr>
+            <tr>
+              <td>middleware/</td>
+              <td>Cross-cutting request concerns</td>
+              <td>DB queries, business decisions</td>
+            </tr>
+            <tr>
+              <td>modules/</td>
+              <td>All feature code</td>
+              <td>Shared utilities, config, infra</td>
+            </tr>
+            <tr>
+              <td>shared/</td>
+              <td>Code needed by 2+ modules</td>
+              <td>Module-specific logic</td>
+            </tr>
+            <tr>
+              <td>integrations/</td>
+              <td>Third-party SDK wrappers</td>
+              <td>Business rules about when to call them</td>
+            </tr>
+            <tr>
+              <td>workers/</td>
+              <td>Worker process bootstrap</td>
+              <td>Job logic (that lives in module *.worker.js)</td>
+            </tr>
+            <tr>
+              <td>jobs/</td>
+              <td>Scheduled / cron tasks</td>
+              <td>Queue workers (those go in modules/)</td>
+            </tr>
+            <tr>
+              <td>routes/</td>
+              <td>Single router mounting all modules</td>
+              <td>Route handlers, middleware definitions</td>
+            </tr>
+            <tr>
+              <td>webhooks/</td>
+              <td>Inbound third-party webhooks</td>
+              <td>Outbound API calls</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3 id="env">Config &amp; env — the only rule that matters</h3>
+
+        <div class="code-wrap">
+          <div class="code-header">
+            <span class="code-label"
+              >config/env.js — validate at startup, crash early</span
+            >
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+          </div>
+          <pre><span class="c-kw">import</span> { z } <span class="c-kw">from</span> <span class="c-str">'zod'</span>;
+
+<span class="c-kw">const</span> schema = z.<span class="c-fn">object</span>({
+  NODE_ENV:     z.<span class="c-fn">enum</span>([<span class="c-str">'development'</span>, <span class="c-str">'production'</span>, <span class="c-str">'test'</span>]),
+  DATABASE_URL: z.<span class="c-fn">string</span>().<span class="c-fn">url</span>(),
+  REDIS_URL:    z.<span class="c-fn">string</span>().<span class="c-fn">url</span>(),
+  JWT_SECRET:   z.<span class="c-fn">string</span>().<span class="c-fn">min</span>(<span class="c-str">32</span>),
+  <span class="c-com">// ... all env vars declared here</span>
+});
+
+<span class="c-kw">export const</span> env = schema.<span class="c-fn">parse</span>(process.env); <span class="c-com">// throws on startup if invalid</span>
+
+<span class="c-com">// ✅ import { env } from '../config/env.js'</span>
+<span class="c-com">// ❌ process.env.ANYTHING directly anywhere else</span></pre>
+        </div>
+
+        <h3>Multi-tenancy — how to implement it</h3>
+
+        <p>
+          Every school is a tenant. The
+          <strong>tenant ID always comes from the JWT</strong>, never from query
+          params or request bodies — users cannot spoof their school. Apply the
+          tenant middleware on all authenticated routes and it becomes a free
+          filter.
+        </p>
+
+        <div class="code-wrap">
+          <div class="code-header">
+            <span class="code-label">middleware/tenant.js</span>
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+          </div>
+          <pre><span class="c-com">// After auth middleware attaches req.user:</span>
+<span class="c-kw">export const</span> <span class="c-fn">tenantScope</span> = (req, res, next) => {
+  req.tenantId = req.user.schoolId; <span class="c-com">// set from JWT, always</span>
+  <span class="c-fn">next</span>();
+};
+
+<span class="c-com">// In every repository query:</span>
+<span class="c-kw">export const</span> <span class="c-fn">findStudents</span> = (tenantId, opts) =>
+  prisma.student.<span class="c-fn">findMany</span>({ where: { schoolId: tenantId, ...opts } });</pre>
+        </div>
+
+        <div class="callout warn">
+          <div class="callout-label">Critical</div>
+          <p>
+            Super admin routes skip tenant scoping — they operate across all
+            schools. Put them in a separate route prefix (<code
+              style="font-family: var(--mono); font-size: 12px"
+              >/api/admin/</code
+            >) with a dedicated RBAC check, and never share repository functions
+            between super admin and school admin paths.
+          </p>
+        </div>
+
+        <h3 id="workers">Workers — same process vs separate</h3>
+
+        <p>
+          Start with workers in the same process. This keeps local dev simple
+          and Railway costs low. The design is already split-ready because
+          <code style="font-family: var(--mono); font-size: 12px"
+            >worker.js</code
+          >
+          is a separate entry point.
+        </p>
+
+        <div class="code-wrap">
+          <div class="code-header">
+            <span class="code-label"
+              >workers/registry.js — central worker map</span
+            >
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+          </div>
+          <pre><span class="c-kw">import</span> { ScanWorker }         <span class="c-kw">from</span> <span class="c-str">'../modules/scan/scan.worker.js'</span>;
+<span class="c-kw">import</span> { TokenWorker }        <span class="c-kw">from</span> <span class="c-str">'../modules/token/token.worker.js'</span>;
+<span class="c-kw">import</span> { CardWorker }         <span class="c-kw">from</span> <span class="c-str">'../modules/card/card.worker.js'</span>;
+<span class="c-kw">import</span> { OrderWorker }        <span class="c-kw">from</span> <span class="c-str">'../modules/order/order.worker.js'</span>;
+<span class="c-kw">import</span> { NotificationWorker } <span class="c-kw">from</span> <span class="c-str">'../modules/notification/notification.worker.js'</span>;
+
+<span class="c-kw">export const</span> WORKERS = [
+  ScanWorker, TokenWorker, CardWorker, OrderWorker, NotificationWorker
+];</pre>
+        </div>
+
+        <div class="code-wrap">
+          <div class="code-header">
+            <span class="code-label"
+              >worker.js — separate entry point (split-ready)</span
+            >
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+          </div>
+          <pre><span class="c-com">// node src/worker.js  ← runs workers only (no HTTP server)</span>
+<span class="c-kw">import</span> { WORKERS } <span class="c-kw">from</span> <span class="c-str">'./workers/registry.js'</span>;
+
+<span class="c-kw">for</span> (<span class="c-kw">const</span> Worker <span class="c-kw">of</span> WORKERS) { <span class="c-kw">new</span> <span class="c-fn">Worker</span>(); }
+console.<span class="c-fn">log</span>(<span class="c-str">'Workers started'</span>);</pre>
+        </div>
+
+        <div class="code-wrap">
+          <div class="code-header">
+            <span class="code-label">package.json scripts</span>
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+          </div>
+          <pre>{
+  <span class="c-str">"scripts"</span>: {
+    <span class="c-str">"start"</span>:        <span class="c-str">"node src/server.js"</span>,            <span class="c-com">// API only</span>
+    <span class="c-str">"start:worker"</span>: <span class="c-str">"node src/worker.js"</span>,            <span class="c-com">// workers only</span>
+    <span class="c-str">"start:all"</span>:    <span class="c-str">"node src/server.js & node src/worker.js"</span>,  <span class="c-com">// local dev</span>
+    <span class="c-str">"dev"</span>:          <span class="c-str">"nodemon src/server.js"</span>
+  }
+}</pre>
+        </div>
+
+        <!-- ════════════════════════════════════════
+       SECTION 3 — SCALING PATH
+  ═══════════════════════════════════════════ -->
+        <h2 id="scaling"><span class="num">03</span> Scaling path</h2>
+
+        <p>
+          Every future split is just "move a folder and update an import."
+          Nothing gets rewritten.
+        </p>
+
+        <div style="margin: 28px 0">
+          <div class="scale-step">
+            <div class="scale-line">
+              <div class="scale-dot"></div>
+              <div class="scale-connector"></div>
+            </div>
+            <div class="scale-content">
+              <div class="scale-tag">Phase 1 — now</div>
+              <div class="scale-title">
+                Single Railway service, everything together
+              </div>
+              <div class="scale-desc">
+                One process runs API + workers. Zero infra cost.
+                <code style="font-family: var(--mono); font-size: 11px"
+                  >start:all</code
+                >
+                in Railway. Good until ~50 req/s or card generation causes
+                latency spikes.
+              </div>
+            </div>
+          </div>
+
+          <div class="scale-step">
+            <div class="scale-line">
+              <div class="scale-dot phase2"></div>
+              <div class="scale-connector"></div>
+            </div>
+            <div class="scale-content">
+              <div class="scale-tag phase2">
+                Phase 2 — when CPU spikes hit API latency
+              </div>
+              <div class="scale-title">
+                Split workers into a second Railway service
+              </div>
+              <div class="scale-desc">
+                Add a second service in Railway. Point it at
+                <code style="font-family: var(--mono); font-size: 11px"
+                  >start:worker</code
+                >. Both connect to the same Postgres + Redis.
+                <strong>Zero code change</strong> — just a new Railway config.
+                Card generation and token batch jobs stop competing with HTTP
+                requests.
+              </div>
+            </div>
+          </div>
+
+          <div class="scale-step">
+            <div class="scale-line">
+              <div class="scale-dot phase2"></div>
+              <div class="scale-connector"></div>
+            </div>
+            <div class="scale-content">
+              <div class="scale-tag phase2">
+                Phase 2b — when public scan API needs to scale independently
+              </div>
+              <div class="scale-title">
+                Extract public API to its own service
+              </div>
+              <div class="scale-desc">
+                The
+                <code style="font-family: var(--mono); font-size: 11px"
+                  >scan/</code
+                >
+                module has no dependencies on admin modules. Copy the module
+                folder to a new repo or use a monorepo. Mount only scan routes.
+                Add an Nginx or Cloudflare Worker in front. Admin API stays on
+                the original service.
+              </div>
+            </div>
+          </div>
+
+          <div class="scale-step">
+            <div class="scale-line">
+              <div class="scale-dot phase3"></div>
+              <div class="scale-connector"></div>
+            </div>
+            <div class="scale-content">
+              <div class="scale-tag phase3">
+                Phase 3 — when teams grow and deploys collide
+              </div>
+              <div class="scale-title">Extract modules into microservices</div>
+              <div class="scale-desc">
+                Each module folder becomes a service. Because modules never
+                import each other directly (they go through shared/ or publish
+                events), this is mechanical — not architectural. Start with the
+                highest-load module. Add an API gateway (Nginx, Traefik, or
+                Kong) in front of all services.
+              </div>
+            </div>
+          </div>
+
+          <div class="scale-step">
+            <div class="scale-line">
+              <div class="scale-dot phase3"></div>
+            </div>
+            <div class="scale-content">
+              <div class="scale-tag phase3">Phase 4 — add payment gateway</div>
+              <div class="scale-title">
+                integrations/payment/ is already the right place
+              </div>
+              <div class="scale-desc">
+                The folder exists and is empty by design. Add your Razorpay or
+                Stripe adapter there, wire it into order.service.js, and mount
+                the inbound webhook in webhooks/. Nothing else changes.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="callout info">
+          <div class="callout-label">Event-driven bridge for phase 3</div>
+          <p>
+            When splitting into microservices, replace direct service imports
+            with BullMQ events or Redis pub/sub. The queue names are already
+            defined centrally — you're just changing what's on the other side of
+            the queue from an in-process worker to a remote service.
+          </p>
+        </div>
+
+        <!-- ════════════════════════════════════════
+       SECTION 4 — 5 RULES
+  ═══════════════════════════════════════════ -->
+        <h2 id="rules">
+          <span class="num">04</span> 5 rules for every developer
+        </h2>
+
+        <p>
+          Post these in your README. New devs read these before they write their
+          first line.
+        </p>
+
+        <ul class="rules">
+          <li class="rule">
+            <div class="rule-num">01</div>
+            <div class="rule-body">
+              <div class="rule-title">
+                All DB queries go in
+                <code style="font-family: var(--mono); font-size: 13px"
+                  >*.repository.js</code
+                >
+                — nowhere else
+              </div>
+              <div class="rule-desc">
+                If you write
+                <code style="font-family: var(--mono); font-size: 12px"
+                  >prisma.anything</code
+                >
+                in a service or controller, it's a bug. Repositories return
+                plain JS objects — never Prisma models. This is the rule that
+                makes splitting into microservices cheap later.
+              </div>
+              <code class="rule-code"
+                >✅ studentRepository.findBySchool(tenantId) ❌
+                prisma.student.findMany({ where: { schoolId } }) // in a
+                service</code
+              >
+            </div>
+          </li>
+
+          <li class="rule">
+            <div class="rule-num">02</div>
+            <div class="rule-body">
+              <div class="rule-title">
+                Modules never import from each other — use
+                <code style="font-family: var(--mono); font-size: 13px"
+                  >shared/</code
+                >
+                or pass data as arguments
+              </div>
+              <div class="rule-desc">
+                If scan needs to know about a student, the scan service receives
+                a studentId and calls the student repository directly — or the
+                student module exposes a function in shared/. Circular imports
+                and tight coupling are how monoliths become unmaintainable.
+              </div>
+              <code class="rule-code"
+                >✅ import { findStudentById } from
+                '../../shared/student.helpers.js' ❌ import { studentService }
+                from '../student/student.service.js'</code
+              >
+            </div>
+          </li>
+
+          <li class="rule">
+            <div class="rule-num">03</div>
+            <div class="rule-body">
+              <div class="rule-title">
+                Never send email, SMS, or do CPU work inside a request handler
+              </div>
+              <div class="rule-desc">
+                Controllers respond fast and enqueue everything else.
+                Notifications, card generation, token batch jobs — all go to a
+                BullMQ queue. If something takes more than ~50ms, it belongs in
+                a worker. This keeps p99 latency low even when Redis is slow.
+              </div>
+              <code class="rule-code"
+                >✅ await notificationQueue.add('send-welcome', { userId }) ❌
+                await emailService.send(...) // blocks the request</code
+              >
+            </div>
+          </li>
+
+          <li class="rule">
+            <div class="rule-num">04</div>
+            <div class="rule-body">
+              <div class="rule-title">
+                Read
+                <code style="font-family: var(--mono); font-size: 13px"
+                  >env.js</code
+                >
+                — never
+                <code style="font-family: var(--mono); font-size: 13px"
+                  >process.env</code
+                >
+                directly
+              </div>
+              <div class="rule-desc">
+                config/env.js validates every variable at startup. The app
+                crashes immediately with a clear message if anything is missing.
+                If you read process.env directly in a module, missing vars
+                surface as cryptic runtime errors at 3am instead of a clean
+                startup failure in CI.
+              </div>
+              <code class="rule-code"
+                >✅ import { env } from '../../config/env.js' ❌
+                process.env.JWT_SECRET // anywhere outside config/</code
+              >
+            </div>
+          </li>
+
+          <li class="rule">
+            <div class="rule-num">05</div>
+            <div class="rule-body">
+              <div class="rule-title">
+                Tenant ID always comes from the JWT — never from the request
+              </div>
+              <div class="rule-desc">
+                auth middleware sets req.user, tenant middleware sets
+                req.tenantId from req.user.schoolId. Every repository call
+                receives tenantId as a parameter. A user should never be able to
+                pass a schoolId that affects what data they see. Super admin is
+                the only exception and has separate route guards.
+              </div>
+              <code class="rule-code"
+                >✅ studentRepository.findAll(req.tenantId, filters) ❌
+                studentRepository.findAll(req.body.schoolId, filters)</code
+              >
+            </div>
+          </li>
+        </ul>
+
+        <div class="callout" style="margin-top: 40px">
+          <div class="callout-label">Bonus — file naming</div>
+          <p>
+            Always
+            <code style="font-family: var(--mono); font-size: 12px"
+              >module.type.js</code
+            >
+            — e.g.
+            <code style="font-family: var(--mono); font-size: 12px"
+              >scan.service.js</code
+            >,
+            <code style="font-family: var(--mono); font-size: 12px"
+              >order.worker.js</code
+            >. The type suffix means you can search for "controller" across the
+            codebase and find only controllers. Never abbreviate:
+            <code style="font-family: var(--mono); font-size: 12px"
+              >ctrl.js</code
+            >,
+            <code style="font-family: var(--mono); font-size: 12px">svc.js</code
+            >,
+            <code style="font-family: var(--mono); font-size: 12px"
+              >repo.js</code
+            >
+            are not allowed.
+          </p>
+        </div>
+
+        <hr class="divider" />
+
+        <p
+          style="
+            color: var(--dim);
+            font-family: var(--mono);
+            font-size: 11px;
+            margin-top: 24px;
+            text-align: center;
+          "
+        >
+          generated for your stack · PostgreSQL + Redis + BullMQ · Railway
+        </p>
+      </main>
+    </div>
+
+    <script>
+      function copyCode(btn) {
+        const pre = btn.closest(".code-wrap").querySelector("pre");
+        navigator.clipboard.writeText(pre.innerText).then(() => {
+          btn.textContent = "copied!";
+          setTimeout(() => (btn.textContent = "copy"), 1500);
+        });
+      }
+
+      const links = document.querySelectorAll(".nav-link");
+      function setActive() {
+        const pos = window.scrollY + 100;
+        document.querySelectorAll("h2[id]").forEach((h) => {
+          if (h.offsetTop <= pos) {
+            links.forEach((l) => l.classList.remove("active"));
+            const active = document.querySelector(`.nav-link[href="#${h.id}"]`);
+            if (active) active.classList.add("active");
+          }
+        });
+      }
+      window.addEventListener("scroll", setActive, { passive: true });
+      setActive();
+    </script>
+  </body>
+</html>

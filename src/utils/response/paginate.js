@@ -22,10 +22,7 @@ const DEFAULT_CURSOR = null;
  */
 export function parseOffsetParams(query) {
   const page = Math.max(1, parseInt(query.page ?? 1, 10));
-  const limit = Math.min(
-    MAX_LIMIT,
-    Math.max(1, parseInt(query.limit ?? DEFAULT_LIMIT, 10)),
-  );
+  const limit = Math.min(MAX_LIMIT, Math.max(1, parseInt(query.limit ?? DEFAULT_LIMIT, 10)));
 
   return {
     page,
@@ -84,12 +81,9 @@ export async function paginateOffset(model, args, query) {
  * @returns {{ cursor: string|null, take: number, direction: 'forward'|'backward' }}
  */
 export function parseCursorParams(query) {
-  const limit = Math.min(
-    MAX_LIMIT,
-    Math.max(1, parseInt(query.limit ?? DEFAULT_LIMIT, 10)),
-  );
+  const limit = Math.min(MAX_LIMIT, Math.max(1, parseInt(query.limit ?? DEFAULT_LIMIT, 10)));
   const cursor = query.cursor ?? DEFAULT_CURSOR;
-  const direction = query.direction === "backward" ? "backward" : "forward";
+  const direction = query.direction === 'backward' ? 'backward' : 'forward';
 
   return { cursor, take: limit, limit, direction };
 }
@@ -108,13 +102,13 @@ export function parseCursorParams(query) {
  */
 export async function paginateCursor(model, args, query) {
   const { cursor, take, limit } = parseCursorParams(query);
-  const cursorField = args.cursorField ?? "id";
+  const cursorField = args.cursorField ?? 'id';
 
   // Fetch one extra to determine if next page exists
   const queryArgs = {
     where: args.where,
     select: args.select,
-    orderBy: args.orderBy ?? { created_at: "desc" },
+    orderBy: args.orderBy ?? { created_at: 'desc' },
     take: take + 1,
     ...(cursor && {
       cursor: { [cursorField]: cursor },
@@ -127,9 +121,7 @@ export async function paginateCursor(model, args, query) {
 
   if (hasMore) rows.pop(); // remove the extra row
 
-  const nextCursor = hasMore
-    ? (rows[rows.length - 1]?.[cursorField] ?? null)
-    : null;
+  const nextCursor = hasMore ? (rows[rows.length - 1]?.[cursorField] ?? null) : null;
   const prevCursor = cursor ? (rows[0]?.[cursorField] ?? null) : null;
 
   return {

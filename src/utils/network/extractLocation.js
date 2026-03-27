@@ -8,11 +8,11 @@
 // Falls back gracefully on timeout/failure — scan never blocked by geo failure
 // =============================================================================
 
-import { logger } from "../../config/logger.js";
-import { isPrivateIp } from "./extractIp.js";
-import { cacheAside, TTL, CacheKey } from "../Cache/cache.js";
+import { logger } from '#config/logger.js';
+import { isPrivateIp } from './extractIp.js';
+import { cacheAside, TTL, CacheKey } from './Cache/cache.js';
 
-const GEO_API_URL = "http://ip-api.com/json";
+const GEO_API_URL = 'http://ip-api.com/json';
 const GEO_TIMEOUT = 2000; // 2 second timeout — never slow down scan
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -21,7 +21,7 @@ const GEO_TIMEOUT = 2000; // 2 second timeout — never slow down scan
  * @typedef {Object} GeoLocation
  * @property {string|null} city
  * @property {string|null} region
- * @property {string|null} country      - ISO 3166-1 alpha-2 (e.g. "IN")
+ * @property {string|null} country      - ISO 3166-1 alpha-2 (e.g. 'IN')
  * @property {string|null} countryName
  * @property {number|null} latitude     - Only if consent given
  * @property {number|null} longitude    - Only if consent given
@@ -49,11 +49,11 @@ export async function getLocationFromIp(ip) {
     isp_vpn: false,
   };
 
-  if (!ip || ip === "0.0.0.0") return EMPTY;
+  if (!ip || ip === '0.0.0.0') return EMPTY;
 
   // Skip private/loopback IPs
   if (isPrivateIp(ip)) {
-    return { ...EMPTY, city: "Private Network" };
+    return { ...EMPTY, city: 'Private Network' };
   }
 
   // Cache by IP — same IP scanned repeatedly hits cache, not API
@@ -66,10 +66,7 @@ export async function getLocationFromIp(ip) {
       })) ?? EMPTY
     );
   } catch (err) {
-    logger.warn(
-      { ip, err: err.message },
-      "GeoIP lookup failed — proceeding without location",
-    );
+    logger.warn({ ip, err: err.message }, 'GeoIP lookup failed — proceeding without location');
     return EMPTY;
   }
 }
@@ -85,27 +82,27 @@ async function fetchGeoData(ip) {
       `${GEO_API_URL}/${ip}?fields=status,city,regionName,country,countryCode,proxy,hosting,lat,lon`,
       {
         signal: controller.signal,
-      },
+      }
     );
 
     if (!res.ok) return null;
 
     const data = await res.json();
 
-    if (data.status !== "success") return null;
+    if (data.status !== 'success') return null;
 
     return {
       city: data.city ?? null,
       region: data.regionName ?? null,
       country: data.countryCode ?? null, // "IN"
-      countryName: data.country ?? null, // "India"
+      countryName: data.country ?? null, // 'India'
       latitude: null, // Never store from IP — no consent
       longitude: null, // Never store from IP — no consent
       isp_vpn: !!(data.proxy || data.hosting),
     };
   } catch (err) {
-    if (err.name === "AbortError") {
-      logger.warn({ ip }, "GeoIP request timed out after 2s");
+    if (err.name === 'AbortError') {
+      logger.warn({ ip }, 'GeoIP request timed out after 2s');
     }
     return null;
   } finally {
@@ -129,10 +126,7 @@ export async function isVpnOrProxy(ip) {
  * Check if two IPs are from same country — for multi-location anomaly
  */
 export async function isSameCountry(ip1, ip2) {
-  const [geo1, geo2] = await Promise.all([
-    getLocationFromIp(ip1),
-    getLocationFromIp(ip2),
-  ]);
+  const [geo1, geo2] = await Promise.all([getLocationFromIp(ip1), getLocationFromIp(ip2)]);
   if (!geo1?.country || !geo2?.country) return null; // unknown
   return geo1.country === geo2.country;
 }
