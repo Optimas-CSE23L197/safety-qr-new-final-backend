@@ -11,8 +11,8 @@ import {
   JOB_NAMES,
   REDIS_KEYS,
   DISTRIBUTED_LOCK_TTL_MS,
-} from './orchestrator.constants.js';
-import { getQueue } from './queues/queue.manager.js';
+} from '../orchestrator.constants.js';
+import { getQueue } from '../queues/queue.manager.js';
 import {
   claimExecution,
   markCompleted,
@@ -162,7 +162,7 @@ export const startOrderOrchestration = async (orderId, actor, options = {}) => {
       'Order created and pipeline initialized',
       {
         orderType: order.order_type,
-        cardCount: order.card_count,
+        cardCount: order.student_count,
         channel: order.channel,
       },
       null
@@ -173,7 +173,7 @@ export const startOrderOrchestration = async (orderId, actor, options = {}) => {
     await safePublishEvent(ORDER_EVENTS.ORDER_CREATED, orderId, {
       schoolId: order.school_id,
       orderType: order.order_type,
-      cardCount: order.card_count,
+      cardCount: order.student_count,
       channel: order.channel,
       createdBy: actor.id,
     });

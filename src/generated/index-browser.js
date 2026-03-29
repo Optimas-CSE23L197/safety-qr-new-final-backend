@@ -249,10 +249,9 @@ exports.Prisma.SuperAdminScalarFieldEnum = {
   updated_at: 'updated_at'
 };
 
-exports.Prisma.OtpLogScalarFieldEnum = {
+exports.Prisma.OtpAuditLogScalarFieldEnum = {
   id: 'id',
   phone: 'phone',
-  otp_hash: 'otp_hash',
   purpose: 'purpose',
   attempts: 'attempts',
   max_attempts: 'max_attempts',
@@ -282,7 +281,19 @@ exports.Prisma.StudentScalarFieldEnum = {
   is_active: 'is_active',
   created_at: 'created_at',
   updated_at: 'updated_at',
-  deleted_at: 'deleted_at'
+  deleted_at: 'deleted_at',
+  card_number: 'card_number',
+  token: 'token',
+  token_hash: 'token_hash',
+  scan_url: 'scan_url',
+  qr_code_url: 'qr_code_url',
+  card_design_url: 'card_design_url',
+  pipeline_status: 'pipeline_status',
+  pipeline_started_at: 'pipeline_started_at',
+  pipeline_completed_at: 'pipeline_completed_at',
+  design_status: 'design_status',
+  design_started_at: 'design_started_at',
+  design_completed_at: 'design_completed_at'
 };
 
 exports.Prisma.ParentStudentScalarFieldEnum = {
@@ -404,7 +415,7 @@ exports.Prisma.CardOrderScalarFieldEnum = {
   subscription_id: 'subscription_id',
   order_number: 'order_number',
   order_type: 'order_type',
-  card_count: 'card_count',
+  student_count: 'student_count',
   status: 'status',
   order_channel: 'order_channel',
   unit_price: 'unit_price',
@@ -414,8 +425,12 @@ exports.Prisma.CardOrderScalarFieldEnum = {
   payment_status: 'payment_status',
   advance_paid_at: 'advance_paid_at',
   balance_paid_at: 'balance_paid_at',
-  advance_invoice_id: 'advance_invoice_id',
-  balance_invoice_id: 'balance_invoice_id',
+  pipeline_completed_count: 'pipeline_completed_count',
+  design_completed_count: 'design_completed_count',
+  pipeline_started_at: 'pipeline_started_at',
+  design_started_at: 'design_started_at',
+  partial_invoice_id: 'partial_invoice_id',
+  final_invoice_id: 'final_invoice_id',
   delivery_name: 'delivery_name',
   delivery_phone: 'delivery_phone',
   delivery_address: 'delivery_address',
@@ -458,7 +473,7 @@ exports.Prisma.CardOrderItemScalarFieldEnum = {
   roll_number: 'roll_number',
   photo_url: 'photo_url',
   status: 'status',
-  qr_generated: 'qr_generated',
+  pipeline_status: 'pipeline_status',
   card_design_url: 'card_design_url',
   card_printed: 'card_printed',
   has_issue: 'has_issue',
@@ -473,6 +488,7 @@ exports.Prisma.OrderStatusLogScalarFieldEnum = {
   from_status: 'from_status',
   to_status: 'to_status',
   changed_by: 'changed_by',
+  actor_type: 'actor_type',
   note: 'note',
   metadata: 'metadata',
   created_at: 'created_at'
@@ -588,8 +604,10 @@ exports.Prisma.InvoiceScalarFieldEnum = {
   school_id: 'school_id',
   order_id: 'order_id',
   subscription_id: 'subscription_id',
+  category: 'category',
+  order_invoice_type: 'order_invoice_type',
+  renewal_invoice_type: 'renewal_invoice_type',
   invoice_number: 'invoice_number',
-  invoice_type: 'invoice_type',
   student_count: 'student_count',
   unit_price: 'unit_price',
   amount: 'amount',
@@ -599,7 +617,8 @@ exports.Prisma.InvoiceScalarFieldEnum = {
   issued_at: 'issued_at',
   due_at: 'due_at',
   paid_at: 'paid_at',
-  pdf_url: 'pdf_url'
+  pdf_url: 'pdf_url',
+  pdf_generated_at: 'pdf_generated_at'
 };
 
 exports.Prisma.PaymentScalarFieldEnum = {
@@ -610,101 +629,38 @@ exports.Prisma.PaymentScalarFieldEnum = {
   subscription_id: 'subscription_id',
   amount: 'amount',
   status: 'status',
-  provider: 'provider',
-  provider_ref: 'provider_ref',
   payment_mode: 'payment_mode',
   is_advance: 'is_advance',
   metadata: 'metadata',
   created_at: 'created_at'
 };
 
-exports.Prisma.FeatureFlagScalarFieldEnum = {
+exports.Prisma.DashboardNotificationScalarFieldEnum = {
   id: 'id',
-  key: 'key',
-  enabled: 'enabled',
-  description: 'description',
+  user_id: 'user_id',
+  user_type: 'user_type',
+  type: 'type',
+  title: 'title',
+  body: 'body',
   metadata: 'metadata',
-  updated_at: 'updated_at'
-};
-
-exports.Prisma.SchoolFeatureFlagScalarFieldEnum = {
-  id: 'id',
-  school_id: 'school_id',
-  key: 'key',
-  enabled: 'enabled',
-  updated_at: 'updated_at'
-};
-
-exports.Prisma.CardTemplateScalarFieldEnum = {
-  id: 'id',
-  school_id: 'school_id',
-  logo_url: 'logo_url',
-  background_color: 'background_color',
-  primary_color: 'primary_color',
-  text_color: 'text_color',
-  qr_dark_color: 'qr_dark_color',
-  qr_light_color: 'qr_light_color',
-  cover_accent_color: 'cover_accent_color',
-  cover_tagline: 'cover_tagline',
-  cards_per_sheet: 'cards_per_sheet',
-  card_width: 'card_width',
-  card_height: 'card_height',
-  show_student_name: 'show_student_name',
-  show_class: 'show_class',
-  show_school_name: 'show_school_name',
-  show_photo: 'show_photo',
-  is_locked: 'is_locked',
-  updated_by: 'updated_by',
+  read: 'read',
+  read_at: 'read_at',
   created_at: 'created_at',
-  updated_at: 'updated_at'
-};
-
-exports.Prisma.SessionScalarFieldEnum = {
-  id: 'id',
-  parent_user_id: 'parent_user_id',
+  school_id: 'school_id',
+  order_id: 'order_id',
   school_user_id: 'school_user_id',
-  admin_user_id: 'admin_user_id',
-  refresh_token_hash: 'refresh_token_hash',
-  device_id: 'device_id',
-  device_info: 'device_info',
-  user_agent: 'user_agent',
-  ip_address: 'ip_address',
-  is_active: 'is_active',
-  revoked_at: 'revoked_at',
-  revoke_reason: 'revoke_reason',
-  last_active_at: 'last_active_at',
-  expires_at: 'expires_at',
-  created_at: 'created_at'
-};
-
-exports.Prisma.BlacklistTokenScalarFieldEnum = {
-  token_hash: 'token_hash',
-  expires_at: 'expires_at',
-  created_at: 'created_at'
-};
-
-exports.Prisma.DeviceLoginLogScalarFieldEnum = {
-  id: 'id',
-  parent_id: 'parent_id',
-  device_name: 'device_name',
-  device_model: 'device_model',
-  platform: 'platform',
-  os_version: 'os_version',
-  app_version: 'app_version',
-  ip_address: 'ip_address',
-  ip_city: 'ip_city',
-  ip_country: 'ip_country',
-  login_at: 'login_at',
-  email_sent: 'email_sent',
-  email_sent_at: 'email_sent_at',
-  was_forced: 'was_forced'
+  super_admin_id: 'super_admin_id'
 };
 
 exports.Prisma.ScanLogScalarFieldEnum = {
   id: 'id',
   token_id: 'token_id',
+  student_id: 'student_id',
   school_id: 'school_id',
   result: 'result',
+  scan_type: 'scan_type',
+  scanned_by: 'scanned_by',
+  scanned_at: 'scanned_at',
   ip_address: 'ip_address',
   ip_city: 'ip_city',
   ip_country: 'ip_country',
@@ -714,9 +670,14 @@ exports.Prisma.ScanLogScalarFieldEnum = {
   latitude: 'latitude',
   longitude: 'longitude',
   device_hash: 'device_hash',
+  device_info: 'device_info',
   user_agent: 'user_agent',
   scan_purpose: 'scan_purpose',
   response_time_ms: 'response_time_ms',
+  emergency_dispatched: 'emergency_dispatched',
+  dispatched_at: 'dispatched_at',
+  dispatched_channels: 'dispatched_channels',
+  failed_channels: 'failed_channels',
   created_at: 'created_at'
 };
 
@@ -803,8 +764,10 @@ exports.Prisma.NotificationScalarFieldEnum = {
   type: 'type',
   channel: 'channel',
   status: 'status',
+  recipient: 'recipient',
+  subject: 'subject',
+  content: 'content',
   payload: 'payload',
-  pref_checked: 'pref_checked',
   retry_count: 'retry_count',
   sent_at: 'sent_at',
   error: 'error',
@@ -994,6 +957,88 @@ exports.Prisma.StepLogScalarFieldEnum = {
   created_at: 'created_at'
 };
 
+exports.Prisma.FeatureFlagScalarFieldEnum = {
+  id: 'id',
+  key: 'key',
+  enabled: 'enabled',
+  description: 'description',
+  metadata: 'metadata',
+  updated_at: 'updated_at'
+};
+
+exports.Prisma.SchoolFeatureFlagScalarFieldEnum = {
+  id: 'id',
+  school_id: 'school_id',
+  key: 'key',
+  enabled: 'enabled',
+  updated_at: 'updated_at'
+};
+
+exports.Prisma.CardTemplateScalarFieldEnum = {
+  id: 'id',
+  school_id: 'school_id',
+  logo_url: 'logo_url',
+  background_color: 'background_color',
+  primary_color: 'primary_color',
+  text_color: 'text_color',
+  qr_dark_color: 'qr_dark_color',
+  qr_light_color: 'qr_light_color',
+  cover_accent_color: 'cover_accent_color',
+  cover_tagline: 'cover_tagline',
+  cards_per_sheet: 'cards_per_sheet',
+  card_width: 'card_width',
+  card_height: 'card_height',
+  show_student_name: 'show_student_name',
+  show_class: 'show_class',
+  show_school_name: 'show_school_name',
+  show_photo: 'show_photo',
+  is_locked: 'is_locked',
+  updated_by: 'updated_by',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
+};
+
+exports.Prisma.SessionScalarFieldEnum = {
+  id: 'id',
+  parent_user_id: 'parent_user_id',
+  school_user_id: 'school_user_id',
+  admin_user_id: 'admin_user_id',
+  refresh_token_hash: 'refresh_token_hash',
+  device_id: 'device_id',
+  device_info: 'device_info',
+  user_agent: 'user_agent',
+  ip_address: 'ip_address',
+  is_active: 'is_active',
+  revoked_at: 'revoked_at',
+  revoke_reason: 'revoke_reason',
+  last_active_at: 'last_active_at',
+  expires_at: 'expires_at',
+  created_at: 'created_at'
+};
+
+exports.Prisma.BlacklistTokenScalarFieldEnum = {
+  token_hash: 'token_hash',
+  expires_at: 'expires_at',
+  created_at: 'created_at'
+};
+
+exports.Prisma.DeviceLoginLogScalarFieldEnum = {
+  id: 'id',
+  parent_id: 'parent_id',
+  device_name: 'device_name',
+  device_model: 'device_model',
+  platform: 'platform',
+  os_version: 'os_version',
+  app_version: 'app_version',
+  ip_address: 'ip_address',
+  ip_city: 'ip_city',
+  ip_country: 'ip_country',
+  login_at: 'login_at',
+  email_sent: 'email_sent',
+  email_sent_at: 'email_sent_at',
+  was_forced: 'was_forced'
+};
+
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -1104,6 +1149,20 @@ exports.Gender = exports.$Enums.Gender = {
   PREFER_NOT_TO_SAY: 'PREFER_NOT_TO_SAY'
 };
 
+exports.PipelineStatus = exports.$Enums.PipelineStatus = {
+  PENDING: 'PENDING',
+  IN_PROGRESS: 'IN_PROGRESS',
+  COMPLETE: 'COMPLETE',
+  FAILED: 'FAILED'
+};
+
+exports.DesignStatus = exports.$Enums.DesignStatus = {
+  PENDING: 'PENDING',
+  IN_PROGRESS: 'IN_PROGRESS',
+  COMPLETE: 'COMPLETE',
+  FAILED: 'FAILED'
+};
+
 exports.BloodGroup = exports.$Enums.BloodGroup = {
   A_POS: 'A_POS',
   A_NEG: 'A_NEG',
@@ -1164,22 +1223,17 @@ exports.OrderType = exports.$Enums.OrderType = {
 
 exports.OrderStatus = exports.$Enums.OrderStatus = {
   PENDING: 'PENDING',
-  CONFIRMED: 'CONFIRMED',
-  PAYMENT_PENDING: 'PAYMENT_PENDING',
-  ADVANCE_RECEIVED: 'ADVANCE_RECEIVED',
-  TOKEN_GENERATION: 'TOKEN_GENERATION',
-  TOKEN_GENERATED: 'TOKEN_GENERATED',
-  CARD_DESIGN: 'CARD_DESIGN',
-  CARD_DESIGN_READY: 'CARD_DESIGN_READY',
-  CARD_DESIGN_REVISION: 'CARD_DESIGN_REVISION',
-  SENT_TO_VENDOR: 'SENT_TO_VENDOR',
+  PARTIAL_PAYMENT_CONFIRMED: 'PARTIAL_PAYMENT_CONFIRMED',
+  PARTIAL_INVOICE_GENERATED: 'PARTIAL_INVOICE_GENERATED',
+  TOKEN_GENERATING: 'TOKEN_GENERATING',
+  TOKEN_COMPLETE: 'TOKEN_COMPLETE',
+  DESIGN_GENERATING: 'DESIGN_GENERATING',
+  DESIGN_COMPLETE: 'DESIGN_COMPLETE',
+  DESIGN_APPROVED: 'DESIGN_APPROVED',
+  VENDOR_SENT: 'VENDOR_SENT',
   PRINTING: 'PRINTING',
-  PRINT_COMPLETE: 'PRINT_COMPLETE',
-  READY_TO_SHIP: 'READY_TO_SHIP',
   SHIPPED: 'SHIPPED',
-  OUT_FOR_DELIVERY: 'OUT_FOR_DELIVERY',
   DELIVERED: 'DELIVERED',
-  BALANCE_PENDING: 'BALANCE_PENDING',
   COMPLETED: 'COMPLETED',
   CANCELLED: 'CANCELLED',
   REFUNDED: 'REFUNDED'
@@ -1193,7 +1247,7 @@ exports.OrderChannel = exports.$Enums.OrderChannel = {
 exports.OrderPaymentStatus = exports.$Enums.OrderPaymentStatus = {
   UNPAID: 'UNPAID',
   PARTIALLY_PAID: 'PARTIALLY_PAID',
-  PAID: 'PAID',
+  FULLY_PAID: 'FULLY_PAID',
   REFUNDED: 'REFUNDED'
 };
 
@@ -1204,6 +1258,13 @@ exports.OrderItemStatus = exports.$Enums.OrderItemStatus = {
   PRINTED: 'PRINTED',
   SHIPPED: 'SHIPPED',
   DELIVERED: 'DELIVERED'
+};
+
+exports.ActorType = exports.$Enums.ActorType = {
+  SUPER_ADMIN: 'SUPER_ADMIN',
+  ADMIN: 'ADMIN',
+  PARENT_USER: 'PARENT_USER',
+  SYSTEM: 'SYSTEM'
 };
 
 exports.ShipmentStatus = exports.$Enums.ShipmentStatus = {
@@ -1243,13 +1304,6 @@ exports.PrintStatus = exports.$Enums.PrintStatus = {
   FAILED: 'FAILED'
 };
 
-exports.ActorType = exports.$Enums.ActorType = {
-  SUPER_ADMIN: 'SUPER_ADMIN',
-  ADMIN: 'ADMIN',
-  PARENT_USER: 'PARENT_USER',
-  SYSTEM: 'SYSTEM'
-};
-
 exports.PlanType = exports.$Enums.PlanType = {
   FREE_PILOT: 'FREE_PILOT',
   GOVT_STANDARD: 'GOVT_STANDARD',
@@ -1265,11 +1319,18 @@ exports.SubscriptionStatus = exports.$Enums.SubscriptionStatus = {
   EXPIRED: 'EXPIRED'
 };
 
-exports.InvoiceType = exports.$Enums.InvoiceType = {
-  ADVANCE: 'ADVANCE',
-  BALANCE: 'BALANCE',
-  RENEWAL: 'RENEWAL',
-  CUSTOM: 'CUSTOM'
+exports.InvoiceCategory = exports.$Enums.InvoiceCategory = {
+  ORDER_INVOICE: 'ORDER_INVOICE',
+  RENEWAL_INVOICE: 'RENEWAL_INVOICE'
+};
+
+exports.OrderInvoiceType = exports.$Enums.OrderInvoiceType = {
+  PARTIAL: 'PARTIAL',
+  FINAL: 'FINAL'
+};
+
+exports.RenewalInvoiceType = exports.$Enums.RenewalInvoiceType = {
+  RENEWAL: 'RENEWAL'
 };
 
 exports.InvoiceStatus = exports.$Enums.InvoiceStatus = {
@@ -1291,17 +1352,27 @@ exports.PaymentMode = exports.$Enums.PaymentMode = {
   BANK_TRANSFER: 'BANK_TRANSFER',
   UPI: 'UPI',
   CHEQUE: 'CHEQUE',
-  RAZORPAY: 'RAZORPAY',
   CASH: 'CASH'
 };
 
-exports.SessionRevokeReason = exports.$Enums.SessionRevokeReason = {
-  NEW_DEVICE_LOGIN: 'NEW_DEVICE_LOGIN',
-  MANUAL_LOGOUT: 'MANUAL_LOGOUT',
-  SESSION_EXPIRED: 'SESSION_EXPIRED',
-  ADMIN_REVOKED: 'ADMIN_REVOKED',
-  PASSWORD_CHANGED: 'PASSWORD_CHANGED',
-  PHONE_CHANGED: 'PHONE_CHANGED'
+exports.DashboardUserType = exports.$Enums.DashboardUserType = {
+  SUPER_ADMIN: 'SUPER_ADMIN',
+  SCHOOL_ADMIN: 'SCHOOL_ADMIN'
+};
+
+exports.DashboardNotificationType = exports.$Enums.DashboardNotificationType = {
+  ORDER_PLACED: 'ORDER_PLACED',
+  ORDER_CONFIRMED: 'ORDER_CONFIRMED',
+  TOKEN_GENERATION_COMPLETE: 'TOKEN_GENERATION_COMPLETE',
+  DESIGN_READY_FOR_APPROVAL: 'DESIGN_READY_FOR_APPROVAL',
+  CARD_DESIGN_READY: 'CARD_DESIGN_READY',
+  CARDS_SHIPPED: 'CARDS_SHIPPED',
+  CARDS_DELIVERED: 'CARDS_DELIVERED',
+  PARTIAL_INVOICE_GENERATED: 'PARTIAL_INVOICE_GENERATED',
+  INVOICE_GENERATED: 'INVOICE_GENERATED',
+  PIPELINE_STALLED: 'PIPELINE_STALLED',
+  DLQ_NEW_ENTRY: 'DLQ_NEW_ENTRY',
+  EMERGENCY_FIRED: 'EMERGENCY_FIRED'
 };
 
 exports.ScanResult = exports.$Enums.ScanResult = {
@@ -1312,6 +1383,13 @@ exports.ScanResult = exports.$Enums.ScanResult = {
   INACTIVE: 'INACTIVE',
   RATE_LIMITED: 'RATE_LIMITED',
   ERROR: 'ERROR'
+};
+
+exports.ScanType = exports.$Enums.ScanType = {
+  EMERGENCY: 'EMERGENCY',
+  CHECK_IN: 'CHECK_IN',
+  ATTENDANCE: 'ATTENDANCE',
+  OTHER: 'OTHER'
 };
 
 exports.IpCaptureBasis = exports.$Enums.IpCaptureBasis = {
@@ -1349,21 +1427,11 @@ exports.LocationSource = exports.$Enums.LocationSource = {
   MANUAL: 'MANUAL'
 };
 
-exports.NotificationType = exports.$Enums.NotificationType = {
-  SCAN_ALERT: 'SCAN_ALERT',
-  SCAN_ANOMALY: 'SCAN_ANOMALY',
-  CARD_EXPIRING: 'CARD_EXPIRING',
-  CARD_REVOKED: 'CARD_REVOKED',
-  CARD_REPLACED: 'CARD_REPLACED',
-  BILLING_ALERT: 'BILLING_ALERT',
-  DEVICE_LOGIN: 'DEVICE_LOGIN',
-  SYSTEM: 'SYSTEM'
-};
-
 exports.NotificationChannel = exports.$Enums.NotificationChannel = {
   SMS: 'SMS',
   EMAIL: 'EMAIL',
-  PUSH: 'PUSH'
+  PUSH: 'PUSH',
+  WHATSAPP: 'WHATSAPP'
 };
 
 exports.NotificationStatus = exports.$Enums.NotificationStatus = {
@@ -1376,8 +1444,8 @@ exports.NotificationStatus = exports.$Enums.NotificationStatus = {
 exports.PipelineStepName = exports.$Enums.PipelineStepName = {
   CREATE: 'CREATE',
   CONFIRM: 'CONFIRM',
-  ADVANCE_INVOICE: 'ADVANCE_INVOICE',
-  ADVANCE_PAYMENT: 'ADVANCE_PAYMENT',
+  PARTIAL_INVOICE: 'PARTIAL_INVOICE',
+  PARTIAL_PAYMENT: 'PARTIAL_PAYMENT',
   TOKEN_GENERATION: 'TOKEN_GENERATION',
   CARD_DESIGN: 'CARD_DESIGN',
   VENDOR_DISPATCH: 'VENDOR_DISPATCH',
@@ -1386,8 +1454,8 @@ exports.PipelineStepName = exports.$Enums.PipelineStepName = {
   SHIPMENT_CREATE: 'SHIPMENT_CREATE',
   SHIPMENT_SHIPPED: 'SHIPMENT_SHIPPED',
   DELIVERY: 'DELIVERY',
-  BALANCE_INVOICE: 'BALANCE_INVOICE',
-  BALANCE_PAYMENT: 'BALANCE_PAYMENT',
+  FINAL_INVOICE: 'FINAL_INVOICE',
+  FINAL_PAYMENT: 'FINAL_PAYMENT',
   CANCEL: 'CANCEL',
   REFUND: 'REFUND'
 };
@@ -1410,6 +1478,15 @@ exports.JobStatus = exports.$Enums.JobStatus = {
   DEAD: 'DEAD'
 };
 
+exports.SessionRevokeReason = exports.$Enums.SessionRevokeReason = {
+  NEW_DEVICE_LOGIN: 'NEW_DEVICE_LOGIN',
+  MANUAL_LOGOUT: 'MANUAL_LOGOUT',
+  SESSION_EXPIRED: 'SESSION_EXPIRED',
+  ADMIN_REVOKED: 'ADMIN_REVOKED',
+  PASSWORD_CHANGED: 'PASSWORD_CHANGED',
+  PHONE_CHANGED: 'PHONE_CHANGED'
+};
+
 exports.Prisma.ModelName = {
   School: 'School',
   SchoolSettings: 'SchoolSettings',
@@ -1418,7 +1495,7 @@ exports.Prisma.ModelName = {
   ParentDevice: 'ParentDevice',
   ParentNotificationPref: 'ParentNotificationPref',
   SuperAdmin: 'SuperAdmin',
-  OtpLog: 'OtpLog',
+  OtpAuditLog: 'OtpAuditLog',
   Student: 'Student',
   ParentStudent: 'ParentStudent',
   EmergencyProfile: 'EmergencyProfile',
@@ -1438,12 +1515,7 @@ exports.Prisma.ModelName = {
   Subscription: 'Subscription',
   Invoice: 'Invoice',
   Payment: 'Payment',
-  FeatureFlag: 'FeatureFlag',
-  SchoolFeatureFlag: 'SchoolFeatureFlag',
-  CardTemplate: 'CardTemplate',
-  Session: 'Session',
-  BlacklistToken: 'BlacklistToken',
-  DeviceLoginLog: 'DeviceLoginLog',
+  DashboardNotification: 'DashboardNotification',
   ScanLog: 'ScanLog',
   ScanAnomaly: 'ScanAnomaly',
   ScanRateLimit: 'ScanRateLimit',
@@ -1465,7 +1537,13 @@ exports.Prisma.ModelName = {
   OrderPipeline: 'OrderPipeline',
   OrderStepExecution: 'OrderStepExecution',
   JobExecution: 'JobExecution',
-  StepLog: 'StepLog'
+  StepLog: 'StepLog',
+  FeatureFlag: 'FeatureFlag',
+  SchoolFeatureFlag: 'SchoolFeatureFlag',
+  CardTemplate: 'CardTemplate',
+  Session: 'Session',
+  BlacklistToken: 'BlacklistToken',
+  DeviceLoginLog: 'DeviceLoginLog'
 };
 
 /**

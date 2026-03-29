@@ -26,9 +26,9 @@ const OTP_MAX_ATTEMPTS = 3;
 const OTP_RESEND_COOLDOWN = 60;
 
 // Redis keys
-const otpKey = phone => `otp:${phone}`;
-const attemptsKey = phone => `otp:attempts:${phone}`;
-const cooldownKey = phone => `otp:cooldown:${phone}`;
+const otpKey = (phone, purpose) => `otp:${purpose}:${phone}`;
+const attemptsKey = (phone, purpose) => `otp:attempts:${purpose}:${phone}`;
+const cooldownKey = (phone, purpose) => `otp:cooldown:${purpose}:${phone}`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GENERATE OTP
@@ -48,7 +48,7 @@ export function hashOtp(otp) {
 
 export async function sendOtp(phone) {
   // Check resend cooldown
-  const cooldown = await redis.get(cooldownKey(phone));
+  const cooldown = await redis.get(cooldownKey(phone, purpose));
 
   if (cooldown) {
     const ttl = await redis.ttl(cooldownKey(phone));
@@ -59,13 +59,13 @@ export async function sendOtp(phone) {
   const hashed = hashOtp(otp);
 
   // Store hashed OTP
-  await redis.setex(otpKey(phone), OTP_TTL_SECONDS, hashed);
+  await redis.setex(otpKey(phone, purpose), OTP_TTL_SECONDS, hashed);
 
   // Reset attempts
-  await redis.del(attemptsKey(phone));
+  await redis.del(attemptsKey(phone, purpose));
 
   // Set cooldown
-  await redis.setex(cooldownKey(phone), OTP_RESEND_COOLDOWN, '1');
+  await redis.setex(cooldownKey(phone, purpose), OTP_RESEND_COOLDOWN, '1');
 
   // DEV logging only
   if (process.env.NODE_ENV !== 'production') {
@@ -74,6 +74,7 @@ export async function sendOtp(phone) {
 
   return {
     expiresInSeconds: OTP_TTL_SECONDS,
+    ...(process.env.NODE_ENV !== 'production' && { devOtp: otp }),
   };
 }
 
@@ -82,17 +83,17 @@ export async function sendOtp(phone) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function verifyOtp(phone, otp) {
-  const storedHash = await redis.get(otpKey(phone));
+  const storedHash = await redis.get(otpKey(phone, purpose));
 
   if (!storedHash) {
     throw new Error('OTP_EXPIRED');
   }
 
-  const attempts = parseInt((await redis.get(attemptsKey(phone))) ?? '0', 10);
+  const attempts = parseInt((await redis.get(attemptsKey(phone, purpose))) ?? '0', 10);
 
   if (attempts >= OTP_MAX_ATTEMPTS) {
-    await redis.del(otpKey(phone));
-    await redis.del(attemptsKey(phone));
+    await redis.del(otpKey(phone, purpose));
+    await redis.del(attemptsKey(phone, purpose));
     throw new Error('OTP_MAX_ATTEMPTS');
   }
 
@@ -101,16 +102,15 @@ export async function verifyOtp(phone, otp) {
   const isValid = crypto.timingSafeEqual(Buffer.from(inputHash), Buffer.from(storedHash));
 
   if (!isValid) {
-    await redis.incr(attemptsKey(phone));
+    const newAttempts = await redis.incr(attemptsKey(phone));
     await redis.expire(attemptsKey(phone), OTP_TTL_SECONDS);
-
-    throw new Error('OTP_INVALID');
+    throw new Error(`OTP_INVALID:${OTP_MAX_ATTEMPTS - newAttempts}`);
   }
 
   // Valid OTP → cleanup
-  await redis.del(otpKey(phone));
-  await redis.del(attemptsKey(phone));
-  await redis.del(cooldownKey(phone));
+  await redis.del(otpKey(phone, purpose));
+  await redis.del(attemptsKey(phone, purpose));
+  await redis.del(cooldownKey(phone, purpose));
 
   return true;
 }
@@ -119,8 +119,8 @@ export async function verifyOtp(phone, otp) {
 // OPTIONAL UTILITY
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function clearOtp(phone) {
-  await redis.del(otpKey(phone));
-  await redis.del(attemptsKey(phone));
-  await redis.del(cooldownKey(phone));
+export async function clearOtp(phone, purpose = 'LOGIN') {
+  await redis.del(otpKey(phone, purpose));
+  await redis.del(attemptsKey(phone, purpose));
+  await redis.del(cooldownKey(phone, purpose));
 }

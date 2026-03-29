@@ -166,6 +166,15 @@ const _env = {
   AWS_S3_BUCKET: required('AWS_S3_BUCKET', { prodOnly: true }),
   AWS_S3_ENDPOINT: optional('AWS_S3_ENDPOINT'),
 
+  // ── Cloudflare R2 (Object Storage) ─────────────────────────────────────────
+  // R2 is S3-compatible but uses Cloudflare's endpoint
+  // Required for QR codes, card designs, and invoice PDFs
+  R2_ACCOUNT_ID: required('R2_ACCOUNT_ID', { prodOnly: true }),
+  R2_ACCESS_KEY_ID: required('R2_ACCESS_KEY_ID', { prodOnly: true, minLength: 20 }),
+  R2_SECRET_ACCESS_KEY: required('R2_SECRET_ACCESS_KEY', { prodOnly: true, minLength: 20 }),
+  R2_BUCKET_NAME: required('R2_BUCKET_NAME', { prodOnly: true }),
+  R2_PUBLIC_URL: required('R2_PUBLIC_URL', { prodOnly: true }),
+
   // ── MSG91 ──────────────────────────────────────────────────────────────────
   MSG91_AUTH_KEY: required('MSG91_AUTH_KEY', { prodOnly: true }),
   MSG91_OTP_TEMPLATE_ID: required('MSG91_OTP_TEMPLATE_ID', { prodOnly: true }),

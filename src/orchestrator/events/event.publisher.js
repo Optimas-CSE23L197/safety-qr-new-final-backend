@@ -1,177 +1,115 @@
 // =============================================================================
-// events/event.publisher.js
-// Publishes order lifecycle events as BullMQ jobs.
-// This is the ONLY way workers should trigger next steps.
+// orchestrator/events/event.publisher.js — RESQID
+// publish(event) — validates shape, stamps id + createdAt, enqueues to
+// the correct BullMQ queue based on event type.
 // =============================================================================
 
+import { randomUUID } from 'crypto';
+import { EVENTS } from './event.types.js';
+import {
+  emergencyAlertsQueue,
+  notificationsQueue, // ✅ fixed name
+  backgroundJobsQueue, // ✅ fixed name
+} from '../queues/queue.config.js';
 import { logger } from '#config/logger.js';
-import { getQueue } from './queues/queue.manager.js';
-import { QUEUE_NAMES, JOB_NAMES } from './orchestrator.constants.js';
-import { ORDER_EVENTS } from './event.types.js';
 
-// Maps event → { queue, jobName } so the publisher knows where to route
-// Updated EVENT_ROUTING — skip dead card worker
-const EVENT_ROUTING = {
-  [ORDER_EVENTS.ORDER_CREATED]: {
-    queue: QUEUE_NAMES.PIPELINE,
-    job: JOB_NAMES.APPROVAL,
-  },
-  [ORDER_EVENTS.ORDER_APPROVED]: {
-    queue: QUEUE_NAMES.PIPELINE,
-    job: JOB_NAMES.PAYMENT,
-  },
-  [ORDER_EVENTS.ADVANCE_PAYMENT_REQUESTED]: {
-    queue: QUEUE_NAMES.NOTIFICATION,
-    job: JOB_NAMES.NOTIFY,
-  },
-  [ORDER_EVENTS.ADVANCE_PAYMENT_RECEIVED]: {
-    queue: QUEUE_NAMES.TOKEN,
-    job: JOB_NAMES.TOKEN,
-  },
-  // ✅ FIX: TOKEN_GENERATED now routes directly to DESIGN (skip card worker)
-  [ORDER_EVENTS.TOKEN_GENERATED]: {
-    queue: QUEUE_NAMES.PIPELINE,
-    job: JOB_NAMES.DESIGN,
-  },
-  [ORDER_EVENTS.CARD_GENERATED]: {
-    queue: QUEUE_NAMES.PIPELINE,
-    job: JOB_NAMES.DESIGN,
-  },
-  [ORDER_EVENTS.DESIGN_COMPLETED]: {
-    queue: QUEUE_NAMES.PIPELINE,
-    job: JOB_NAMES.VENDOR,
-  },
-  [ORDER_EVENTS.VENDOR_ASSIGNED]: {
-    queue: QUEUE_NAMES.PIPELINE,
-    job: JOB_NAMES.PRINTING,
-  },
-  [ORDER_EVENTS.PRINTING_STARTED]: {
-    queue: QUEUE_NAMES.PIPELINE,
-    job: JOB_NAMES.SHIPMENT,
-  },
-  [ORDER_EVENTS.SHIPPED]: {
-    queue: QUEUE_NAMES.NOTIFICATION,
-    job: JOB_NAMES.NOTIFY,
-  },
-  [ORDER_EVENTS.DELIVERED]: {
-    queue: QUEUE_NAMES.PIPELINE,
-    job: JOB_NAMES.DELIVERY,
-  },
-  [ORDER_EVENTS.ORDER_COMPLETED]: {
-    queue: QUEUE_NAMES.PIPELINE,
-    job: JOB_NAMES.COMPLETION,
-  },
-  [ORDER_EVENTS.ORDER_CANCELLED]: {
-    queue: QUEUE_NAMES.PIPELINE,
-    job: JOB_NAMES.CANCEL,
-  },
-  [ORDER_EVENTS.STEP_FAILED]: {
-    queue: QUEUE_NAMES.PIPELINE,
-    job: JOB_NAMES.FAILURE,
-  },
+// ── Event → Queue routing ─────────────────────────────────────────────────────
+
+const EMERGENCY_EVENTS = new Set([
+  EVENTS.EMERGENCY_ALERT_TRIGGERED,
+  EVENTS.EMERGENCY_ALERT_ESCALATED,
+]);
+
+const BACKGROUND_EVENTS = new Set([
+  EVENTS.ORDER_TOKEN_GENERATION_STARTED,
+  EVENTS.ORDER_CARD_DESIGN_STARTED,
+]);
+
+const routeEvent = type => {
+  if (EMERGENCY_EVENTS.has(type)) return emergencyAlertsQueue;
+  if (BACKGROUND_EVENTS.has(type)) return backgroundJobsQueue;
+  return notificationsQueue;
 };
 
-/**
- * Publish an order event to the appropriate queue.
- *
- * @param {string} event     - one of ORDER_EVENTS
- * @param {string} orderId
- * @param {object} payload   - additional data (no PII — only IDs and refs)
- * @param {object} options   - BullMQ job options override
- */
-export async function publishEvent(event, orderId, payload = {}, options = {}) {
-  const routing = EVENT_ROUTING[event];
+// ── Per-queue BullMQ job options ──────────────────────────────────────────────
 
-  if (!routing) {
-    throw new Error(`No routing defined for event: ${event}`);
+const getJobOptions = (type, id) => {
+  const jobId = `${type}:${id}`;
+
+  if (EMERGENCY_EVENTS.has(type)) {
+    return {
+      jobId,
+      priority: 1,
+      attempts: 5,
+      backoff: { type: 'exponential', delay: 1000 },
+    };
   }
 
-  const queue = getQueue(routing.queue);
+  if (BACKGROUND_EVENTS.has(type)) {
+    return {
+      jobId,
+      priority: 10,
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 5000 },
+    };
+  }
 
-  const jobData = {
-    event,
-    orderId,
-    publishedAt: new Date().toISOString(),
-    ...payload,
-  };
-
-  const jobOptions = {
-    jobId: `${routing.job}:${orderId}:${Date.now()}`, // unique but traceable
+  return {
+    jobId,
+    priority: 5,
     attempts: 3,
-    backoff: { type: 'exponential', delay: 2000 },
-    removeOnComplete: { count: 100 },
-    removeOnFail: false, // keep failed jobs for DLQ inspection
-    ...options,
+    backoff: { type: 'exponential', delay: 3000 },
   };
+};
 
-  const job = await queue.add(routing.job, jobData, jobOptions);
+// ── Shape validation ──────────────────────────────────────────────────────────
 
-  logger.info({
-    msg: 'Event published',
-    event,
-    orderId,
-    queue: routing.queue,
-    jobName: routing.job,
-    jobId: job.id,
-  });
-
-  return job;
-}
-
-/**
- * Publish a STEP_FAILED event — routes to failure worker and DLQ pipeline.
- */
-export async function publishFailure(orderId, step, error, meta = {}) {
-  return publishEvent(ORDER_EVENTS.STEP_FAILED, orderId, {
-    step,
-    error: error?.message || String(error),
-    stack: error?.stack,
-    ...meta,
-  });
-}
-
-/**
- * Publish a notification event (decoupled from pipeline queue).
- */
-export async function publishNotification(type, orderId, recipientId, templateData = {}) {
-  const queue = getQueue(QUEUE_NAMES.NOTIFICATION);
-
-  const jobData = {
-    type,
-    orderId,
-    recipientId,
-    templateData,
-    publishedAt: new Date().toISOString(),
-  };
-
-  const job = await queue.add(JOB_NAMES.NOTIFY, jobData, {
-    jobId: `notify:${type}:${orderId}:${Date.now()}`,
-    attempts: 5,
-    backoff: { type: 'exponential', delay: 1000 },
-    removeOnComplete: { count: 200 },
-    removeOnFail: false,
-  });
-
-  logger.info({ msg: 'Notification queued', type, orderId, jobId: job.id });
-
-  return job;
-}
-
-// Add this function to event.publisher.js
-
-/**
- * Publish event safely for manual triggers (fire and forget)
- */
-export async function publishEventSafe(event, orderId, payload = {}, options = {}) {
-  try {
-    return await publishEvent(event, orderId, payload, options);
-  } catch (err) {
-    logger.error({
-      msg: 'Manual event publish failed — order will need manual retry',
-      event,
-      orderId,
-      err: err.message,
-    });
-    return null;
+const validateEvent = event => {
+  if (!event || typeof event !== 'object') throw new TypeError('publish: event must be an object');
+  if (!event.type) throw new TypeError('publish: event.type is required');
+  if (!EVENTS[event.type]) throw new TypeError(`publish: unknown event type "${event.type}"`);
+  if (!event.actorId) throw new TypeError('publish: event.actorId is required');
+  if (!['USER', 'SYSTEM', 'WORKER'].includes(event.actorType)) {
+    throw new TypeError('publish: actorType must be USER | SYSTEM | WORKER');
   }
-}
+};
+
+// ── Publisher ─────────────────────────────────────────────────────────────────
+
+export const publish = async event => {
+  validateEvent(event);
+
+  const stamped = {
+    id: randomUUID(),
+    type: event.type,
+    schoolId: event.schoolId ?? null,
+    actorId: event.actorId,
+    actorType: event.actorType,
+    payload: event.payload ?? {},
+    createdAt: new Date().toISOString(),
+    meta: {
+      orderId: event.meta?.orderId ?? null,
+      studentId: event.meta?.studentId ?? null,
+      alertId: event.meta?.alertId ?? null,
+      requestId: event.meta?.requestId ?? null,
+    },
+  };
+
+  const queue = routeEvent(stamped.type);
+  const jobOptions = getJobOptions(stamped.type, stamped.id);
+
+  try {
+    const job = await queue.add(stamped.type, stamped, jobOptions);
+    logger.info(
+      { eventId: stamped.id, type: stamped.type, queue: queue.name, jobId: job.id },
+      '[event.publisher] Event published'
+    );
+    return job;
+  } catch (err) {
+    logger.error(
+      { err: err.message, type: stamped.type, eventId: stamped.id },
+      '[event.publisher] Failed to publish event'
+    );
+    throw err;
+  }
+};

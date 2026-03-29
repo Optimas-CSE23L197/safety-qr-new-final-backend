@@ -6,9 +6,12 @@
   "scripts": {
     "dev": "nodemon --exec \"node --import tsx/esm\" src/server.js | pino-pretty",
     "start": "node --import tsx/esm src/server.js",
-    "worker": "node --import tsx/esm src/services/jobs/worker.service.js",
-    "worker:dev": "nodemon --exec \"node --import tsx/esm\" src/services/jobs/worker.service.js | pino-pretty",
-    "orchestrator": "node --import tsx/esm src/orchestrator.worker.js",
+    "worker:easy": "cross-env WORKER_ROLE=all node --import tsx/esm src/orchestrator/workers/index.js",
+    "worker:emergency": "cross-env WORKER_ROLE=emergency node --import tsx/esm src/orchestrator/workers/index.js",
+    "worker:notification": "cross-env WORKER_ROLE=notification node --import tsx/esm src/orchestrator/workers/index.js",
+    "worker:background": "cross-env WORKER_ROLE=background node --import tsx/esm src/orchestrator/workers/index.js",
+    "worker:pipeline": "node --import tsx/esm src/orchestrator/workers/pipeline.worker.js",
+    "worker:design": "node --import tsx/esm src/orchestrator/workers/design.worker.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:reset": "prisma migrate reset",
@@ -41,7 +44,8 @@
     "#shared/*": "./src/shared/*",
     "#monitoring/*": "./src/monitoring/*",
     "#orchestrator/*": "./src/orchestrator/*",
-    "#workers/*": "./src/workers/*"
+    "#workers/*": "./src/orchestrator/workers/*",
+    "#notifications/*": "./src/orchestrator/notifications/channel/*"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
@@ -101,6 +105,7 @@
     "rotating-file-stream": "^3.2.9",
     "sharp": "^0.34.5",
     "slugify": "^1.6.6",
+    "string-strip-html": "^13.5.3",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "uuid": "^10.0.0",

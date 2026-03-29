@@ -1,80 +1,88 @@
 // =============================================================================
-// workers/index.js — RESQID (UPDATED with notification worker)
+// orchestrator/workers/index.js — RESQID PHASE 1
+// Starts workers based on WORKER_ROLE environment variable.
+//
+// WORKER_ROLE=emergency    → emergency worker only
+// WORKER_ROLE=notification → notification worker only
+// WORKER_ROLE=background   → invoice + maintenance workers
+// WORKER_ROLE=all          → all 4 workers (local dev)
 // =============================================================================
 
+import { startEmergencyWorker, stopEmergencyWorker } from './emergency.worker.js';
+import { startNotificationWorker, stopNotificationWorker } from './notification.worker.js';
+import { startInvoiceWorker, stopInvoiceWorker } from './invoice.worker.js';
+import { startMaintenanceWorker, stopMaintenanceWorker } from './maintenance.worker.js';
+import { closeAllQueues } from '../queues/queue.config.js';
+import { closeQueueConnection } from '../queues/queue.connection.js';
 import { logger } from '#config/logger.js';
-import { createTokenWorker } from './token.worker.js';
-import { createDesignWorker } from './design.worker.js';
-import { createCancelWorker } from './cancel.worker.js';
-import { createFailureWorker } from './failure.worker.js';
-import { createInvoiceNotificationWorker } from './invoice_notification.worker.js';
-import { createNotificationWorker } from './notifications/notification.dispatcher.js'; // ✅ ADDED
 
-const _workers = new Map();
+const ROLE = (process.env.WORKER_ROLE ?? 'all').toLowerCase();
 
-export async function startAllWorkers() {
-  logger.info({ msg: 'Starting orchestrator workers' });
+const startedWorkers = [];
 
-  const workerCreators = [
-    { name: 'token', creator: createTokenWorker },
-    { name: 'design', creator: createDesignWorker },
-    { name: 'cancel', creator: createCancelWorker },
-    { name: 'failure', creator: createFailureWorker },
-    { name: 'invoice-notification', creator: createInvoiceNotificationWorker },
-    { name: 'notification', creator: createNotificationWorker }, // ✅ ADDED
-  ];
+export const startWorkers = () => {
+  logger.info({ role: ROLE }, '[workers/index] Starting Phase 1 workers');
 
-  for (const { name, creator } of workerCreators) {
-    try {
-      const worker = creator();
-      _workers.set(name, worker);
-      logger.info({ msg: 'Worker started', name });
-    } catch (error) {
-      logger.error({
-        msg: 'Failed to start worker — skipping',
-        name,
-        error: error.message,
-      });
-    }
+  switch (ROLE) {
+    case 'emergency':
+      startedWorkers.push(startEmergencyWorker());
+      break;
+
+    case 'notification':
+      startedWorkers.push(startNotificationWorker());
+      break;
+
+    case 'background':
+      startedWorkers.push(startInvoiceWorker(), startMaintenanceWorker());
+      break;
+
+    case 'all':
+      startedWorkers.push(
+        startEmergencyWorker(),
+        startNotificationWorker(),
+        startInvoiceWorker(),
+        startMaintenanceWorker()
+      );
+      break;
+
+    default:
+      logger.warn({ role: ROLE }, '[workers/index] Unknown WORKER_ROLE — defaulting to all');
+      startedWorkers.push(
+        startEmergencyWorker(),
+        startNotificationWorker(),
+        startInvoiceWorker(),
+        startMaintenanceWorker()
+      );
   }
 
-  logger.info({
-    msg: 'Orchestrator workers started',
-    count: _workers.size,
-    workers: [..._workers.keys()],
-  });
+  logger.info({ role: ROLE, count: startedWorkers.length }, '[workers/index] Workers started');
+};
 
-  return _workers;
-}
+const gracefulShutdown = async signal => {
+  logger.info({ signal }, '[workers/index] Graceful shutdown initiated');
 
-export async function stopAllWorkers() {
-  logger.info({ msg: 'Stopping orchestrator workers' });
+  try {
+    await Promise.allSettled([
+      stopEmergencyWorker(),
+      stopNotificationWorker(),
+      stopInvoiceWorker(),
+      stopMaintenanceWorker(),
+    ]);
 
-  const closePromises = [];
-  for (const [name, worker] of _workers.entries()) {
-    closePromises.push(
-      worker
-        .close()
-        .then(() => logger.info({ msg: 'Worker closed', name }))
-        .catch(err =>
-          logger.error({
-            msg: 'Error closing worker',
-            name,
-            error: err.message,
-          })
-        )
-    );
+    await closeAllQueues();
+    await closeQueueConnection();
+
+    logger.info('[workers/index] All workers closed — exiting');
+    process.exit(0);
+  } catch (err) {
+    logger.error({ err: err.message }, '[workers/index] Error during shutdown');
+    process.exit(1);
   }
+};
 
-  await Promise.allSettled(closePromises);
-  _workers.clear();
-  logger.info({ msg: 'All orchestrator workers stopped' });
-}
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
-export function getWorker(name) {
-  return _workers.get(name);
-}
-
-export function getAllWorkers() {
-  return new Map(_workers);
+if (process.argv[1]?.endsWith('workers/index.js')) {
+  startWorkers();
 }

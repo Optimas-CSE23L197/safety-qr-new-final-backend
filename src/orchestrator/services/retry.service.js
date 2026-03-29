@@ -1,14 +1,13 @@
 // =============================================================================
-// services/retry.service.js
+// services/retry.service.js — RESQID PHASE 1
 // Retry logic for pipeline steps.
 // Workers use this to decide whether to retry or send to DLQ.
 // =============================================================================
 
 import { logger } from '#config/logger.js';
 import { redis } from '#config/redis.js';
-import { REDIS_KEYS, RETRY_CONFIG } from './orchestrator.constants.js';
-import { getQueue } from './queues/queue.manager.js';
-import { QUEUE_NAMES, JOB_NAMES } from './orchestrator.constants.js';
+import { REDIS_KEYS, RETRY_CONFIG } from '../orchestrator.constants.js';
+import { handleDeadJob } from '../dlq/dlq.handler.js'; // ✅ FIX: use DLQ handler directly
 
 /**
  * Determine if a failed job should be retried or sent to DLQ.
@@ -40,46 +39,39 @@ export function calcBackoffDelay(attemptNumber) {
 
 /**
  * Send a failed job to the DLQ for manual review.
- * Also logs to DB via the DLQ handler.
+ * Logs to DB + Slack via dlq.handler.js.
  *
  * @param {object} job
  * @param {Error}  error
  */
 export async function sendToDLQ(job, error) {
-  const dlqQueue = getQueue(QUEUE_NAMES.DLQ);
+  try {
+    await handleDeadJob({
+      job,
+      error,
+      queueName: job.queueName,
+    });
 
-  const dlqPayload = {
-    originalQueue: job.queueName,
-    originalJobId: job.id,
-    originalJobName: job.name,
-    originalData: job.data,
-    error: error?.message || String(error),
-    stack: error?.stack,
-    attemptsMade: job.attemptsMade,
-    failedAt: new Date().toISOString(),
-  };
+    // Increment DLQ count for this order (for dashboards)
+    if (job.data?.orderId) {
+      await redis.incr(REDIS_KEYS.DLQ_COUNT(job.data.orderId));
+      await redis.expire(REDIS_KEYS.DLQ_COUNT(job.data.orderId), 86400 * 7); // 7d TTL
+    }
 
-  await dlqQueue.add(JOB_NAMES.DLQ_PROCESS, dlqPayload, {
-    jobId: `dlq:${job.id}:${Date.now()}`,
-    attempts: 1, // DLQ jobs are processed once (manual fix path)
-    removeOnComplete: { count: 500 },
-    removeOnFail: false,
-  });
-
-  // Increment DLQ count for this order (for dashboards)
-  if (job.data?.orderId) {
-    await redis.incr(REDIS_KEYS.DLQ_COUNT(job.data.orderId));
-    await redis.expire(REDIS_KEYS.DLQ_COUNT(job.data.orderId), 86400 * 7); // 7d TTL
+    logger.error({
+      msg: 'Job sent to DLQ',
+      jobId: job.id,
+      jobName: job.name,
+      orderId: job.data?.orderId,
+      error: error?.message,
+      attemptsMade: job.attemptsMade,
+    });
+  } catch (err) {
+    logger.error(
+      { jobId: job.id, jobName: job.name, err: err.message },
+      '[retry.service] Failed to send job to DLQ'
+    );
   }
-
-  logger.error({
-    msg: 'Job sent to DLQ',
-    jobId: job.id,
-    jobName: job.name,
-    orderId: job.data?.orderId,
-    error: error?.message,
-    attemptsMade: job.attemptsMade,
-  });
 }
 
 /**

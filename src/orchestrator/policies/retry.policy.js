@@ -1,47 +1,59 @@
 // =============================================================================
-// policies/retry.policy.js
-// Per-step retry configuration.
-// Workers read this to get their retry settings.
+// orchestrator/policies/retry.policy.js — RESQID PHASE 1
+// Retry configuration per queue.
 // =============================================================================
 
+import { QUEUE_NAMES } from '../queues/queue.names.js';
+
+export const RETRY_POLICIES = Object.freeze({
+  [QUEUE_NAMES.EMERGENCY_ALERTS]: {
+    attempts: 5,
+    backoff: { type: 'exponential', delay: 500 },
+    timeout: 8000, // bumped from 5000 → 8000ms
+    onExhausted: 'DLQ_AND_SLACK',
+  },
+
+  [QUEUE_NAMES.NOTIFICATIONS]: {
+    attempts: 3,
+    backoff: { type: 'exponential', delay: 1000 },
+    timeout: 15000,
+    onExhausted: 'DLQ_ONLY',
+  },
+
+  [QUEUE_NAMES.BACKGROUND_JOBS]: {
+    attempts: 3,
+    backoff: { type: 'exponential', delay: 5000 },
+    timeout: 300000,
+    onExhausted: 'DLQ_ONLY',
+  },
+});
+
 /**
- * Get BullMQ job options for a given step/job type.
- * Heavier async steps get more attempts and longer backoff.
- *
- * @param {string} jobName - one of JOB_NAMES
- * @returns {object} BullMQ job options
+ * Get retry config for a queue by name.
+ * @param {string} queueName
+ * @returns {object}
  */
-export function getRetryPolicy(jobName) {
-  const POLICIES = {
-    'order.token': {
-      attempts: 5,
-      backoff: { type: 'exponential', delay: 5_000 }, // token gen is heavy — more patience
-    },
-    'order.card': {
-      attempts: 5,
-      backoff: { type: 'exponential', delay: 5_000 },
-    },
-    'order.design': {
-      attempts: 5,
-      backoff: { type: 'exponential', delay: 5_000 },
-    },
-    'notify.send': {
-      attempts: 5,
-      backoff: { type: 'exponential', delay: 1_000 },
-    },
-    default: {
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 2_000 },
-    },
+export const getRetryPolicy = queueName => {
+  const policy = RETRY_POLICIES[queueName];
+  if (!policy) {
+    // Fallback to background jobs policy for unknown queues
+    return RETRY_POLICIES[QUEUE_NAMES.BACKGROUND_JOBS];
+  }
+  return policy;
+};
+
+/**
+ * Get default job options for a queue
+ * @param {string} queueName
+ * @returns {object}
+ */
+export const getDefaultJobOptions = queueName => {
+  const policy = getRetryPolicy(queueName);
+  return {
+    attempts: policy.attempts,
+    backoff: policy.backoff,
+    timeout: policy.timeout,
+    removeOnComplete: { age: 86400, count: 100 },
+    removeOnFail: { age: 604800, count: 500 },
   };
-
-  return POLICIES[jobName] ?? POLICIES['default'];
-}
-
-/**
- * Should this step type trigger a super admin alert on DLQ?
- */
-export function shouldEscalateOnDLQ(jobName) {
-  const ESCALATE = new Set(['order.token', 'order.card', 'order.payment', 'order.completion']);
-  return ESCALATE.has(jobName);
-}
+};

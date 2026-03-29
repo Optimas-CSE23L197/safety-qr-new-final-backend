@@ -1,79 +1,40 @@
 // =============================================================================
-// state/order.transitions.js
-// Defines the ONLY valid forward transitions.
-// Any attempt to move outside this map is rejected by the state machine.
+// orchestrator/state/order.transitions.js — RESQID PHASE 1
+// Valid state transition map. Every key = from-state, value = Set of to-states.
 // =============================================================================
 
-/**
- * Map: currentState → Set of valid nextStates
- * Terminal states (COMPLETED, CANCELLED, FAILED) have no outgoing transitions.
- */
-export const VALID_TRANSITIONS = {
-  CREATED: new Set(['PENDING_APPROVAL']),
-  PENDING_APPROVAL: new Set(['APPROVED', 'CANCELLED']),
-  APPROVED: new Set(['ADVANCE_PENDING']),
-  ADVANCE_PENDING: new Set(['ADVANCE_PAID', 'CANCELLED']),
-  ADVANCE_PAID: new Set(['TOKEN_GENERATED']),
-  TOKEN_GENERATED: new Set(['CARD_GENERATED']),
-  CARD_GENERATED: new Set(['DESIGN_DONE']),
-  DESIGN_DONE: new Set(['VENDOR_ASSIGNED']),
-  VENDOR_ASSIGNED: new Set(['PRINTING']),
-  PRINTING: new Set(['SHIPPED']),
-  SHIPPED: new Set(['DELIVERED']),
-  DELIVERED: new Set(['COMPLETED']),
-  COMPLETED: new Set([]), // terminal
-  CANCELLED: new Set([]), // terminal
-  FAILED: new Set(['CANCELLED']), // failed can be cancelled/cleaned up
-};
+import { ORDER_STATUS, ACTIVE_STATES } from './order.states.js';
 
-/**
- * Validate a state transition.
- * @param {string} from  - current orchestrator state
- * @param {string} to    - desired next state
- * @returns {{ valid: boolean, reason?: string }}
- */
-export function validateTransition(from, to) {
-  const allowed = VALID_TRANSITIONS[from];
+const S = ORDER_STATUS;
 
-  if (!allowed) {
-    return { valid: false, reason: `Unknown state: ${from}` };
-  }
+// Build the transition map
+const _transitions = new Map([
+  [S.PENDING, new Set([S.CONFIRMED])],
+  [S.CONFIRMED, new Set([S.PAYMENT_PENDING])],
+  [S.PAYMENT_PENDING, new Set([S.PARTIAL_PAYMENT_CONFIRMED, S.CANCELLED])],
+  [S.PARTIAL_PAYMENT_CONFIRMED, new Set([S.PARTIAL_INVOICE_GENERATED])],
+  [S.PARTIAL_INVOICE_GENERATED, new Set([S.ADVANCE_RECEIVED])],
+  [S.ADVANCE_RECEIVED, new Set([S.TOKEN_GENERATING])],
+  [S.TOKEN_GENERATING, new Set([S.TOKEN_COMPLETE])],
+  [S.TOKEN_COMPLETE, new Set([S.DESIGN_GENERATING])],
+  [S.DESIGN_GENERATING, new Set([S.DESIGN_COMPLETE])],
+  [S.DESIGN_COMPLETE, new Set([S.DESIGN_APPROVED])],
+  [S.DESIGN_APPROVED, new Set([S.VENDOR_SENT])],
+  [S.VENDOR_SENT, new Set([S.PRINTING])],
+  [S.PRINTING, new Set([S.SHIPPED])],
+  [S.SHIPPED, new Set([S.DELIVERED])],
+  [S.DELIVERED, new Set([S.COMPLETED, S.REFUNDED])],
+]);
 
-  if (!allowed.has(to)) {
-    return {
-      valid: false,
-      reason: `Invalid transition: ${from} → ${to}. Allowed: [${[...allowed].join(', ')}]`,
-    };
-  }
-
-  return { valid: true };
+// Every active state can go to CANCELLED or ON_HOLD
+for (const state of ACTIVE_STATES) {
+  const existing = _transitions.get(state) ?? new Set();
+  existing.add(S.CANCELLED);
+  existing.add(S.ON_HOLD);
+  _transitions.set(state, existing);
 }
 
-/**
- * Is a state terminal (no further transitions possible)?
- */
-export function isTerminalState(state) {
-  const transitions = VALID_TRANSITIONS[state];
-  return transitions !== undefined && transitions.size === 0;
-}
+// Freeze the outer map (values are Sets — freeze their contents too)
+for (const [, set] of _transitions) Object.freeze(set);
 
-/**
- * Can an order be cancelled from a given state?
- * Business rule: cannot cancel after advance paid / tokens generated / printing started.
- */
-export function canCancelFromState(state) {
-  const NON_CANCELLABLE = new Set([
-    'ADVANCE_PAID',
-    'TOKEN_GENERATED',
-    'CARD_GENERATED',
-    'DESIGN_DONE',
-    'VENDOR_ASSIGNED',
-    'PRINTING',
-    'SHIPPED',
-    'DELIVERED',
-    'COMPLETED',
-    'CANCELLED',
-    'FAILED',
-  ]);
-  return !NON_CANCELLABLE.has(state);
-}
+export const TRANSITIONS = _transitions;

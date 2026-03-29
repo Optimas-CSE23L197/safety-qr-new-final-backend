@@ -1,169 +1,77 @@
 // =============================================================================
-// handlers/delivery.handler.js
-// Business logic for delivery confirmation.
+// orchestrator/handlers/delivery.handler.js — RESQID PHASE 1
+// Mark order delivered + trigger balance invoice job.
 // =============================================================================
 
 import { prisma } from '#config/prisma.js';
+import { logger } from '#config/logger.js';
+import { applyTransition } from '../state/order.guards.js';
+import { ORDER_STATUS } from '../state/order.states.js';
+import { backgroundJobsQueue } from '../queues/queue.config.js';
 
-/**
- * Confirm delivery of order
- */
-export async function confirmDelivery(orderId, confirmedBy, deliveryDetails = {}) {
+export const handleDelivery = async job => {
+  const { orderId, schoolId, actorId, deliveredAt } = job.data?.payload ?? {};
+
+  if (!orderId) throw new Error('[delivery.handler] orderId is required');
+
+  logger.info({ jobId: job.id, orderId }, '[delivery.handler] Marking order delivered');
+
   const order = await prisma.cardOrder.findUnique({
     where: { id: orderId },
-    include: {
-      shipment: true,
-      school: true,
+    select: { id: true, status: true, order_number: true, balance_amount: true },
+  });
+
+  if (!order) throw new Error(`[delivery.handler] Order not found: ${orderId}`);
+
+  await prisma.cardOrder.update({
+    where: { id: orderId },
+    data: {
+      status_changed_at: new Date(),
+      status_note: `Delivered at ${deliveredAt || new Date().toISOString()}`,
     },
   });
 
-  if (!order) {
-    throw new Error(`Order ${orderId} not found`);
-  }
-
-  if (order.status !== 'SHIPPED') {
-    throw new Error(`Order ${orderId} is not in SHIPPED state`);
-  }
-
-  const deliveredAt = new Date();
-
-  // Update shipment
-  if (order.shipment) {
-    await prisma.orderShipment.update({
-      where: { id: order.shipment.id },
-      data: {
-        status: 'DELIVERED',
-        shiprocket_status: 'DELIVERED',
-        delivered_at: deliveredAt,
-        delivery_confirmed_by: confirmedBy,
-      },
-    });
-  }
-
-  // Update order
-  const updatedOrder = await prisma.cardOrder.update({
-    where: { id: orderId },
+  // Update OrderShipment model (not shipment)
+  await prisma.orderShipment.updateMany({
+    where: { order_id: orderId },
     data: {
       status: 'DELIVERED',
-      status_changed_by: confirmedBy,
-      status_changed_at: deliveredAt,
-      status_note: deliveryDetails.notes,
+      delivered_at: deliveredAt ? new Date(deliveredAt) : new Date(),
+      updated_at: new Date(),
     },
   });
 
-  // Create status log
-  await prisma.orderStatusLog.create({
-    data: {
-      order_id: orderId,
-      from_status: 'SHIPPED',
-      to_status: 'DELIVERED',
-      changed_by: confirmedBy,
-      note: deliveryDetails.notes || 'Delivery confirmed',
-      metadata: {
-        deliveredAt,
-        ...deliveryDetails,
+  await applyTransition({
+    orderId,
+    from: order.status,
+    to: ORDER_STATUS.DELIVERED,
+    actorId: actorId ?? 'SYSTEM',
+    actorType: 'WORKER',
+    schoolId,
+    meta: {},
+    eventPayload: { orderNumber: order.order_number },
+  });
+
+  // Enqueue invoice generation job
+  const invoiceJob = await backgroundJobsQueue.add(
+    'GENERATE_BALANCE_INVOICE',
+    {
+      action: 'GENERATE_BALANCE_INVOICE',
+      orderId,
+      payload: {
+        orderId,
+        schoolId,
+        orderNumber: order.order_number,
+        balanceAmount: order.balance_amount,
       },
     },
-  });
+    { jobId: `balance-invoice-${orderId}` }
+  );
 
-  // Send notification to school
-  // This will be handled by the event publisher
-
-  return {
-    order: updatedOrder,
-    deliveredAt,
-    confirmedBy,
-  };
-}
-
-/**
- * Mark delivery as failed (return to sender)
- */
-export async function markDeliveryFailed(orderId, failedBy, reason) {
-  const order = await prisma.cardOrder.findUnique({
-    where: { id: orderId },
-    include: {
-      shipment: true,
-    },
-  });
-
-  if (!order) {
-    throw new Error(`Order ${orderId} not found`);
-  }
-
-  // Update shipment
-  if (order.shipment) {
-    await prisma.orderShipment.update({
-      where: { id: order.shipment.id },
-      data: {
-        status: 'FAILED',
-        shiprocket_status: 'RTO_INITIATED',
-        notes: reason,
-      },
-    });
-  }
-
-  // Update order
-  const updatedOrder = await prisma.cardOrder.update({
-    where: { id: orderId },
-    data: {
-      status: 'FAILED',
-      status_note: `Delivery failed: ${reason}`,
-      status_changed_by: failedBy,
-      status_changed_at: new Date(),
-    },
-  });
-
-  // Create status log
-  await prisma.orderStatusLog.create({
-    data: {
-      order_id: orderId,
-      from_status: 'SHIPPED',
-      to_status: 'FAILED',
-      changed_by: failedBy,
-      note: `Delivery failed: ${reason}`,
-    },
-  });
-
-  return updatedOrder;
-}
-
-/**
- * Get delivery status for order
- */
-export async function getDeliveryStatus(orderId) {
-  const order = await prisma.cardOrder.findUnique({
-    where: { id: orderId },
-    include: {
-      shipment: true,
-    },
-  });
-
-  if (!order) {
-    return null;
-  }
+  logger.info({ orderId, invoiceJobId: invoiceJob.id }, '[delivery.handler] Delivery recorded');
 
   return {
-    orderId: order.id,
-    orderNumber: order.order_number,
-    status: order.status,
-    deliveryStatus: order.shipment?.status,
-    tracking: order.shipment
-      ? {
-          awbCode: order.shipment.awb_code,
-          trackingUrl: order.shipment.tracking_url,
-          courier: order.shipment.courier_name,
-          status: order.shipment.shiprocket_status,
-        }
-      : null,
-    deliveredAt: order.shipment?.delivered_at,
-    deliveryAddress: {
-      name: order.shipment?.delivery_name,
-      phone: order.shipment?.delivery_phone,
-      address: order.shipment?.delivery_address,
-      city: order.shipment?.delivery_city,
-      state: order.shipment?.delivery_state,
-      pincode: order.shipment?.delivery_pincode,
-    },
+    success: true,
+    data: { orderId, newStatus: ORDER_STATUS.DELIVERED, invoiceJobId: invoiceJob.id },
   };
-}
+};

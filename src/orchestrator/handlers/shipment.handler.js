@@ -1,217 +1,93 @@
 // =============================================================================
-// handlers/shipment.handler.js
-// Business logic for shipment management.
+// orchestrator/handlers/shipment.handler.js — RESQID PHASE 1
+// Shipment creation + tracking update.
 // =============================================================================
 
 import { prisma } from '#config/prisma.js';
+import { logger } from '#config/logger.js';
+import { applyTransition } from '../state/order.guards.js';
+import { ORDER_STATUS } from '../state/order.states.js';
 
-/**
- * Create shipment for order
- */
-export async function createShipment(orderId, shipmentData, createdBy) {
+export const handleShipmentCreate = async job => {
+  const { orderId, schoolId, trackingId, trackingUrl, courier, actorId } = job.data?.payload ?? {};
+
+  if (!orderId || !trackingId) {
+    throw new Error('[shipment.handler] Missing orderId or trackingId');
+  }
+
+  logger.info({ jobId: job.id, orderId, trackingId }, '[shipment.handler] Creating shipment');
+
   const order = await prisma.cardOrder.findUnique({
     where: { id: orderId },
-    include: {
-      vendor: true,
-      school: true,
-    },
+    select: { id: true, status: true, order_number: true },
   });
 
-  if (!order) {
-    throw new Error(`Order ${orderId} not found`);
-  }
+  if (!order) throw new Error(`[shipment.handler] Order not found: ${orderId}`);
 
-  // Generate AWB code if not provided
-  const awbCode = shipmentData.awbCode || `AWB-${Date.now()}-${order.order_number}`;
-  const trackingUrl = shipmentData.trackingUrl || `https://shiprocket.co/track/${awbCode}`;
-
-  // Create shipment record
-  const shipment = await prisma.orderShipment.create({
-    data: {
+  // Use OrderShipment model
+  await prisma.orderShipment.upsert({
+    where: { order_id: orderId },
+    create: {
       order_id: orderId,
-      awb_code: awbCode,
-      courier_name: shipmentData.courierName || 'Shiprocket Standard',
-      tracking_url: trackingUrl,
-      status: 'PENDING',
-      shiprocket_status: 'PENDING',
-      created_by: createdBy,
-      pickup_vendor_id: order.vendor_id,
-      pickup_name: order.vendor?.name,
-      pickup_contact: order.vendor?.phone,
-      pickup_address: order.vendor?.address,
-      delivery_name: shipmentData.deliveryName || order.delivery_name,
-      delivery_phone: shipmentData.deliveryPhone || order.delivery_phone,
-      delivery_address: shipmentData.deliveryAddress || order.delivery_address,
-      delivery_city: shipmentData.deliveryCity || order.delivery_city,
-      delivery_state: shipmentData.deliveryState || order.delivery_state,
-      delivery_pincode: shipmentData.deliveryPincode || order.delivery_pincode,
-      notes: shipmentData.notes,
+      awb_code: trackingId,
+      tracking_url: trackingUrl ?? null,
+      courier_name: courier ?? null,
+      status: 'PICKED_UP',
+      created_by: actorId ?? 'SYSTEM',
+      created_at: new Date(),
+    },
+    update: {
+      awb_code: trackingId,
+      tracking_url: trackingUrl ?? null,
+      courier_name: courier ?? null,
+      status: 'PICKED_UP',
+      updated_at: new Date(),
     },
   });
 
-  // Update order status
-  await prisma.cardOrder.update({
+  await applyTransition({
+    orderId,
+    from: order.status,
+    to: ORDER_STATUS.SHIPPED,
+    actorId: actorId ?? 'SYSTEM',
+    actorType: 'WORKER',
+    schoolId,
+    meta: { trackingId, courier },
+    eventPayload: { orderNumber: order.order_number, trackingId, trackingUrl },
+  });
+
+  return { success: true, data: { orderId, trackingId, newStatus: ORDER_STATUS.SHIPPED } };
+};
+
+export const handleShipmentOutForDelivery = async job => {
+  const { orderId, schoolId, actorId } = job.data?.payload ?? {};
+
+  if (!orderId) throw new Error('[shipment.handler] orderId is required');
+
+  logger.info({ jobId: job.id, orderId }, '[shipment.handler] Marking out for delivery');
+
+  const order = await prisma.cardOrder.findUnique({
     where: { id: orderId },
-    data: {
-      status: 'READY_TO_SHIP',
-    },
+    select: { id: true, status: true, order_number: true },
   });
 
-  // Create status log
-  await prisma.orderStatusLog.create({
-    data: {
-      order_id: orderId,
-      from_status: 'PRINT_COMPLETE',
-      to_status: 'READY_TO_SHIP',
-      changed_by: createdBy,
-      note: 'Shipment created, ready for pickup',
-      metadata: { awbCode, trackingUrl },
-    },
-  });
+  if (!order) throw new Error(`[shipment.handler] Order not found: ${orderId}`);
 
-  return shipment;
-}
-
-/**
- * Update shipment tracking
- */
-export async function updateShipmentTracking(orderId, trackingData) {
-  const shipment = await prisma.orderShipment.findFirst({
+  await prisma.orderShipment.updateMany({
     where: { order_id: orderId },
+    data: { status: 'OUT_FOR_DELIVERY', updated_at: new Date() },
   });
 
-  if (!shipment) {
-    throw new Error(`No shipment found for order ${orderId}`);
-  }
-
-  const updatedShipment = await prisma.orderShipment.update({
-    where: { id: shipment.id },
-    data: {
-      status: trackingData.status,
-      shiprocket_status: trackingData.shiprocketStatus,
-      picked_up_at: trackingData.pickedUpAt ? new Date(trackingData.pickedUpAt) : undefined,
-      estimated_delivery_at: trackingData.estimatedDeliveryAt
-        ? new Date(trackingData.estimatedDeliveryAt)
-        : undefined,
-      delivered_at: trackingData.deliveredAt ? new Date(trackingData.deliveredAt) : undefined,
-    },
+  await applyTransition({
+    orderId,
+    from: order.status,
+    to: ORDER_STATUS.OUT_FOR_DELIVERY,
+    actorId: actorId ?? 'SYSTEM',
+    actorType: 'WORKER',
+    schoolId,
+    meta: {},
+    eventPayload: { orderNumber: order.order_number },
   });
 
-  // Update order status if shipped or delivered
-  if (trackingData.status === 'SHIPPED') {
-    await prisma.cardOrder.update({
-      where: { id: orderId },
-      data: { status: 'SHIPPED' },
-    });
-  } else if (trackingData.status === 'DELIVERED') {
-    await prisma.cardOrder.update({
-      where: { id: orderId },
-      data: { status: 'DELIVERED' },
-    });
-  }
-
-  // Create tracking log
-  await prisma.orderStatusLog.create({
-    data: {
-      order_id: orderId,
-      from_status: shipment.status,
-      to_status: trackingData.status,
-      changed_by: 'system',
-      note: `Shipment status updated to ${trackingData.status}`,
-      metadata: trackingData,
-    },
-  });
-
-  return updatedShipment;
-}
-
-/**
- * Mark shipment as delivered
- */
-export async function markShipmentDelivered(orderId, confirmedBy) {
-  const shipment = await prisma.orderShipment.findFirst({
-    where: { order_id: orderId },
-  });
-
-  if (!shipment) {
-    throw new Error(`No shipment found for order ${orderId}`);
-  }
-
-  const deliveredAt = new Date();
-
-  const updatedShipment = await prisma.orderShipment.update({
-    where: { id: shipment.id },
-    data: {
-      status: 'DELIVERED',
-      shiprocket_status: 'DELIVERED',
-      delivered_at: deliveredAt,
-      delivery_confirmed_by: confirmedBy,
-    },
-  });
-
-  // Update order
-  await prisma.cardOrder.update({
-    where: { id: orderId },
-    data: {
-      status: 'DELIVERED',
-    },
-  });
-
-  // Create status log
-  await prisma.orderStatusLog.create({
-    data: {
-      order_id: orderId,
-      from_status: 'SHIPPED',
-      to_status: 'DELIVERED',
-      changed_by: confirmedBy,
-      note: 'Shipment delivered and confirmed',
-      metadata: { deliveredAt },
-    },
-  });
-
-  return updatedShipment;
-}
-
-/**
- * Get shipment details
- */
-export async function getShipmentDetails(orderId) {
-  const shipment = await prisma.orderShipment.findFirst({
-    where: { order_id: orderId },
-  });
-
-  if (!shipment) {
-    return null;
-  }
-
-  return {
-    id: shipment.id,
-    awbCode: shipment.awb_code,
-    courierName: shipment.courier_name,
-    trackingUrl: shipment.tracking_url,
-    status: shipment.status,
-    shiprocketStatus: shipment.shiprocket_status,
-    pickup: {
-      vendorId: shipment.pickup_vendor_id,
-      name: shipment.pickup_name,
-      contact: shipment.pickup_contact,
-      address: shipment.pickup_address,
-    },
-    delivery: {
-      name: shipment.delivery_name,
-      phone: shipment.delivery_phone,
-      address: shipment.delivery_address,
-      city: shipment.delivery_city,
-      state: shipment.delivery_state,
-      pincode: shipment.delivery_pincode,
-    },
-    timeline: {
-      created: shipment.created_at,
-      pickupScheduled: shipment.pickup_scheduled_at,
-      pickedUp: shipment.picked_up_at,
-      estimatedDelivery: shipment.estimated_delivery_at,
-      delivered: shipment.delivered_at,
-    },
-    notes: shipment.notes,
-  };
-}
+  return { success: true, data: { orderId, newStatus: ORDER_STATUS.OUT_FOR_DELIVERY } };
+};

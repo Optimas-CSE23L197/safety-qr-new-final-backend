@@ -1,10 +1,25 @@
 // =============================================================================
 // services/qr/qr.service.js — RESQID
 // QR code generation — produces PNG buffer from a URL.
-// Uses 'qrcode' package (already common in Node projects).
+// Uses 'qrcode' package. Install: npm install qrcode
 //
-// Install: npm install qrcode
+// IMPROVED vs original:
+//   [L-3 FIXED] Top-level import instead of dynamic import on every call
+//   Added generateQrPngWithOptions for callers that need custom sizing
+//   Consistent error messages
 // =============================================================================
+
+import QRCode from 'qrcode';
+
+// ── Default options ───────────────────────────────────────────────────────────
+
+const DEFAULT_OPTIONS = {
+  type: 'png',
+  width: 512,
+  margin: 2,
+  color: { dark: '#000000', light: '#FFFFFF' },
+  errorCorrectionLevel: 'H', // highest — survives partial card damage
+};
 
 // =============================================================================
 // generateQrPng — generate a QR PNG buffer from a URL string
@@ -19,27 +34,29 @@ export const generateQrPng = async url => {
   }
 
   try {
-    const QRCode = await import('qrcode');
-
-    const buffer = await QRCode.default.toBuffer(url, {
-      type: 'png',
-      width: 512,
-      margin: 2,
-      color: {
-        dark: '#000000', // QR modules — black
-        light: '#FFFFFF', // background — white
-      },
-      errorCorrectionLevel: 'H', // highest — survives partial card damage
-    });
-
-    return buffer;
+    return await QRCode.toBuffer(url, DEFAULT_OPTIONS);
   } catch (err) {
-    if (err.code === 'ERR_MODULE_NOT_FOUND' || err.message?.includes('Cannot find module')) {
-      throw new Error(
-        "QR generation failed: 'qrcode' package not installed. Run: npm install qrcode"
-      );
-    }
-    throw err;
+    throw new Error(`QR generation failed for URL "${url.slice(0, 40)}...": ${err.message}`);
+  }
+};
+
+// =============================================================================
+// generateQrPngWithOptions — custom size/margin/colors
+//
+// @param {string} url
+// @param {object} options — merged with defaults
+// @returns {Promise<Buffer>}
+// =============================================================================
+
+export const generateQrPngWithOptions = async (url, options = {}) => {
+  if (!url || typeof url !== 'string') {
+    throw new TypeError('generateQrPngWithOptions: url must be a non-empty string');
+  }
+
+  try {
+    return await QRCode.toBuffer(url, { ...DEFAULT_OPTIONS, ...options });
+  } catch (err) {
+    throw new Error(`QR generation failed: ${err.message}`);
   }
 };
 
@@ -48,10 +65,17 @@ export const generateQrPng = async url => {
 // =============================================================================
 
 export const generateQrDataUrl = async url => {
-  const QRCode = await import('qrcode');
-  return QRCode.default.toDataURL(url, {
-    type: 'image/png',
-    width: 256,
-    errorCorrectionLevel: 'H',
-  });
+  if (!url || typeof url !== 'string') {
+    throw new TypeError('generateQrDataUrl: url must be a non-empty string');
+  }
+
+  try {
+    return await QRCode.toDataURL(url, {
+      type: 'image/png',
+      width: 256,
+      errorCorrectionLevel: 'H',
+    });
+  } catch (err) {
+    throw new Error(`QR data URL generation failed: ${err.message}`);
+  }
 };

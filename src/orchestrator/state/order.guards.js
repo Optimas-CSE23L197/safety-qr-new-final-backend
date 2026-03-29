@@ -1,146 +1,140 @@
 // =============================================================================
-// state/order.guards.js
-// Guard functions — each returns { pass: boolean, reason?: string }
-// Guards are checked BEFORE a state transition is executed.
+// services/state.service.js — RESQID PHASE 1
+// Manages the canonical order state — DB is source of truth, Redis is cache.
 // =============================================================================
 
 import { prisma } from '#config/prisma.js';
+import { redis } from '#config/redis.js';
+import { logger } from '#config/logger.js';
+import { REDIS_KEYS } from './orchestrator.constants.js';
+import { validateTransition } from './state/order.transitions.js';
+import { ORDER_STATUS } from './state/order.states.js';
 
-/**
- * Guard: order exists and belongs to the correct school (if actor is school admin)
- */
-export async function guardOrderExists(orderId) {
-  const order = await prisma.cardOrder.findUnique({
-    where: { id: orderId },
-    select: { id: true, status: true, school_id: true },
+const STATE_CACHE_TTL = 300; // 5 min
+
+function cacheSet(key, value, ttl) {
+  redis.set(key, value, 'EX', ttl).catch(err => {
+    logger.warn({ msg: 'Redis cache write failed — non-fatal', key, err: err.message });
   });
-
-  if (!order) return { pass: false, reason: `Order ${orderId} not found` };
-  return { pass: true, order };
 }
 
-/**
- * Guard: actor is super admin (only super admin can approve/cancel/override)
- */
-export function guardSuperAdmin(actor) {
-  if (!actor || actor.role !== 'SUPER_ADMIN') {
-    return { pass: false, reason: 'Only Super Admin can perform this action' };
-  }
-  return { pass: true };
-}
-
-/**
- * Guard: actor is school admin (only school admin can create orders)
- */
-export function guardSchoolAdmin(actor) {
-  if (!actor || actor.role !== 'SCHOOL_ADMIN') {
-    return { pass: false, reason: 'Only School Admin can create orders' };
-  }
-  return { pass: true };
-}
-
-/**
- * Guard: advance payment has NOT been received (precondition for cancellation)
- */
-export async function guardNoAdvancePayment(orderId) {
-  const order = await prisma.cardOrder.findUnique({
-    where: { id: orderId },
-    select: { payment_status: true },
+function cacheDel(key) {
+  redis.del(key).catch(err => {
+    logger.warn({ msg: 'Redis cache delete failed — non-fatal', key, err: err.message });
   });
-
-  if (!order) return { pass: false, reason: 'Order not found' };
-
-  if (order.payment_status === 'PARTIALLY_PAID' || order.payment_status === 'PAID') {
-    return {
-      pass: false,
-      reason: 'Cannot cancel: advance payment has been received',
-    };
-  }
-
-  return { pass: true };
 }
 
-/**
- * Guard: tokens have NOT been generated
- */
-export async function guardNoTokens(orderId) {
-  const count = await prisma.token.count({
-    where: { order_id: orderId },
-  });
-
-  if (count > 0) {
-    return {
-      pass: false,
-      reason: 'Cannot cancel: tokens have already been generated',
-    };
+export async function getOrderState(orderId) {
+  const cacheKey = REDIS_KEYS.STATE(orderId);
+  try {
+    const cached = await redis.get(cacheKey);
+    if (cached) return cached;
+  } catch (err) {
+    logger.warn({ msg: 'Redis cache read failed — falling back to DB', orderId, err: err.message });
   }
 
-  return { pass: true };
-}
-
-/**
- * Guard: printing has NOT started
- */
-export async function guardNoPrinting(orderId) {
   const order = await prisma.cardOrder.findUnique({
     where: { id: orderId },
     select: { status: true },
   });
 
-  const PRINTING_STATES = new Set([
-    'PRINTING',
-    'PRINT_COMPLETE',
-    'READY_TO_SHIP',
-    'SHIPPED',
-    'DELIVERED',
-    'COMPLETED',
-  ]);
+  if (!order) throw new Error(`Order ${orderId} not found`);
 
-  if (PRINTING_STATES.has(order?.status)) {
-    return {
-      pass: false,
-      reason: 'Cannot cancel: printing has already started',
-    };
-  }
-
-  return { pass: true };
+  const orchState = dbStatusToOrchestratorState(order.status);
+  cacheSet(cacheKey, orchState, STATE_CACHE_TTL);
+  return orchState;
 }
 
-/**
- * Guard: order has NOT been shipped
- */
-export async function guardNotShipped(orderId) {
-  const shipment = await prisma.orderShipment.findFirst({
-    where: { order_id: orderId, status: { in: ['SHIPPED', 'DELIVERED'] } },
+export async function transitionState(orderId, toState, triggeredBy, meta = {}) {
+  const currentState = await getOrderState(orderId);
+  const { valid, reason } = validateTransition(currentState, toState);
+  if (!valid) throw new Error(`State transition blocked: ${reason}`);
+
+  const newDbStatus = ORDER_STATUS[toState];
+  if (!newDbStatus) throw new Error(`No DB status mapping for state: ${toState}`);
+
+  await prisma.$transaction(async tx => {
+    await tx.cardOrder.update({
+      where: { id: orderId },
+      data: { status: newDbStatus, updated_at: new Date() },
+    });
   });
 
-  if (shipment) {
-    return {
-      pass: false,
-      reason: 'Cannot cancel: order has already been shipped',
-    };
-  }
+  cacheDel(REDIS_KEYS.STATE(orderId));
 
-  return { pass: true };
+  logger.info({
+    msg: 'State transitioned',
+    orderId,
+    from: currentState,
+    to: toState,
+    dbStatus: newDbStatus,
+    triggeredBy,
+  });
+  return { from: currentState, to: toState };
 }
 
-/**
- * Run all cancellation guards in sequence.
- * Returns the first failure, or { pass: true } if all pass.
- */
-export async function runCancellationGuards(orderId) {
-  const checks = [
-    guardNoAdvancePayment(orderId),
-    guardNoTokens(orderId),
-    guardNoPrinting(orderId),
-    guardNotShipped(orderId),
-  ];
+export async function markStalled(orderId, reason) {
+  await prisma.orderPipeline.updateMany({
+    where: { order_id: orderId },
+    data: { is_stalled: true, stalled_at: new Date(), stalled_reason: reason },
+  });
+  logger.warn({ msg: 'Pipeline marked stalled', orderId, reason });
+}
 
-  const results = await Promise.all(checks);
+// =============================================================================
+// Helpers
+// =============================================================================
 
-  for (const result of results) {
-    if (!result.pass) return result;
+function dbStatusToOrchestratorState(dbStatus) {
+  // Direct mapping: if DB status matches one of our constants, return it
+  if (Object.values(ORDER_STATUS).includes(dbStatus)) {
+    return dbStatus;
   }
 
-  return { pass: true };
+  // Fallbacks for legacy/ambiguous statuses
+  const fallbacks = {
+    CONFIRMED: 'CONFIRMED',
+    PAYMENT_PENDING: 'PAYMENT_PENDING',
+    PARTIAL_PAYMENT_CONFIRMED: 'PARTIAL_PAYMENT_CONFIRMED',
+    PARTIAL_INVOICE_GENERATED: 'PARTIAL_INVOICE_GENERATED',
+    ADVANCE_RECEIVED: 'ADVANCE_RECEIVED',
+    TOKEN_GENERATING: 'TOKEN_GENERATING',
+    TOKEN_COMPLETE: 'TOKEN_COMPLETE',
+    DESIGN_GENERATING: 'DESIGN_GENERATING',
+    DESIGN_COMPLETE: 'DESIGN_COMPLETE',
+    DESIGN_APPROVED: 'DESIGN_APPROVED',
+    VENDOR_SENT: 'VENDOR_SENT',
+    PRINTING: 'PRINTING',
+    SHIPPED: 'SHIPPED',
+    DELIVERED: 'DELIVERED',
+    COMPLETED: 'COMPLETED',
+    CANCELLED: 'CANCELLED',
+    REFUNDED: 'REFUNDED',
+  };
+
+  return fallbacks[dbStatus] || 'PENDING';
+}
+
+function computeProgress(state) {
+  const PROGRESS_MAP = {
+    PENDING: 5,
+    CONFIRMED: 10,
+    PARTIAL_PAYMENT_CONFIRMED: 15,
+    PARTIAL_INVOICE_GENERATED: 20,
+    PAYMENT_PENDING: 25,
+    ADVANCE_RECEIVED: 30,
+    TOKEN_GENERATING: 40,
+    TOKEN_COMPLETE: 50,
+    DESIGN_GENERATING: 60,
+    DESIGN_COMPLETE: 70,
+    DESIGN_APPROVED: 75,
+    VENDOR_SENT: 80,
+    PRINTING: 85,
+    SHIPPED: 90,
+    DELIVERED: 95,
+    COMPLETED: 100,
+    CANCELLED: 0,
+    REFUNDED: 0,
+  };
+  return PROGRESS_MAP[state] ?? 0;
 }

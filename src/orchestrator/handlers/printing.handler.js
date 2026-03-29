@@ -1,213 +1,189 @@
 // =============================================================================
-// handlers/printing.handler.js
-// Business logic for printing management.
+// orchestrator/handlers/printing.handler.js — RESQID
+// Printing lifecycle management.
+// All status transitions go through applyTransition().
 // =============================================================================
 
 import { prisma } from '#config/prisma.js';
+import { logger } from '#config/logger.js';
+import { applyTransition } from '../state/order.guards.js';
+import { ORDER_STATUS } from '../state/order.states.js';
 
 /**
- * Start printing for an order
+ * Start printing — transition order to PRINTING.
+ * Cards remain PENDING until completePrinting() confirms they're physically done.
+ *
+ * @param {string} orderId
+ * @param {string} startedBy
+ * @returns {Promise<object>}
  */
 export async function startPrinting(orderId, startedBy) {
   const order = await prisma.cardOrder.findUnique({
     where: { id: orderId },
     include: {
-      cards: {
-        where: { print_status: 'PENDING' },
-      },
+      cards: { where: { print_status: 'PENDING' } },
       vendor: true,
     },
   });
 
-  if (!order) {
-    throw new Error(`Order ${orderId} not found`);
-  }
-
-  if (!order.vendor_id) {
-    throw new Error(`No vendor assigned for order ${orderId}`);
-  }
+  if (!order) throw new Error(`Order ${orderId} not found`);
+  if (!order.vendor_id) throw new Error(`No vendor assigned for order ${orderId}`);
 
   const pendingCards = order.cards.length;
+  if (pendingCards === 0) throw new Error(`No pending cards to print for order ${orderId}`);
 
-  if (pendingCards === 0) {
-    throw new Error(`No pending cards to print for order ${orderId}`);
-  }
-
-  // Update order status
-  const updatedOrder = await prisma.cardOrder.update({
-    where: { id: orderId },
-    data: {
-      status: 'PRINTING',
-      print_complete_at: null,
-      status_changed_by: startedBy,
-      status_changed_at: new Date(),
-    },
+  // Cards stay PENDING until completePrinting() — don't mark PRINTED on start
+  await applyTransition({
+    orderId,
+    from: order.status,
+    to: ORDER_STATUS.PRINTING,
+    actorId: startedBy,
+    actorType: 'USER',
+    schoolId: order.school_id,
+    meta: { vendorId: order.vendor_id, cardCount: pendingCards },
+    eventPayload: { orderNumber: order.order_number, vendorName: order.vendor?.name },
   });
 
-  // Update all cards to printing status
-  await prisma.card.updateMany({
-    where: { order_id: orderId, print_status: 'PENDING' },
-    data: { print_status: 'PRINTED' },
-  });
-
-  // Create status log
-  await prisma.orderStatusLog.create({
-    data: {
-      order_id: orderId,
-      from_status: order.status,
-      to_status: 'PRINTING',
-      changed_by: startedBy,
-      note: `Printing started with vendor: ${order.vendor?.name}`,
-      metadata: {
-        vendorId: order.vendor_id,
-        cardCount: pendingCards,
-      },
-    },
-  });
+  logger.info({ orderId, startedBy, pendingCards }, '[printing.handler] Printing started');
 
   return {
-    order: updatedOrder,
+    orderId,
+    newStatus: ORDER_STATUS.PRINTING,
     cardsPrinting: pendingCards,
     vendor: order.vendor,
   };
 }
 
 /**
- * Mark printing as complete
+ * Mark printing as complete — transition order to PRINT_COMPLETE.
+ * Marks all cards as PRINTED.
+ *
+ * @param {string} orderId
+ * @param {string} completedBy
+ * @param {string} [notes]
+ * @returns {Promise<object>}
  */
 export async function completePrinting(orderId, completedBy, notes = '') {
   const order = await prisma.cardOrder.findUnique({
     where: { id: orderId },
-    include: {
-      cards: true,
-      vendor: true,
-    },
+    include: { cards: true, vendor: true },
   });
 
-  if (!order) {
-    throw new Error(`Order ${orderId} not found`);
-  }
-
+  if (!order) throw new Error(`Order ${orderId} not found`);
   if (order.status !== 'PRINTING') {
-    throw new Error(`Order ${orderId} is not in PRINTING state`);
+    throw new Error(`Order ${orderId} is not in PRINTING state (got ${order.status})`);
   }
 
   const printCompleteAt = new Date();
 
-  // Update order
-  const updatedOrder = await prisma.cardOrder.update({
-    where: { id: orderId },
-    data: {
-      status: 'PRINT_COMPLETE',
-      print_complete_at: printCompleteAt,
-      print_complete_noted_by: completedBy,
-      status_changed_by: completedBy,
-      status_changed_at: printCompleteAt,
-    },
-  });
-
-  // Update all cards
+  // Mark all cards as PRINTED
   await prisma.card.updateMany({
     where: { order_id: orderId },
-    data: { print_status: 'PRINTED' },
+    data: { print_status: 'PRINTED', printed_at: printCompleteAt },
   });
 
-  // Create status log
-  await prisma.orderStatusLog.create({
+  // Record timestamp before transition so event handlers can read it
+  await prisma.cardOrder.update({
+    where: { id: orderId },
     data: {
-      order_id: orderId,
-      from_status: 'PRINTING',
-      to_status: 'PRINT_COMPLETE',
-      changed_by: completedBy,
-      note: notes || 'Printing completed',
-      metadata: {
-        vendorId: order.vendor_id,
-        cardCount: order.cards.length,
-        completedAt: printCompleteAt,
-      },
+      print_complete_at: printCompleteAt,
+      print_complete_noted_by: completedBy,
     },
   });
 
-  return {
-    order: updatedOrder,
-    completedAt: printCompleteAt,
-    cardCount: order.cards.length,
-  };
+  await applyTransition({
+    orderId,
+    from: ORDER_STATUS.PRINTING,
+    to: ORDER_STATUS.PRINT_COMPLETE,
+    actorId: completedBy,
+    actorType: 'USER',
+    schoolId: order.school_id,
+    meta: { cardCount: order.cards.length, notes },
+    eventPayload: { orderNumber: order.order_number },
+  });
+
+  logger.info(
+    { orderId, completedBy, cardCount: order.cards.length },
+    '[printing.handler] Printing complete'
+  );
+
+  return { orderId, completedAt: printCompleteAt, cardCount: order.cards.length };
 }
 
 /**
- * Report printing issue
+ * Report a printing issue — transitions order back to CARD_DESIGN_REVISION.
+ *
+ * @param {string} orderId
+ * @param {{ reason: string, notes: string }} issueDetails
+ * @param {string} reportedBy
+ * @returns {Promise<object>}
  */
 export async function reportPrintingIssue(orderId, issueDetails, reportedBy) {
   const order = await prisma.cardOrder.findUnique({
     where: { id: orderId },
+    select: { id: true, status: true, school_id: true, order_number: true },
   });
 
-  if (!order) {
-    throw new Error(`Order ${orderId} not found`);
-  }
+  if (!order) throw new Error(`Order ${orderId} not found`);
 
-  // Update order with issue
+  // Save vendor notes before transition
   await prisma.cardOrder.update({
     where: { id: orderId },
     data: {
-      status: 'CARD_DESIGN_REVISION',
-      vendor_notes: issueDetails.notes,
+      vendor_notes: issueDetails.notes ?? null,
       admin_notes: `Printing issue reported: ${issueDetails.reason}`,
-      status_changed_by: reportedBy,
-      status_changed_at: new Date(),
     },
   });
 
-  // Create status log
-  await prisma.orderStatusLog.create({
-    data: {
-      order_id: orderId,
-      from_status: order.status,
-      to_status: 'CARD_DESIGN_REVISION',
-      changed_by: reportedBy,
-      note: `Printing issue: ${issueDetails.reason}`,
-      metadata: {
-        issueDetails,
-      },
-    },
+  await applyTransition({
+    orderId,
+    from: order.status,
+    to: ORDER_STATUS.CARD_DESIGN_REVISION,
+    actorId: reportedBy,
+    actorType: 'USER',
+    schoolId: order.school_id,
+    meta: { issueDetails },
+    eventPayload: { orderNumber: order.order_number, reason: issueDetails.reason },
   });
+
+  logger.info(
+    { orderId, reportedBy, reason: issueDetails.reason },
+    '[printing.handler] Printing issue reported'
+  );
 
   return {
     orderId,
     previousStatus: order.status,
-    newStatus: 'CARD_DESIGN_REVISION',
+    newStatus: ORDER_STATUS.CARD_DESIGN_REVISION,
     issue: issueDetails,
   };
 }
 
 /**
- * Get printing status summary
+ * Get a card print status summary for an order.
+ * Uses prisma.card.groupBy — NOT groupBy inside include (invalid Prisma syntax).
+ *
+ * @param {string} orderId
+ * @returns {Promise<object|null>}
  */
 export async function getPrintingStatus(orderId) {
   const order = await prisma.cardOrder.findUnique({
     where: { id: orderId },
-    include: {
-      cards: {
-        groupBy: ['print_status'],
-        _count: true,
-      },
-    },
+    select: { id: true, order_number: true, status: true, print_complete_at: true },
   });
 
-  if (!order) {
-    return null;
-  }
+  if (!order) return null;
 
-  const statusCounts = {
-    PENDING: 0,
-    PRINTED: 0,
-    REPRINTED: 0,
-    FAILED: 0,
-  };
+  // Correct groupBy usage — standalone query, never inside include
+  const groups = await prisma.card.groupBy({
+    by: ['print_status'],
+    where: { order_id: orderId },
+    _count: { id: true },
+  });
 
-  for (const group of order.cards) {
-    statusCounts[group.print_status] = group._count;
+  const statusCounts = { PENDING: 0, PRINTED: 0, REPRINTED: 0, FAILED: 0 };
+  for (const group of groups) {
+    statusCounts[group.print_status] = group._count.id;
   }
 
   return {
