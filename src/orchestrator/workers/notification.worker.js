@@ -1,6 +1,14 @@
 // =============================================================================
 // orchestrator/workers/notification.worker.js — RESQID PHASE 1
 // Processes NOTIFICATIONS queue. ALWAYS ON.
+//
+// FIX [N-1]: schoolId pulled from job.data.schoolId (top-level on stamped
+//            event) not payload.schoolId. The stamped event shape from
+//            event.publisher.js is:
+//            { id, type, schoolId, actorId, actorType, payload, meta, createdAt }
+//            schoolId is never inside payload — pulling it from there always
+//            returned null, silently breaking all school DB lookups in the
+//            dispatcher (email, SMS to school phone, push to school admins).
 // =============================================================================
 
 import { Worker } from 'bullmq';
@@ -10,10 +18,10 @@ import { dispatch } from '../notifications/notification.dispatcher.js';
 import { handleDeadJob } from '../dlq/dlq.handler.js';
 import { logger } from '#config/logger.js';
 
-const QUEUE = QUEUE_NAMES.NOTIFICATIONS; // FIXED: Use correct Phase 1 queue
+const QUEUE = QUEUE_NAMES.NOTIFICATIONS;
 
 export const processNotificationJob = async job => {
-  const { type, payload, meta } = job.data ?? {};
+  const { type, payload, meta, schoolId } = job.data ?? {};
 
   logger.info({ jobId: job.id, type, queue: QUEUE }, '[notification.worker] Processing job');
 
@@ -25,7 +33,7 @@ export const processNotificationJob = async job => {
     type,
     payload: payload ?? {},
     meta: meta ?? {},
-    schoolId: payload?.schoolId ?? null,
+    schoolId: schoolId ?? null, // FIX [N-1]: top-level field, not payload.schoolId
   });
 };
 

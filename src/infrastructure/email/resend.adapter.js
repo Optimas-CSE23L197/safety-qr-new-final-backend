@@ -5,7 +5,8 @@ export class ResendAdapter extends EmailProvider {
   constructor(config = {}) {
     super();
     this.client = new Resend(config.API_KEY || process.env.RESEND_API_KEY);
-    this.defaultFrom = config.FROM_EMAIL || process.env.RESEND_FROM_EMAIL || 'noreply@resqid.com';
+    this.defaultFrom =
+      config.FROM_EMAIL || process.env.RESEND_FROM_EMAIL || 'noreply@mail.getresqid.in';
     this.templates = new Map();
   }
 

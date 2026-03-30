@@ -1,12 +1,8 @@
 /**
- * server.js — HTTP server entry point
+ * server.js — RESQID API Server Entry Point
+ * ─────────────────────────────────────────
+ * coreZ Technologies Pvt. Ltd.
  * Run: node src/server.js
- *
- * Responsibilities:
- *  - Print startup banner
- *  - Connect to Postgres, Redis
- *  - Start Express
- *  - Graceful shutdown on SIGTERM / SIGINT
  */
 
 import { createApp, printMiddlewareTable } from './app.js';
@@ -15,67 +11,19 @@ import { logger } from './config/logger.js';
 import { prisma } from './config/prisma.js';
 import { redis } from './config/redis.js';
 import { jobScheduler } from '#orchestrator/jobs/scheduler.service.js';
-import {
-  initializeInfrastructure,
-  getInfrastructure,
-} from './infrastructure/infrastructure.index.js';
-
+import { initializeInfrastructure } from './infrastructure/infrastructure.index.js';
 import os from 'os';
 
-// =============================================================================
-// SAFELY PARSE FIREBASE SERVICE ACCOUNT
-// =============================================================================
-
-let firebaseServiceAccount = null;
-
-try {
-  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    firebaseServiceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-    console.log('✅ Firebase service account loaded successfully');
-  } else {
-    console.warn('⚠️ FIREBASE_SERVICE_ACCOUNT not set. Push notifications will be disabled.');
-  }
-} catch (error) {
-  console.error('❌ Failed to parse FIREBASE_SERVICE_ACCOUNT:', error.message);
-  console.warn('⚠️ Push notifications will be disabled.');
-}
-
-// =============================================================================
-// INITIALIZE INFRASTRUCTURE WITH FALLBACKS
-// =============================================================================
-
-try {
-  await initializeInfrastructure({
-    cache: {
-      REDIS_URL: process.env.REDIS_URL,
-    },
-    email: {
-      API_KEY: process.env.RESEND_API_KEY,
-    },
-    push: firebaseServiceAccount
-      ? {
-          serviceAccount: firebaseServiceAccount,
-        }
-      : null, // Skip push if not configured
-    sms: {
-      AUTH_KEY: process.env.MSG91_AUTH_KEY,
-    },
-    storage: {
-      BUCKET: process.env.AWS_S3_BUCKET,
-    },
-  });
-
-  console.log('✅ Infrastructure initialized successfully');
-} catch (error) {
-  console.error('❌ Infrastructure initialization failed:', error.message);
-  // Don't exit - let the server start without some features
-}
-
-// ── ANSI helpers ───────────────────────────────────────────────────────────
+// ── ANSI palette ───────────────────────────────────────────────────────────
 const c = {
   reset: '\x1b[0m',
   bold: '\x1b[1m',
   dim: '\x1b[2m',
+  italic: '\x1b[3m',
+  ul: '\x1b[4m',
+  blink: '\x1b[5m',
+
+  black: '\x1b[30m',
   red: '\x1b[31m',
   green: '\x1b[32m',
   yellow: '\x1b[33m',
@@ -83,155 +31,329 @@ const c = {
   magenta: '\x1b[35m',
   cyan: '\x1b[36m',
   white: '\x1b[97m',
-  bgBlue: '\x1b[44m',
   gray: '\x1b[90m',
+  orange: '\x1b[38;5;208m',
+  violet: '\x1b[38;5;141m',
+  mint: '\x1b[38;5;121m',
+  coral: '\x1b[38;5;203m',
+  gold: '\x1b[38;5;220m',
+  sky: '\x1b[38;5;117m',
+
+  bgBlack: '\x1b[40m',
+  bgRed: '\x1b[41m',
+  bgGreen: '\x1b[42m',
+  bgBlue: '\x1b[44m',
+  bgCyan: '\x1b[46m',
 };
 
 const ENV_COLOR = {
-  production: c.red,
-  staging: c.yellow,
-  development: c.green,
-  test: c.cyan,
+  production: c.coral,
+  staging: c.gold,
+  development: c.mint,
+  test: c.sky,
 };
 
 process.stdout.setEncoding('utf8');
 
-// ── Banner ─────────────────────────────────────────────────────────────────
-function printBanner() {
-  const ENVColor = ENV_COLOR[ENV.NODE_ENV] ?? c.white;
-  const width = 58;
-  const line = '═'.repeat(width);
-  const blank = ' '.repeat(width);
+// ── Helpers ────────────────────────────────────────────────────────────────
+const pad = (s, n, ch = ' ') => String(s).padEnd(n, ch);
+const padL = (s, n, ch = ' ') => String(s).padStart(n, ch);
+const line = (ch, n) => ch.repeat(n);
+const ok = `${c.green}${c.bold}✓${c.reset}`;
+const fail = `${c.red}${c.bold}✗${c.reset}`;
+const warn = `${c.gold}${c.bold}⚠${c.reset}`;
+const dot = (col = c.cyan) => `${col}●${c.reset}`;
+const badge = (text, col = c.bgBlue + c.white) => `${col}${c.bold} ${text} ${c.reset}`;
 
-  console.log(`\n${c.cyan}╔${line}╗${c.reset}`);
-  console.log(`${c.cyan}║${blank}║${c.reset}`);
-  console.log(
-    `${c.cyan}║${c.reset}${c.bold}${c.white}${'  ⬡  SCHOOLCARD BACKEND API'.padEnd(width)}${c.reset}${c.cyan}║${c.reset}`
-  );
-  console.log(
-    `${c.cyan}║${c.reset}${c.dim}${'  Modular · Multi-tenant · Event-driven'.padEnd(width)}${c.reset}${c.cyan}║${c.reset}`
-  );
-  console.log(`${c.cyan}║${blank}║${c.reset}`);
-  console.log(`${c.cyan}╚${line}╝${c.reset}\n`);
+// ── Firebase ───────────────────────────────────────────────────────────────
+let firebaseServiceAccount = null;
+
+try {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    firebaseServiceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+  }
+} catch {
+  // silently disabled
 }
 
-// ── Info table ─────────────────────────────────────────────────────────────
+// ── Infrastructure init ────────────────────────────────────────────────────
+try {
+  await initializeInfrastructure({
+    cache: { REDIS_URL: process.env.REDIS_URL },
+    email: { API_KEY: process.env.RESEND_API_KEY },
+    push: firebaseServiceAccount ? { serviceAccount: firebaseServiceAccount } : null,
+    sms: { AUTH_KEY: process.env.MSG91_AUTH_KEY },
+    storage: { BUCKET: process.env.AWS_S3_BUCKET },
+  });
+} catch {
+  // graceful degradation — server starts without some services
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// BANNER
+// ══════════════════════════════════════════════════════════════════════════
+function printBanner() {
+  const W = 64;
+  const box = {
+    tl: '╔',
+    tr: '╗',
+    bl: '╚',
+    br: '╝',
+    h: '═',
+    v: '║',
+    ml: '╠',
+    mr: '╣',
+  };
+
+  const hl = c.cyan;
+  const blank = ' '.repeat(W);
+
+  const row = (text = '', textCol = c.reset) => {
+    const visible = text.replace(/\x1b\[[0-9;]*m/g, '');
+    const pad = W - visible.length;
+    return `${hl}${box.v}${c.reset}${textCol}${text}${' '.repeat(Math.max(0, pad))}${c.reset}${hl}${box.v}${c.reset}`;
+  };
+
+  const divider = `${hl}${box.ml}${box.h.repeat(W)}${box.mr}${c.reset}`;
+
+  console.log('');
+  console.log(`${hl}${box.tl}${box.h.repeat(W)}${box.tr}${c.reset}`);
+  console.log(row());
+  console.log(
+    row(`  ${c.bold}${c.white}⬡  RESQID${c.reset}${c.dim}  by coreZ Technologies Pvt. Ltd.`)
+  );
+  console.log(row(`  ${c.dim}QR-based Student Emergency Identity System`));
+  console.log(row());
+  console.log(divider);
+  console.log(row());
+  console.log(
+    row(
+      `  ${c.cyan}${c.bold}API SERVER${c.reset}` +
+        `  ${c.gray}·${c.reset}  ` +
+        `${c.dim}Modular  ·  Multi-tenant  ·  Event-driven${c.reset}`
+    )
+  );
+  console.log(row());
+  console.log(`${hl}${box.bl}${box.h.repeat(W)}${box.br}${c.reset}`);
+  console.log('');
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// SERVER INFO TABLE
+// ══════════════════════════════════════════════════════════════════════════
 function printServerInfo(port) {
+  const envCol = ENV_COLOR[ENV.NODE_ENV] ?? c.white;
+  const env = ENV.NODE_ENV.toUpperCase();
+  const W = 56;
+  const SEP = `  ${c.gray}${'─'.repeat(W)}${c.reset}`;
+
+  const serviceStatus = (has, label) =>
+    has ? `${c.green}${c.bold}▲ ${label}${c.reset}` : `${c.gray}○ ${label}${c.reset}`;
+
   const rows = [
-    ['Process', `API Server  (PID ${process.pid})`],
-    ['ENVironment', ENV.NODE_ENV.toUpperCase()],
-    ['Port', String(port)],
-    ['Node', process.version],
-    ['Platform', `${os.platform()} / ${os.arch()}`],
-    ['CPUs', String(os.cpus().length)],
-    ['Memory', `${Math.round(os.totalmem() / 1024 / 1024)} MB total`],
-    ['Hostname', os.hostname()],
-    ['Started', new Date().toISOString()],
-    ['Push Notifications', firebaseServiceAccount ? '✅ Enabled' : '⚠️ Disabled'],
-    ['Email', process.env.RESEND_API_KEY ? '✅ Configured' : '⚠️ Not configured'],
-    ['SMS', process.env.MSG91_AUTH_KEY ? '✅ Configured' : '⚠️ Not configured'],
-    ['Storage', process.env.AWS_S3_BUCKET ? '✅ Configured' : '⚠️ Not configured'],
+    ['Role', `${c.cyan}${c.bold}API Server${c.reset}  ${c.gray}PID ${process.pid}${c.reset}`],
+    ['Environment', `${envCol}${c.bold}${env}${c.reset}`],
+    ['Port', `${c.white}${c.bold}:${port}${c.reset}`],
+    ['Node', `${c.dim}${process.version}${c.reset}`],
+    ['Platform', `${c.dim}${os.platform()} / ${os.arch()}${c.reset}`],
+    ['CPUs', `${c.dim}${os.cpus().length} cores${c.reset}`],
+    ['Memory', `${c.dim}${Math.round(os.totalmem() / 1024 / 1024)} MB${c.reset}`],
+    ['Host', `${c.dim}${os.hostname()}${c.reset}`],
+    ['Started', `${c.dim}${new Date().toISOString()}${c.reset}`],
   ];
 
-  const ENVColor = ENV_COLOR[ENV.NODE_ENV] ?? c.white;
-  const w1 = 18;
-  const separator = `${c.gray}  ${'─'.repeat(52)}${c.reset}`;
-
-  console.log(separator);
-  console.log(`  ${c.bold}${c.cyan}Server Info${c.reset}`);
-  console.log(separator);
+  console.log(SEP);
+  console.log(`  ${c.bold}${c.cyan}Server${c.reset}`);
+  console.log(SEP);
 
   rows.forEach(([key, val]) => {
-    const label = c.dim + key.padEnd(w1) + c.reset;
-    let value;
-
-    if (key === 'ENVironment') {
-      value = `${ENVColor}${c.bold}${val}${c.reset}`;
-    } else if (key === 'Process') {
-      value = `${c.green}${val}${c.reset}`;
-    } else if (key.includes('Enabled') || key.includes('Configured')) {
-      if (val.includes('✅')) {
-        value = `${c.green}${val}${c.reset}`;
-      } else if (val.includes('⚠️')) {
-        value = `${c.yellow}${val}${c.reset}`;
-      } else {
-        value = `${c.white}${val}${c.reset}`;
-      }
-    } else {
-      value = `${c.white}${val}${c.reset}`;
-    }
-
-    console.log(`  ${label}${value}`);
+    console.log(`  ${c.dim}${pad(key, 14)}${c.reset}${val}`);
   });
 
-  console.log(separator);
-}
+  console.log('');
 
-// ── URL table ──────────────────────────────────────────────────────────────
-function printRouteTable(port) {
-  const base = `http://localhost:${port}`;
-
-  const routes = [
-    { label: 'Health (live)', url: `${base}/health/live` },
-    { label: 'Health (ready)', url: `${base}/health/ready` },
-    { label: 'Health (full)', url: `${base}/health` },
-    { label: 'Metrics', url: `${base}/health/metrics` },
-    { label: 'API v1 — public', url: `${base}/api/v1/public/` },
-    { label: 'API v1 — admin', url: `${base}/api/v1/admin/` },
-    { label: 'API v1 — parent', url: `${base}/api/v1/parent/` },
-    { label: 'API v1 — super', url: `${base}/api/v1/super-admin/` },
-    { label: 'Webhooks', url: `${base}/api/webhooks/` },
+  // Services sub-block
+  const services = [
+    [firebaseServiceAccount, 'Push'],
+    [process.env.RESEND_API_KEY, 'Email'],
+    [process.env.MSG91_AUTH_KEY, 'SMS'],
+    [process.env.AWS_S3_BUCKET, 'Storage'],
+    [process.env.REDIS_URL, 'Redis'],
+    [process.env.DATABASE_URL, 'Postgres'],
   ];
 
-  const separator = `${c.gray}  ${'─'.repeat(62)}${c.reset}`;
-  console.log(`\n${separator}`);
-  console.log(`  ${c.bold}${c.cyan}Endpoints${c.reset}`);
-  console.log(separator);
+  console.log(
+    `  ${c.dim}${'Services'.padEnd(14)}${c.reset}` +
+      services.map(([has, label]) => serviceStatus(has, label)).join(`  ${c.gray}·${c.reset}  `)
+  );
 
-  routes.forEach(({ label, url }) => {
-    console.log(`  ${c.dim}${label.padEnd(20)}${c.reset}${c.green}${url}${c.reset}`);
-  });
-
-  console.log(separator);
+  console.log(SEP);
 }
 
-// ── Connection checks ──────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════
+// CONNECTION CHECKS
+// ══════════════════════════════════════════════════════════════════════════
 async function checkConnections() {
-  const separator = `${c.gray}  ${'─'.repeat(46)}${c.reset}`;
-  console.log(`\n${separator}`);
+  const W = 46;
+  const SEP = `  ${c.gray}${'─'.repeat(W)}${c.reset}`;
+
+  console.log(`\n${SEP}`);
   console.log(`  ${c.bold}${c.cyan}Connections${c.reset}`);
-  console.log(separator);
+  console.log(SEP);
 
   // Postgres
+  const pgStart = Date.now();
   try {
     await prisma.$queryRaw`SELECT 1`;
+    const ms = Date.now() - pgStart;
     console.log(
-      `  ${c.green}●${c.reset} ${c.bold}PostgreSQL${c.reset}     ${c.green}connected${c.reset}`
+      `  ${ok}  ${c.bold}${pad('PostgreSQL', 14)}${c.reset}` +
+        `${c.green}connected${c.reset}  ${c.gray}${ms}ms${c.reset}`
     );
   } catch (err) {
     console.log(
-      `  ${c.red}●${c.reset} ${c.bold}PostgreSQL${c.reset}     ${c.red}FAILED — ${err.message}${c.reset}`
+      `  ${fail}  ${c.bold}${pad('PostgreSQL', 14)}${c.reset}${c.red}${err.message}${c.reset}`
     );
     throw err;
   }
 
   // Redis
+  const rdStart = Date.now();
   try {
     await redis.ping();
+    const ms = Date.now() - rdStart;
     console.log(
-      `  ${c.green}●${c.reset} ${c.bold}Redis${c.reset}          ${c.green}connected${c.reset}`
+      `  ${ok}  ${c.bold}${pad('Redis', 14)}${c.reset}` +
+        `${c.green}connected${c.reset}  ${c.gray}${ms}ms${c.reset}`
     );
   } catch (err) {
     console.log(
-      `  ${c.red}●${c.reset} ${c.bold}Redis${c.reset}          ${c.red}FAILED — ${err.message}${c.reset}`
+      `  ${fail}  ${c.bold}${pad('Redis', 14)}${c.reset}${c.red}${err.message}${c.reset}`
     );
     throw err;
   }
 
-  console.log(separator);
+  console.log(SEP);
 }
 
-// ── Graceful shutdown ──────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════
+// MIDDLEWARE TABLE  (called from app.js, re-exported for use here)
+// ══════════════════════════════════════════════════════════════════════════
+// printMiddlewareTable() is imported from app.js — no changes needed
+
+// ══════════════════════════════════════════════════════════════════════════
+// ROUTE TABLE
+// ══════════════════════════════════════════════════════════════════════════
+function printRouteTable(port) {
+  const base = `http://localhost:${port}`;
+
+  const groups = [
+    {
+      label: 'Health',
+      col: c.mint,
+      routes: [
+        ['GET', '/health/live', 'Liveness probe'],
+        ['GET', '/health/ready', 'Readiness probe'],
+        ['GET', '/health', 'Full health report'],
+        ['GET', '/health/metrics', 'Prometheus metrics'],
+      ],
+    },
+    {
+      label: 'API v1',
+      col: c.sky,
+      routes: [
+        ['*', '/api/v1/public/', 'Public — no auth'],
+        ['*', '/api/v1/admin/', 'School admin'],
+        ['*', '/api/v1/parent/', 'Parent / guardian'],
+        ['*', '/api/v1/super-admin/', 'Super admin'],
+        ['*', '/api/webhooks/', 'Incoming webhooks'],
+      ],
+    },
+  ];
+
+  const W = 62;
+  const SEP = `  ${c.gray}${'─'.repeat(W)}${c.reset}`;
+
+  console.log(`\n${SEP}`);
+  console.log(`  ${c.bold}${c.cyan}Endpoints${c.reset}`);
+  console.log(SEP);
+
+  groups.forEach(({ label, col, routes }) => {
+    console.log(`  ${col}${c.bold}${label}${c.reset}`);
+    routes.forEach(([method, path, desc]) => {
+      const methodStr =
+        method === 'GET'
+          ? `${c.green}${pad(method, 4)}${c.reset}`
+          : method === '*'
+            ? `${c.gray}${pad('ANY', 4)}${c.reset}`
+            : `${c.yellow}${pad(method, 4)}${c.reset}`;
+      console.log(
+        `    ${methodStr}  ${c.white}${pad(path, 30)}${c.reset}` + `${c.dim}${desc}${c.reset}`
+      );
+    });
+    console.log('');
+  });
+
+  console.log(SEP);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// WORKER TOPOLOGY  (informational — workers run in separate process)
+// ══════════════════════════════════════════════════════════════════════════
+function printWorkerTopology() {
+  const PHASE_1_WORKERS = [
+    {
+      role: 'RAILWAY',
+      col: c.violet,
+      badge: '☁ Railway',
+      workers: [
+        { name: 'EmergencyWorker', queue: 'EMERGENCY_ALERTS', conc: 20 },
+        { name: 'NotificationWorker', queue: 'NOTIFICATIONS', conc: 10 },
+        { name: 'InvoiceWorker', queue: 'BACKGROUND_JOBS', conc: 5 },
+        { name: 'MaintenanceWorker', queue: 'BACKGROUND_JOBS', conc: 2 },
+      ],
+    },
+    {
+      role: 'LOCAL',
+      col: c.orange,
+      badge: '⚙ Local Dev',
+      workers: [
+        { name: 'PipelineWorker', queue: 'BACKGROUND_JOBS', conc: 2 },
+        { name: 'DesignWorker', queue: 'BACKGROUND_JOBS', conc: 1 },
+      ],
+    },
+  ];
+
+  const W = 62;
+  const SEP = `  ${c.gray}${'─'.repeat(W)}${c.reset}`;
+
+  console.log(`\n${SEP}`);
+  console.log(
+    `  ${c.bold}${c.cyan}Worker Topology${c.reset}  ${c.dim}Phase 1 — separate process${c.reset}`
+  );
+  console.log(SEP);
+
+  PHASE_1_WORKERS.forEach(({ col, badge: b, workers }) => {
+    console.log(`  ${col}${c.bold}${b}${c.reset}`);
+    workers.forEach(({ name, queue, conc }) => {
+      console.log(
+        `    ${dot(col)}  ${c.bold}${pad(name, 22)}${c.reset}` +
+          `${c.dim}queue:${c.reset} ${c.sky}${pad(queue, 20)}${c.reset}` +
+          `${c.gray}×${conc}${c.reset}`
+      );
+    });
+    console.log('');
+  });
+
+  console.log(
+    `  ${c.dim}Start workers:${c.reset}  ${c.white}npm run worker:easy${c.reset}  ${c.gray}(WORKER_ROLE=all)${c.reset}`
+  );
+  console.log(SEP);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// GRACEFUL SHUTDOWN
+// ══════════════════════════════════════════════════════════════════════════
 function setupGracefulShutdown(server) {
   let isShuttingDown = false;
 
@@ -239,27 +361,23 @@ function setupGracefulShutdown(server) {
     if (isShuttingDown) return;
     isShuttingDown = true;
 
-    console.log(`\n${c.yellow}  ⚡ ${signal} received — starting graceful shutdown…${c.reset}`);
+    console.log(`\n  ${c.gold}⚡ ${signal} received — graceful shutdown starting…${c.reset}`);
     logger.info({ signal }, 'Graceful shutdown initiated');
 
-    // 1. Stop accepting new connections
+    const step = label => console.log(`  ${c.yellow}›${c.reset} ${c.dim}${label}${c.reset}`);
+
     server.close(async () => {
-      console.log(`  ${c.yellow}●${c.reset} HTTP server closed`);
+      step('HTTP server closed — no new connections');
 
       try {
-        // 2. Stop cron jobs
+        step('Stopping job scheduler…');
         await jobScheduler.stop();
-        console.log(`  ${c.yellow}●${c.reset} Job scheduler stopped`);
-
-        // 3. Disconnect Prisma
+        step('Disconnecting PostgreSQL…');
         await prisma.$disconnect();
-        console.log(`  ${c.yellow}●${c.reset} PostgreSQL disconnected`);
-
-        // 4. Disconnect Redis
+        step('Disconnecting Redis…');
         await redis.quit();
-        console.log(`  ${c.yellow}●${c.reset} Redis disconnected`);
 
-        console.log(`  ${c.green}✓ Shutdown complete${c.reset}\n`);
+        console.log(`\n  ${ok}  ${c.bold}${c.green}Shutdown complete${c.reset}\n`);
         logger.info('Graceful shutdown complete');
         process.exit(0);
       } catch (err) {
@@ -268,10 +386,9 @@ function setupGracefulShutdown(server) {
       }
     });
 
-    // Force kill after timeout
     setTimeout(() => {
       logger.error('Shutdown timeout — forcing exit');
-      console.error(`\n  ${c.red}✗ Shutdown timeout — forcing exit${c.reset}\n`);
+      console.error(`\n  ${fail}  ${c.red}Shutdown timeout — forcing exit${c.reset}\n`);
       process.exit(1);
     }, ENV.SHUTDOWN_TIMEOUT_MS ?? 15_000);
   }
@@ -281,19 +398,21 @@ function setupGracefulShutdown(server) {
 
   process.on('uncaughtException', err => {
     logger.fatal({ err }, 'Uncaught exception');
-    console.error(`\n  ${c.red}✗ Uncaught Exception: ${err.message}${c.reset}`);
+    console.error(`\n  ${fail}  ${c.red}Uncaught Exception: ${err.message}${c.reset}`);
     console.error(err.stack);
     process.exit(1);
   });
 
   process.on('unhandledRejection', reason => {
     logger.fatal({ reason }, 'Unhandled rejection');
-    console.error(`\n  ${c.red}✗ Unhandled Rejection: ${reason}${c.reset}`);
+    console.error(`\n  ${fail}  ${c.red}Unhandled Rejection: ${reason}${c.reset}`);
     process.exit(1);
   });
 }
 
-// ── Main ───────────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════
+// MAIN
+// ══════════════════════════════════════════════════════════════════════════
 async function start() {
   const PORT = Number(ENV.PORT ?? 3000);
 
@@ -301,35 +420,31 @@ async function start() {
     printBanner();
     printServerInfo(PORT);
 
-    // 1. Check connections before accepting traffic
     await checkConnections();
 
-    // 2. Build Express app
     const app = createApp();
+    printMiddlewareTable(); // imported from app.js
+    printWorkerTopology();
 
-    // 3. Print middleware list
-    printMiddlewareTable();
-
-    // 4. Start listening
     const server = app.listen(PORT, () => {
       printRouteTable(PORT);
-      console.log(`\n  ${c.green}${c.bold}✓ API server ready on port ${PORT}${c.reset}\n`);
-      logger.info({ port: PORT, ENV: ENV.NODE_ENV }, 'API server started');
+      console.log(
+        `\n  ${ok}  ${c.bold}${c.green}API server ready${c.reset}  ${c.gray}→${c.reset}  ${c.white}http://localhost:${PORT}${c.reset}\n`
+      );
+      logger.info({ port: PORT, env: ENV.NODE_ENV }, 'API server started');
     });
 
-    // 5. Keep-alive tuning for Railway (avoids ECONNRESET on deployed ENVs)
+    // Railway keep-alive tuning
     server.keepAliveTimeout = 65_000;
     server.headersTimeout = 66_000;
 
-    // 6. Start cron jobs (after server is up)
     await jobScheduler.start();
-    console.log(`  ${c.cyan}●${c.reset} ${c.bold}Cron scheduler${c.reset}  started`);
+    console.log(`  ${dot(c.cyan)}  ${c.bold}Cron scheduler${c.reset}  ${c.green}started${c.reset}`);
 
-    // 7. Graceful shutdown hooks
     setupGracefulShutdown(server);
   } catch (err) {
     logger.fatal({ err }, 'Failed to start API server');
-    console.error(`\n  ${c.red}✗ Startup failed: ${err.message}${c.reset}\n`);
+    console.error(`\n  ${fail}  ${c.red}Startup failed: ${err.message}${c.reset}\n`);
     process.exit(1);
   }
 }

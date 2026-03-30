@@ -1,6 +1,7 @@
 // =============================================================================
 // orchestrator/workers/emergency.worker.js — RESQID
 // Processes emergency:alerts queue. ALWAYS ON. Sacred pipeline.
+//
 // Steps 7–15 of the emergency alert pipeline (Steps 1–6 are in the API layer).
 //
 // Step 7:  Worker picks up job
@@ -8,26 +9,39 @@
 // Step 9:  Update alert status to SENDING
 // Step 10: Fire in parallel — Firebase push (2s timeout) + SMS (4s timeout)
 // Step 11: Any success → mark DELIVERED, log latency
-// Step 12: All fail → try WhatsApp (4s timeout)
-// Step 13: WhatsApp fails → initiate voice call
-// Step 14: All fail → DLQ + Slack webhook
+// Step 12: WhatsApp — DISABLED, skip immediately (not configured)
+// Step 13: Voice call — placeholder, log SKIPPED
+// Step 14: All fail → mark FAILED, throw → DLQ via failed event
 // Step 15: Log every attempt to Notification table
+//
+// FIX [E-1]: Import paths corrected from #notifications/* alias (undefined)
+//            to relative paths matching actual folder structure.
+//            #notifications is not in the package.json imports map — using it
+//            caused a startup crash, taking down the entire emergency queue.
+//
+// FIX [E-2]: WhatsApp step (Step 12) short-circuited.
+//            The send was commented out but the Promise.race timeout was still
+//            running — every full-channel failure wasted 4 seconds timing out
+//            a no-op before hitting DLQ. Now skips immediately with a log.
+//            Re-enable when MSG91 WhatsApp API is configured:
+//            1. Uncomment the import at the top
+//            2. Replace the short-circuit block with the real send
 // =============================================================================
 
 import { Worker } from 'bullmq';
 import { getQueueConnection } from '../queues/queue.connection.js';
 import { QUEUE_NAMES } from '../queues/queue.names.js';
 import { handleDeadJob } from '../dlq/dlq.handler.js';
-import { sendPushNotificationChannel } from '#notifications/push.js';
-import { sendSmsNotification } from '#notifications/sms.js';
-// import { sendWhatsAppNotification } from '#notifications/whatsapp.js';
+import { sendPushNotificationChannel } from '../notifications/channel/push.js'; // FIX [E-1]
+import { sendSmsNotification } from '../notifications/channel/sms.js'; // FIX [E-1]
+// import { sendWhatsAppNotification } from '../notifications/channel/whatsapp.js'; // enable when ready
 import { prisma } from '#config/prisma.js';
 import { logger } from '#config/logger.js';
 import { decryptField } from '#shared/security/encryption.js';
 
 const QUEUE = QUEUE_NAMES.EMERGENCY_ALERTS;
 
-// ── Contact loader ────────────────────────────────────────────────────────────
+// ── Contact loaders ───────────────────────────────────────────────────────────
 
 const loadAlertContacts = async studentId => {
   const emergency = await prisma.emergencyProfile.findUnique({
@@ -124,7 +138,7 @@ export const processEmergencyAlert = async job => {
 
   logger.info({ jobId: job.id, alertId, studentId }, '[emergency.worker] Processing alert');
 
-  // Step 8 — Load contacts
+  // Step 8 — Load contacts from DB
   const [contacts, parentFcmTokens, adminFcmTokens] = await Promise.all([
     loadAlertContacts(studentId),
     loadParentFcmTokens(studentId),
@@ -146,11 +160,9 @@ export const processEmergencyAlert = async job => {
   };
   const smsBody = `🚨 ALERT: ${studentName ?? 'A student'}'s ResQID card was scanned at ${schoolName ?? 'school'} at ${scannedAt ?? new Date().toISOString()}. Open the ResQID app.`;
 
-  let anyDelivered = false;
-
-  // Step 10 — Push + SMS parallel with per-channel timeouts
+  // Step 10 — Push + SMS in parallel with per-channel timeouts
   const step10Results = await Promise.allSettled([
-    // Firebase push — 2 second timeout
+    // Firebase push — 2s timeout
     (async () => {
       if (allFcmTokens.length === 0) return { success: false, error: 'No FCM tokens' };
       const start = Date.now();
@@ -171,9 +183,9 @@ export const processEmergencyAlert = async job => {
       return res;
     })(),
 
-    // SMS — 4 second timeout per number
-    ...phoneNumbers
-      .map(phone => async () => {
+    // SMS — 4s timeout per number
+    ...phoneNumbers.map(phone =>
+      (async () => {
         const start = Date.now();
         const res = await Promise.race([
           sendSmsNotification({ to: phone, body: smsBody, meta: { alertId } }),
@@ -190,12 +202,14 @@ export const processEmergencyAlert = async job => {
           schoolId,
         });
         return res;
-      })
-      .map(fn => fn()),
+      })()
+    ),
   ]);
 
-  // Step 11 — Any success?
-  anyDelivered = step10Results.some(r => r.status === 'fulfilled' && r.value?.success === true);
+  // Step 11 — Any channel succeeded?
+  const anyDelivered = step10Results.some(
+    r => r.status === 'fulfilled' && r.value?.success === true
+  );
 
   if (anyDelivered) {
     await prisma.emergencyAlert.update({
@@ -206,48 +220,28 @@ export const processEmergencyAlert = async job => {
     return;
   }
 
-  // Step 12 — All failed — try WhatsApp (4s timeout)
-  logger.warn({ jobId: job.id, alertId }, '[emergency.worker] Push+SMS failed — trying WhatsApp');
-
-  const waNumbers = contacts.filter(c => c.whatsapp_enabled && c.phone).map(c => c.phone);
-  const waResults = await Promise.allSettled(
-    waNumbers
-      .map(phone => async () => {
-        const start = Date.now();
-        const res = await Promise.race([
-          // sendWhatsAppNotification({ to: phone, body: smsBody, meta: { alertId } }),
-          new Promise((_, rej) => setTimeout(() => rej(new Error('WA timeout')), 4000)),
-        ]);
-        await logAttempt({
-          channel: 'WHATSAPP',
-          status: res?.success ? 'DELIVERED' : 'FAILED',
-          latencyMs: Date.now() - start,
-          providerRef: res?.providerRef,
-          error: res?.error,
-          alertId,
-          studentId,
-          schoolId,
-        });
-        return res;
-      })
-      .map(fn => fn())
-  );
-
-  const waDelivered = waResults.some(r => r.status === 'fulfilled' && r.value?.success === true);
-
-  if (waDelivered) {
-    await prisma.emergencyAlert.update({
-      where: { id: alertId },
-      data: { status: 'DELIVERED', delivered_at: new Date() },
-    });
-    logger.info({ jobId: job.id, alertId }, '[emergency.worker] Alert DELIVERED via WhatsApp');
-    return;
-  }
-
-  // Step 13 — Voice call placeholder (implement when voice provider is chosen)
+  // Step 12 — WhatsApp
+  // FIX [E-2]: Short-circuited — send was commented out but timeout still ran,
+  // causing a guaranteed 4s delay on every full failure before DLQ.
+  // To enable: uncomment the import above and replace this block with the real send.
   logger.warn(
     { jobId: job.id, alertId },
-    '[emergency.worker] WhatsApp failed — voice call not yet implemented'
+    '[emergency.worker] Push+SMS failed — WhatsApp not configured, skipping'
+  );
+  await logAttempt({
+    channel: 'WHATSAPP',
+    status: 'SKIPPED',
+    latencyMs: 0,
+    error: 'WhatsApp not configured',
+    alertId,
+    studentId,
+    schoolId,
+  });
+
+  // Step 13 — Voice call (implement when voice provider chosen)
+  logger.warn(
+    { jobId: job.id, alertId },
+    '[emergency.worker] Voice call not yet implemented — skipping'
   );
   await logAttempt({
     channel: 'VOICE',
@@ -259,7 +253,7 @@ export const processEmergencyAlert = async job => {
     schoolId,
   });
 
-  // Step 14 — All channels failed — DLQ + Slack (handled by failed event below)
+  // Step 14 — All channels failed
   await prisma.emergencyAlert.update({
     where: { id: alertId },
     data: { status: 'FAILED', failed_at: new Date() },
@@ -289,8 +283,6 @@ export const startEmergencyWorker = () => {
       { jobId: job?.id, err: error.message, attemptsMade: job?.attemptsMade },
       '[emergency.worker] Job failed'
     );
-
-    // DLQ on final attempt
     if (job && job.attemptsMade >= (job.opts?.attempts ?? 5)) {
       await handleDeadJob({ job, error, queueName: QUEUE });
     }

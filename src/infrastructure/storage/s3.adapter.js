@@ -23,10 +23,11 @@ export class S3Adapter extends StorageProvider {
         accessKeyId: config.ACCESS_KEY_ID ?? process.env.AWS_ACCESS_KEY_ID,
         secretAccessKey: config.SECRET_ACCESS_KEY ?? process.env.AWS_SECRET_ACCESS_KEY,
       },
-      // Set endpoint for R2 or other S3-compatible services
-      ...(config.ENDPOINT || process.env.AWS_ENDPOINT
-        ? { endpoint: config.ENDPOINT ?? process.env.AWS_ENDPOINT }
+      // s3.adapter.js line 27 — fix the env var name
+      ...(config.ENDPOINT || process.env.AWS_S3_ENDPOINT
+        ? { endpoint: config.ENDPOINT ?? process.env.AWS_S3_ENDPOINT }
         : {}),
+      forcePathStyle: true, // required for R2
     });
 
     this.bucket = config.BUCKET ?? process.env.AWS_S3_BUCKET;
@@ -48,7 +49,7 @@ export class S3Adapter extends StorageProvider {
 
       const location = this.cdnDomain
         ? `https://${this.cdnDomain}/${key}`
-        : `https://${this.bucket}.s3.amazonaws.com/${key}`;
+        : `https://${process.env.AWS_ENDPOINT}/${this.bucket}/${key}`;
 
       console.info(`[Storage] Uploaded "${key}" — ${location}`);
       return { success: true, key, location };

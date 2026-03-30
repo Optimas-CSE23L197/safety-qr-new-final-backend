@@ -10,6 +10,10 @@ export const StoragePath = {
   schoolLogo: schoolId => `schools/${schoolId}/logo.png`,
   emergencyMedia: (tokenHash, filename) => `emergency/${tokenHash}/${filename}`,
   temp: filename => `temp/${filename}`,
+  studentQrCode: studentId => `students/${studentId}/qr-code.png`,
+  studentCard: studentId => `students/${studentId}/card-design.png`,
+  orderInvoice: (orderId, type) => `orders/${orderId}/${type}-invoice.pdf`,
+  schoolBulkExport: (schoolId, orderId) => `schools/${schoolId}/bulk-export/batch-${orderId}.pdf`,
 };
 
 // ---------------------------------------------------------------------------

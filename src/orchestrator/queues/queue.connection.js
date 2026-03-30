@@ -1,25 +1,25 @@
 // =============================================================================
 // orchestrator/queues/queue.connection.js — RESQID
 // =============================================================================
-// FIXED VERSION v2.1 - March 29, 2026
+// FIXED VERSION v3.0 - March 30, 2026
 // =============================================================================
 //
 // CHANGE LOG:
-// - Guarded forceCloseQueueConnection to only run in test mode
-// - Improved ref count handling and logging clarity
-// - Maintains backward compatibility
+// - Removed dependency on workerRedis from redis.js because it has keyPrefix
+// - BullMQ cannot work with Redis clients that have keyPrefix
+// - Create fresh Redis connection without any prefix for BullMQ
 // =============================================================================
 
-import { workerRedis } from '#config/redis.js';
+import Redis from 'ioredis';
 import { logger } from '#config/logger.js';
 
 let _connection = null;
 let _connectionRefCount = 0;
 
 /**
- * Get the shared Redis connection for BullMQ
- * Reuses the existing workerRedis instance from redis.js
- * Prevents duplicate connections and socket exhaustion
+ * Get a clean Redis connection for BullMQ
+ * BullMQ requires a Redis client WITHOUT keyPrefix
+ * It manages its own prefixes internally
  */
 export const getQueueConnection = () => {
   if (_connection) {
@@ -31,32 +31,62 @@ export const getQueueConnection = () => {
     return _connection;
   }
 
-  _connection = workerRedis;
+  // Create a fresh Redis connection specifically for BullMQ
+  // IMPORTANT: No keyPrefix here - BullMQ manages its own prefixes
+  _connection = new Redis({
+    host: process.env.REDIS_HOST || '127.0.0.1',
+    port: parseInt(process.env.REDIS_PORT || '6379'),
+    password: process.env.REDIS_PASSWORD || undefined,
+    db: parseInt(process.env.REDIS_DB || '0'),
+
+    // BullMQ specific requirements
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false,
+    lazyConnect: false,
+
+    // Retry strategy
+    retryStrategy: times => {
+      const delay = Math.min(times * 100, 3000);
+      logger.warn({ times, delay }, '[queue.connection] Retrying Redis connection');
+      return delay;
+    },
+
+    // Connection timeouts
+    connectTimeout: 10000,
+    keepAlive: 30000,
+
+    // IMPORTANT: DO NOT set keyPrefix here
+    // keyPrefix: 'anything' - This would break BullMQ!
+  });
+
   _connectionRefCount = 1;
 
   _connection.on('connect', () => {
-    logger.info('[queue.connection] Queue manager connected to Redis');
+    logger.info('[queue.connection] BullMQ Redis connection established');
+  });
+
+  _connection.on('ready', () => {
+    logger.info('[queue.connection] BullMQ Redis ready');
   });
 
   _connection.on('error', err => {
-    logger.error(
-      { err: err.message },
-      '[queue.connection] Redis connection error (managed by redis.js)'
-    );
+    logger.error({ err: err.message }, '[queue.connection] Redis connection error');
   });
 
   _connection.on('close', () => {
-    logger.warn('[queue.connection] Redis connection closed (managed by redis.js)');
+    logger.warn('[queue.connection] Redis connection closed');
   });
 
-  logger.info('[queue.connection] Queue connection initialized (reusing workerRedis)');
+  _connection.on('reconnecting', () => {
+    logger.warn('[queue.connection] Redis reconnecting');
+  });
+
+  logger.info('[queue.connection] Queue connection initialized (clean Redis for BullMQ)');
   return _connection;
 };
 
 /**
  * Close the queue connection
- * NOTE: This does not actually close the shared Redis connection.
- * It only decreases the reference count.
  */
 export const closeQueueConnection = async () => {
   if (_connectionRefCount > 0) {
@@ -68,11 +98,10 @@ export const closeQueueConnection = async () => {
     '[queue.connection] Connection release requested'
   );
 
-  if (_connectionRefCount <= 0) {
-    logger.warn(
-      '[queue.connection] Ref count zero — connection remains open (managed by redis.js)'
-    );
-    _connectionRefCount = 0;
+  if (_connectionRefCount <= 0 && _connection) {
+    await _connection.quit();
+    _connection = null;
+    logger.info('[queue.connection] Connection closed');
   }
 
   return Promise.resolve();
@@ -80,7 +109,6 @@ export const closeQueueConnection = async () => {
 
 /**
  * Force close connection (safe only in test mode)
- * WARNING: In production this will break ALL Redis users.
  */
 export const forceCloseQueueConnection = async () => {
   if (process.env.NODE_ENV !== 'test') {
@@ -89,7 +117,8 @@ export const forceCloseQueueConnection = async () => {
   }
 
   if (_connection) {
-    logger.warn('[queue.connection] Force closing shared Redis connection (TEST MODE)');
+    logger.warn('[queue.connection] Force closing Redis connection (TEST MODE)');
+    await _connection.quit();
     _connection = null;
     _connectionRefCount = 0;
   }

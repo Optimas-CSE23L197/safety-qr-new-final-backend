@@ -1,20 +1,19 @@
 // =============================================================================
-// orchestrator/queues/queue.names.js — RESQID PHASE 1 (Production)
+// orchestrator/queues/queue.names.js — RESQID PHASE 1 (Fresh Setup)
+// Simple queue names without colons for BullMQ compatibility
 // =============================================================================
 
 export const QUEUE_NAMES = Object.freeze({
-  // PHASE 1 QUEUES
-  EMERGENCY_ALERTS: 'queue:emergency_alerts', // Emergency service → Emergency Worker
-  NOTIFICATIONS: 'queue:notifications', // Any service → Notification Worker
-  BACKGROUND_JOBS: 'queue:background_jobs', // Maintenance/Invoice → Maintenance + Invoice Worker
+  // Phase 1 Queues
+  EMERGENCY_ALERTS: 'emergency_queue',
+  NOTIFICATIONS: 'notification_queue',
+  BACKGROUND_JOBS: 'background_queue',
 
-  // Aliases for backward compatibility
-  CRITICAL: 'queue:emergency_alerts',
-  BACKGROUND: 'queue:background_jobs',
-  ORDER: 'queue:background_jobs',
-
-  // ✅ Added explicit alias for background jobs used by pipeline/design workers
-  JOBS_BACKGROUND: 'queue:background_jobs',
+  // Aliases
+  CRITICAL: 'emergency_queue',
+  BACKGROUND: 'background_queue',
+  ORDER: 'background_queue',
+  JOBS_BACKGROUND: 'background_queue',
 });
 
 // Priority mapping (1 = highest)

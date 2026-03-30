@@ -156,24 +156,18 @@ const _env = {
   // e.g. https://resqid.in/s/5YbX2mKqf3AB9xP9nRtL3vWcUjAe
   SCAN_BASE_URL: optional('SCAN_BASE_URL', 'http://localhost:3000/s'),
 
-  // ── AWS S3 ─────────────────────────────────────────────────────────────────
+  // ── Cloudflare R2 (Object Storage) ─────────────────────────────────────────
+  // R2 is S3-compatible but uses Cloudflare's endpoint
+  // Required for QR codes, card designs, and invoice PDFs
+  // ── Storage — Cloudflare R2 via S3-compatible adapter ──────────────────────
   AWS_ACCESS_KEY_ID: required('AWS_ACCESS_KEY_ID', { prodOnly: true }),
   AWS_SECRET_ACCESS_KEY: required('AWS_SECRET_ACCESS_KEY', {
     prodOnly: true,
     minLength: 20,
   }),
-  AWS_REGION: optional('AWS_REGION', 'ap-south-1'),
+  AWS_REGION: optional('AWS_REGION', 'auto'),
   AWS_S3_BUCKET: required('AWS_S3_BUCKET', { prodOnly: true }),
-  AWS_S3_ENDPOINT: optional('AWS_S3_ENDPOINT'),
-
-  // ── Cloudflare R2 (Object Storage) ─────────────────────────────────────────
-  // R2 is S3-compatible but uses Cloudflare's endpoint
-  // Required for QR codes, card designs, and invoice PDFs
-  R2_ACCOUNT_ID: required('R2_ACCOUNT_ID', { prodOnly: true }),
-  R2_ACCESS_KEY_ID: required('R2_ACCESS_KEY_ID', { prodOnly: true, minLength: 20 }),
-  R2_SECRET_ACCESS_KEY: required('R2_SECRET_ACCESS_KEY', { prodOnly: true, minLength: 20 }),
-  R2_BUCKET_NAME: required('R2_BUCKET_NAME', { prodOnly: true }),
-  R2_PUBLIC_URL: required('R2_PUBLIC_URL', { prodOnly: true }),
+  AWS_S3_ENDPOINT: required('AWS_S3_ENDPOINT', { prodOnly: true }),
 
   // ── MSG91 ──────────────────────────────────────────────────────────────────
   MSG91_AUTH_KEY: required('MSG91_AUTH_KEY', { prodOnly: true }),
@@ -190,12 +184,16 @@ const _env = {
   }),
 
   // ── Email / SMTP ───────────────────────────────────────────────────────────
-  SMTP_HOST: required('SMTP_HOST', { prodOnly: true }),
-  SMTP_PORT: optionalInt('SMTP_PORT', 587),
-  SMTP_USER: required('SMTP_USER', { prodOnly: true }),
-  SMTP_PASS: required('SMTP_PASS', { prodOnly: true }),
-  EMAIL_FROM: optional('EMAIL_FROM', 'noreply@resqid.in'),
-  EMAIL_FROM_NAME: optional('EMAIL_FROM_NAME', 'RESQID'),
+  // SMTP_HOST: required('SMTP_HOST', { prodOnly: true }),
+  // SMTP_PORT: optionalInt('SMTP_PORT', 587),
+  // SMTP_USER: required('SMTP_USER', { prodOnly: true }),
+  // SMTP_PASS: required('SMTP_PASS', { prodOnly: true }),
+  // EMAIL_FROM: optional('EMAIL_FROM', 'noreply@resqid.in'),
+  // EMAIL_FROM_NAME: optional('EMAIL_FROM_NAME', 'RESQID'),
+
+  // ── Email (Resend) ──────────────────────────────────────────────────────────
+  RESEND_API_KEY: required('RESEND_API_KEY', { prodOnly: true }),
+  RESEND_FROM_EMAIL: optional('RESEND_FROM_EMAIL', 'noreply@mail.getresqid.in'),
 
   // ── Firebase FCM ───────────────────────────────────────────────────────────
   FIREBASE_PROJECT_ID: required('FIREBASE_PROJECT_ID', { prodOnly: true }),
