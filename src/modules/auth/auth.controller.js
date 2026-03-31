@@ -146,7 +146,12 @@ export const changePasswordController = asyncHandler(async (req, res) => {
     ipAddress: extractIp(req),
   });
 
+  // ✅ response first, THEN clear cookies
+  const response = ApiResponse.ok(
+    res,
+    result,
+    'Password changed successfully. Please login again.'
+  );
   clearAuthCookies(res);
-
-  return ApiResponse.ok(res, result, 'Password changed successfully. Please login again.');
+  return response;
 });

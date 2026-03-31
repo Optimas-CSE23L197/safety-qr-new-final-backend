@@ -92,7 +92,13 @@ router.post(
 );
 
 // ── Refresh Token ─────────────────────────────────────────────────────────────
-router.post('/refresh', authSlowDown, authLimiter, refreshTokenController);
+router.post(
+  '/refresh',
+  authSlowDown,
+  authLimiter,
+  validate(refreshTokenValidation),
+  refreshTokenController
+);
 
 // ── Logout ────────────────────────────────────────────────────────────────────
 router.post('/logout', authenticate, logoutController);

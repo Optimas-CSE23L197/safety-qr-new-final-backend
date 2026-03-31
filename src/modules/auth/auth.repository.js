@@ -562,22 +562,3 @@ export const updateParentPhone = (id, encryptedPhone, phoneIndex) =>
       is_phone_verified: true,
     },
   });
-
-// ─── OTP Attempts ─────────────────────────────────────────────────────────────
-
-export const createOtpAttempt = (phone, otpHash, purpose, ipAddress) =>
-  prisma.otpLog.create({
-    data: {
-      phone,
-      otp_hash: otpHash,
-      purpose,
-      ip_address: ipAddress,
-      expires_at: new Date(Date.now() + 10 * 60 * 1000),
-    },
-  });
-
-export const updateOtpAttempt = (phone, verified) =>
-  prisma.otpLog.updateMany({
-    where: { phone, verified: false },
-    data: { verified, verified_at: verified ? new Date() : undefined },
-  });
