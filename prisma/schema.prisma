@@ -601,6 +601,7 @@ model ParentUser {
   notificationPrefs  ParentNotificationPref?
   notifications      Notification[]
   sessions           Session[]
+  deviceLoginLogs    DeviceLoginLog[]
   // [H2] REMOVED: dashboardNotifications — parents use mobile app, not dashboard
 
   @@index([phone_index])
@@ -671,7 +672,7 @@ model SuperAdmin {
 
 model OtpAuditLog {
   id           String     @id @default(uuid())
-  phone        String
+  phone_index  String
   purpose      OtpPurpose
   attempts     Int        @default(0)
   max_attempts Int        @default(5)
@@ -683,7 +684,7 @@ model OtpAuditLog {
   ip_address   String?
   created_at   DateTime   @default(now())
 
-  @@index([phone, purpose])
+  @@index([phone_index, purpose])
   @@index([expires_at])
 }
 
@@ -792,7 +793,8 @@ model EmergencyContact {
   updated_at       DateTime         @updatedAt
   profile          EmergencyProfile @relation(fields: [profile_id], references: [id], onDelete: Cascade)
 
-  @@index([profile_id, priority])
+  @@unique([profile_id, priority])
+  @@index([profile_id])
 }
 
 model CardVisibility {
@@ -1590,7 +1592,6 @@ model IdempotencyKey {
   expires_at    DateTime
   created_at    DateTime @default(now())
 
-  @@index([key])
   @@index([expires_at])
 }
 
@@ -1835,6 +1836,7 @@ model DeviceLoginLog {
   email_sent    Boolean        @default(false)
   email_sent_at DateTime?
   was_forced    Boolean        @default(false)
+  parent        ParentUser     @relation(fields: [parent_id], references: [id], onDelete: Cascade)
 
   @@index([parent_id, login_at])
 }

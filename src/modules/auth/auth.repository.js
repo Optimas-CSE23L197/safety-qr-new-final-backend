@@ -24,7 +24,15 @@ export const findSuperAdminByEmail = email =>
 export const findSuperAdminById = id =>
   prisma.superAdmin.findUnique({
     where: { id },
-    select: { id: true, name: true, email: true, is_active: true },
+    select: {
+      id: true,
+      school_id: true,
+      role: true,
+      is_active: true,
+      name: true,
+      email: true,
+      password_hash: true,
+    },
   });
 
 export const updateSuperAdminLastLogin = id =>
@@ -544,6 +552,16 @@ export const registerParentWithStudent = async ({
     return { parent, studentId, isNewUser };
   });
 };
+
+export const updateParentPhone = (id, encryptedPhone, phoneIndex) =>
+  prisma.parentUser.update({
+    where: { id },
+    data: {
+      phone: encryptedPhone,
+      phone_index: phoneIndex,
+      is_phone_verified: true,
+    },
+  });
 
 // ─── OTP Attempts ─────────────────────────────────────────────────────────────
 

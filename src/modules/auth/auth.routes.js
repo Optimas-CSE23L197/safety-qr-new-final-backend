@@ -16,7 +16,8 @@ import {
   verifyOtpValidation,
   registerInitValidation,
   registerVerifyValidation,
-  changePasswordValidation, // ✅ ADDED IMPORT
+  changePasswordValidation,
+  refreshTokenValidation,
 } from './auth.validation.js';
 
 import {
@@ -52,10 +53,16 @@ router.post(
 );
 
 // ── Parent Login: Send OTP ────────────────────────────────────────────────────
-router.post('/send-otp', authLimiter, validate(sendOtpValidation), sendOtpController);
+router.post('/send-otp', authSlowDown, authLimiter, validate(sendOtpValidation), sendOtpController);
 
 // ── Parent Login: Verify OTP ──────────────────────────────────────────────────
-router.post('/verify-otp', authLimiter, validate(verifyOtpValidation), verifyOtpController);
+router.post(
+  '/verify-otp',
+  authSlowDown,
+  authLimiter,
+  validate(verifyOtpValidation),
+  verifyOtpController
+);
 
 // ── Parent Registration: Step 1 — validate card + send OTP + issue nonce ─────
 router.post(
@@ -78,14 +85,14 @@ router.post(
 // ── Change Password ───────────────────────────────────────────────────────────
 router.post(
   '/change-password',
-  authLimiter, // ✅ ADDED rate limiter for password change
+  authLimiter,
   authenticate,
-  validate(changePasswordValidation), // ✅ UNCOMMENTED AND FIXED
+  validate(changePasswordValidation),
   changePasswordController
 );
 
 // ── Refresh Token ─────────────────────────────────────────────────────────────
-router.post('/refresh', authLimiter, refreshTokenController);
+router.post('/refresh', authSlowDown, authLimiter, refreshTokenController);
 
 // ── Logout ────────────────────────────────────────────────────────────────────
 router.post('/logout', authenticate, logoutController);

@@ -54,33 +54,20 @@ export const sendOtpController = asyncHandler(async (req, res) => {
   return ApiResponse.ok(res, result, 'OTP sent successfully');
 });
 
-// ─── Parent Login: Verify OTP ─────────────────────────────────────────────────
+// Global error handler will catch it. REPLACE with:
 export const verifyOtpController = asyncHandler(async (req, res) => {
   const { phone, otp } = req.body;
-
-  try {
-    const result = await authService.verifyOtp({
-      phone,
-      otp,
-      ipAddress: extractIp(req),
-      deviceInfo: {
-        ...parseUserAgentSummary(req),
-        userAgent: req.headers['user-agent'],
-        language: req.headers['accept-language'],
-      },
-    });
-    return ApiResponse.ok(res, result, 'Login successful');
-  } catch (error) {
-    if (error.code === 'NOT_FOUND' || error.message.includes('Account not found')) {
-      return res.status(404).json({
-        success: false,
-        code: 'USER_NOT_FOUND',
-        message: 'Account not found. Please register using your RESQID card.',
-        redirectTo: '/register',
-      });
-    }
-    throw error;
-  }
+  const result = await authService.verifyOtp({
+    phone,
+    otp,
+    ipAddress: extractIp(req),
+    deviceInfo: {
+      ...parseUserAgentSummary(req),
+      userAgent: req.headers['user-agent'],
+      language: req.headers['accept-language'],
+    },
+  });
+  return ApiResponse.ok(res, result, 'Login successful');
 });
 
 // ─── Parent Registration: Step 1 — Init ──────────────────────────────────────

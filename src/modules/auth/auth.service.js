@@ -44,6 +44,19 @@ const NONCE_TTL = 10 * 60;
 // =============================================================================
 // HELPER FUNCTIONS (Extracted to eliminate duplication)
 // =============================================================================
+async function dispatchOtp({ phone, otp, namespace, actorId, expiryMinutes }) {
+  if (ENV.IS_DEV) {
+    logger.info({ phone, otp, namespace }, `[DEV OTP]`);
+    return;
+  }
+  await dispatchOtp({
+    phone,
+    otp,
+    namespace: 'login',
+    actorId: phone,
+    expiryMinutes: OTP_TTL_SECONDS / 60,
+  });
+}
 
 /**
  * validateOtp
@@ -149,15 +162,16 @@ export const loginSuperAdmin = async ({ email, password, ipAddress, deviceInfo, 
     console.log(
       `❌ [SUPER ADMIN LOGIN FAILED] Email: ${email} - ${!admin ? 'User not found' : 'Wrong password'}`
     );
-    await recordFailedAuth(ipAddress, email, !admin ? 'EMAIL_NOT_FOUND' : 'WRONG_PASSWORD');
 
+    await recordFailedAuth(ipAddress, email, 'INVALID_CREDENTIALS');
     await repo.logFailedLogin({
       actorType: 'SUPER_ADMIN',
       identifier: email,
       ipAddress,
       userAgent,
-      reason: !admin ? 'EMAIL_NOT_FOUND' : 'WRONG_PASSWORD',
+      reason: 'INVALID_CREDENTIALS',
     });
+
     throw ApiError.unauthorized('Invalid credentials');
   }
 
@@ -221,15 +235,16 @@ export const loginSchoolUser = async ({ email, password, ipAddress, deviceInfo, 
 
   if (!user || !valid) {
     console.log(`❌ [SCHOOL ADMIN LOGIN FAILED] Email: ${email}`);
-    await recordFailedAuth(ipAddress, email, !user ? 'EMAIL_NOT_FOUND' : 'WRONG_PASSWORD');
 
+    await recordFailedAuth(ipAddress, email, 'INVALID_CREDENTIALS');
     await repo.logFailedLogin({
       actorType: 'ADMIN',
       identifier: email,
       ipAddress,
       userAgent,
-      reason: !user ? 'EMAIL_NOT_FOUND' : 'WRONG_PASSWORD',
+      reason: 'INVALID_CREDENTIALS',
     });
+
     throw ApiError.unauthorized('Invalid credentials');
   }
 
@@ -286,7 +301,7 @@ export const sendOtp = async ({ phone, ipAddress, deviceId }) => {
   console.log(`\n📱 [OTP REQUEST] Phone: ${phone} from ${ipAddress}`);
 
   // Rate limiting
-  const phoneKey = `otp:phone:${phone}`;
+  const phoneKey = `otp:phone:${hashForLookup(phone)}`;
   const phoneAttempts = await redis.incr(phoneKey);
   if (phoneAttempts === 1) await redis.expire(phoneKey, 3600);
 
@@ -319,14 +334,12 @@ export const sendOtp = async ({ phone, ipAddress, deviceId }) => {
   };
 
   await redis.setex(`otp:${phone}`, OTP_TTL_SECONDS, JSON.stringify(otpData));
-  await publishNotification.otpRequested({
+  await dispatchOtp({
+    phone,
+    otp,
+    namespace: 'login',
     actorId: phone,
-    payload: {
-      phone,
-      otp,
-      namespace: 'login',
-      expiryMinutes: OTP_TTL_SECONDS / 60,
-    },
+    expiryMinutes: OTP_TTL_SECONDS / 60,
   });
   await redis.del(`otp:attempts:${phone}`);
 
@@ -347,7 +360,7 @@ export const sendOtp = async ({ phone, ipAddress, deviceId }) => {
 // =============================================================================
 
 export const verifyOtp = async ({ phone, otp, ipAddress, deviceInfo }) => {
-  console.log(`\n🔑 [OTP VERIFY] Phone: ${phone}, OTP: ${otp}`);
+  console.log(`\n🔑 [OTP VERIFY] Phone: ${phone}`);
 
   // Centralized OTP validation
   await validateOtp(phone, otp, ipAddress, 'LOGIN');
@@ -453,14 +466,12 @@ export const registerInit = async ({ card_number, phone, ipAddress }) => {
     redis.del(`otp:attempts:${phone}`),
   ]);
 
-  await publishNotification.otpRequested({
+  await dispatchOtp({
+    phone,
+    otp,
+    namespace: 'register',
     actorId: phone,
-    payload: {
-      phone,
-      otp,
-      namespace: 'register',
-      expiryMinutes: OTP_TTL_SECONDS / 60,
-    },
+    expiryMinutes: OTP_TTL_SECONDS / 60,
   });
 
   const maskedPhone = phone.replace(/(\+\d{2})(\d{5})(\d{5})/, '$1 *****$3');
@@ -469,7 +480,6 @@ export const registerInit = async ({ card_number, phone, ipAddress }) => {
     nonce,
     masked_phone: maskedPhone,
     student_first_name: card.student?.first_name ?? null,
-    devCode: ENV.IS_DEV ? otp : undefined,
   };
 };
 
@@ -620,7 +630,7 @@ export const refreshTokens = async ({ refreshToken, ipAddress, deviceInfo }) => 
 
   await repo.updateSessionRefreshHash(session.id, refreshHash);
 
-  const oldHashTtl = Math.ceil((session.expires_at - Date.now()) / 1000);
+  const oldHashTtl = Math.ceil((session.expires_at.getTime() - Date.now()) / 1000);
   if (oldHashTtl > 0) {
     await redis
       .setex(`blacklist:${hash}`, oldHashTtl, JSON.stringify({ userId, role }))
@@ -645,7 +655,10 @@ export const logoutUser = async ({ token, exp, refreshToken, sessionId, userId, 
   const ops = [];
 
   const accessHash = hashToken(token);
-  ops.push(repo.addToBlacklist(accessHash, new Date(exp * 1000)));
+  const expMs = exp * 1000;
+  if (expMs > Date.now()) {
+    ops.push(repo.addToBlacklist(accessHash, new Date(expMs)));
+  }
   ops.push(redis.setex(`blacklist:${accessHash}`, exp - Math.floor(Date.now() / 1000), '1'));
 
   if (sessionId) {
@@ -776,14 +789,12 @@ export const initiatePhoneChange = async ({ userId, newPhone, ipAddress }) => {
 
   await redis.setex(`phone_change:${changeToken}`, OTP_TTL_SECONDS, JSON.stringify(changeData));
 
-  await publishNotification.otpRequested({
+  await dispatchOtp({
+    phone: newPhone,
+    otp,
+    namespace: 'phone_change',
     actorId: userId,
-    payload: {
-      phone: newPhone,
-      otp,
-      namespace: 'login', // or add 'phone_change' namespace if needed
-      expiryMinutes: OTP_TTL_SECONDS / 60,
-    },
+    expiryMinutes: OTP_TTL_SECONDS / 60,
   });
 
   console.log(`✅ [PHONE CHANGE INIT] OTP sent to ${newPhone}`);
@@ -791,7 +802,6 @@ export const initiatePhoneChange = async ({ userId, newPhone, ipAddress }) => {
   return {
     changeToken,
     expiresIn: OTP_TTL_SECONDS,
-    devCode: ENV.IS_DEV ? otp : undefined,
   };
 };
 
@@ -823,7 +833,7 @@ export const verifyPhoneChange = async ({ changeToken, otp, ipAddress }) => {
 
   if (!valid) {
     changeData.attempts++;
-    await redis.setex(`phone_change:${changeToken}`, OTP_TTL_SECONDS, JSON.stringify(changeData));
+    await redis.set(`phone_change:${changeToken}`, JSON.stringify(changeData), 'KEEPTTL');
     throw ApiError.unauthorized('Invalid OTP');
   }
 
@@ -836,14 +846,7 @@ export const verifyPhoneChange = async ({ changeToken, otp, ipAddress }) => {
 
   // Update phone number
   const encryptedPhone = encryptField(changeData.newPhone);
-  await prisma.parentUser.update({
-    where: { id: changeData.userId },
-    data: {
-      phone: encryptedPhone,
-      phone_index: changeData.newPhoneIndex,
-      is_phone_verified: true,
-    },
-  });
+  await repo.updateParentPhone(changeData.userId, encryptedPhone, changeData.newPhoneIndex);
 
   // Revoke all sessions
   await repo.revokeAllUserSessions(changeData.userId, 'PARENT_USER', 'PHONE_CHANGED');
