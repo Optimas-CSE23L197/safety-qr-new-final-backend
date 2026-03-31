@@ -1,19 +1,23 @@
 // =============================================================================
 // ipBlock.middleware.js — RESQID
-// Blocks IPs flagged by attackLogger or geoBlock middlewares.
+// NO MERCY MODE — Strict IP blocking with zero tolerance
+// Blocks IPs flagged by attackLogger, geoBlock, or behavioralSecurity
 //
 // Two-layer check:
 //   1. Redis  — O(1), checked first on every request (cached blocks)
 //   2. DB     — checked on Redis miss only (first request after block set)
 //
-// An IP is blocked when:
-//   a) block_count >= BLOCK_THRESHOLD (5 attack attempts) — auto-block
-//   b) blocked_until is set and in the future — manual or geo block
-//   c) Redis key exists — cached from a previous DB hit
+// Block triggers:
+//   a) ANY attack attempt — IMMEDIATE block (no threshold)
+//   b) Manual block from admin
+//   c) Geo-block violation
+//   d) Behavioral score >= 30 (suspicious activity)
 //
-// blockIpNow() — exported helper to instantly hard-block any IP
-// Used by: geoBlock.middleware.js (non-Indian IPs on dashboard routes)
-//          Super admin dashboard (manual IP ban endpoint)
+// Block duration: Escalating based on repeat offenses
+//   - First offense: 24 hours
+//   - Second offense: 7 days
+//   - Third offense: 30 days
+//   - Fourth offense: Permanent (1 year)
 // =============================================================================
 
 import { redis } from '#config/redis.js';
@@ -22,47 +26,78 @@ import { ApiError } from '#shared/response/ApiError.js';
 import { asyncHandler } from '#shared/response/asyncHandler.js';
 import { logger } from '#config/logger.js';
 
-// ─── Config ───────────────────────────────────────────────────────────────────
+// ─── Config — NO MERCY ────────────────────────────────────────────────────────
 
-const BLOCK_THRESHOLD = 5; // auto-block after N attacks
-const BLOCK_TTL_SECONDS = 24 * 60 * 60; // Redis TTL — 24 hours
-const BLOCK_DURATION_MS = BLOCK_TTL_SECONDS * 1000;
+const BLOCK_THRESHOLD = 1; // ANY attack = block immediately (was 5)
+const BLOCK_DURATIONS = {
+  1: 24 * 60 * 60, // 1st offense: 24 hours
+  2: 7 * 24 * 60 * 60, // 2nd offense: 7 days
+  3: 30 * 24 * 60 * 60, // 3rd offense: 30 days
+  4: 365 * 24 * 60 * 60, // 4th offense: 1 year (permanent)
+};
 
-// IPs that should never be blocked — loopback + private ranges
+const MAX_BLOCK_DURATION = BLOCK_DURATIONS[4];
+
+// IPs that should NEVER be blocked — loopback only, no private ranges allowed
 const NEVER_BLOCK = ['127.0.0.1', '::1', '::ffff:127.0.0.1'];
 
 const redisKey = ip => `blocked:ip:${ip}`;
+const offenseKey = ip => `blocked:offense:${ip}`;
+
+// ─── Helper: Get offense count ───────────────────────────────────────────────
+
+async function getOffenseCount(ip) {
+  const count = await redis.get(offenseKey(ip));
+  return count ? parseInt(count, 10) : 0;
+}
+
+async function incrementOffenseCount(ip) {
+  const count = await redis.incr(offenseKey(ip));
+  if (count === 1) await redis.expire(offenseKey(ip), MAX_BLOCK_DURATION);
+  return count;
+}
+
+// ─── Helper: Get block duration based on offense count ───────────────────────
+
+function getBlockDuration(offenseCount) {
+  return BLOCK_DURATIONS[Math.min(offenseCount, 4)] || BLOCK_DURATIONS[4];
+}
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
 export const ipBlockMiddleware = asyncHandler(async (req, _res, next) => {
   const ip = req.ip ?? 'unknown';
 
-  // Never block loopback or unknown — would break health checks + dev
+  // NEVER block localhost — only loopback, no exceptions
   if (ip === 'unknown' || NEVER_BLOCK.includes(ip)) return next();
 
   // ── Fast path — Redis ────────────────────────────────────────────────────────
   try {
     const cached = await redis.get(redisKey(ip));
     if (cached) {
+      const blockData = JSON.parse(cached);
+      const remainingHours = Math.ceil(blockData.ttl / 3600);
+
       logger.warn(
         {
           type: 'ip_blocked_redis',
           ip,
           path: req.path,
           requestId: req.id,
+          offenseCount: blockData.offenseCount,
+          expiresIn: `${remainingHours}h`,
         },
-        `🚫 Blocked IP rejected (Redis): ${ip}`
+        `🚫 BLOCKED IP (${blockData.offenseCount} offenses): ${ip}`
       );
-      throw ApiError.forbidden('Access denied');
+      throw ApiError.forbidden('Access denied. IP has been blocked.');
     }
   } catch (err) {
-    if (err.status === 403) throw err; // rethrow our own ApiError
-    // Redis down — log and continue, don't block legitimate traffic
-    logger.error({ err, type: 'redis_block_check_failed' }, 'Redis block check failed — skipping');
+    if (err.status === 403) throw err;
+    // Redis down — log and continue (fail open for emergency)
+    logger.error({ err, type: 'redis_block_check_failed' }, 'Redis block check failed — passing');
   }
 
-  // ── Slow path — DB (cache miss) ───────────────────────────────────────────
+  // ── Slow path — DB (cache miss) ─────────────────────────────────────────────
   const record = await prisma.scanRateLimit.findUnique({
     where: {
       identifier_identifier_type: {
@@ -82,39 +117,56 @@ export const ipBlockMiddleware = asyncHandler(async (req, _res, next) => {
     const isThresholdBlock = record.block_count >= BLOCK_THRESHOLD;
 
     if (isHardBlocked || isThresholdBlock) {
-      // Cache in Redis — all subsequent requests hit fast path
-      await redis.setex(redisKey(ip), BLOCK_TTL_SECONDS, '1').catch(() => {});
+      // Get offense count from Redis or DB
+      let offenseCount = await getOffenseCount(ip);
+      if (offenseCount === 0 && record.block_count > 0) {
+        offenseCount = Math.min(record.block_count, 4);
+        await redis.setex(offenseKey(ip), MAX_BLOCK_DURATION, offenseCount);
+      }
+
+      const blockDuration = getBlockDuration(offenseCount || 1);
+
+      // Cache in Redis with metadata
+      await redis
+        .setex(
+          redisKey(ip),
+          blockDuration,
+          JSON.stringify({
+            offenseCount: offenseCount || 1,
+            blockedAt: new Date().toISOString(),
+            ttl: blockDuration,
+            reason: record.blocked_reason,
+          })
+        )
+        .catch(() => {});
 
       logger.warn(
         {
           type: 'ip_blocked_db',
           ip,
           block_count: record.block_count,
+          offenseCount: offenseCount || 1,
           blocked_until: record.blocked_until,
           reason: record.blocked_reason,
           path: req.path,
           requestId: req.id,
         },
-        `🚫 Blocked IP rejected (DB): ${ip}`
+        `🚫 BLOCKED IP (${offenseCount || 1} offenses): ${ip}`
       );
 
-      throw ApiError.forbidden('Access denied');
+      throw ApiError.forbidden('Access denied. IP has been blocked.');
     }
   }
 
   next();
 });
 
-// ─── Manual Block Helper ──────────────────────────────────────────────────────
+// ─── Manual Block Helper — NO MERCY ──────────────────────────────────────────
 
 /**
  * blockIpNow(ip, reason)
- * Instantly hard-blocks an IP for 24 hours.
- * Writes to both Redis (immediate) and DB (persistent).
- *
- * Used by:
- *   - geoBlock.middleware.js (non-Indian IPs on dashboard routes)
- *   - Super admin manual ban endpoint
+ * Instantly hard-blocks an IP with escalating duration.
+ * No threshold — immediate permanent record.
  *
  * @param {string} ip
  * @param {string} reason — stored in ScanRateLimit.blocked_reason
@@ -122,13 +174,25 @@ export const ipBlockMiddleware = asyncHandler(async (req, _res, next) => {
 export async function blockIpNow(ip, reason = 'MANUAL_BLOCK') {
   if (!ip || NEVER_BLOCK.includes(ip)) return;
 
-  const blockedUntil = new Date(Date.now() + BLOCK_DURATION_MS);
+  // Increment offense count
+  const offenseCount = await incrementOffenseCount(ip);
+  const blockDuration = getBlockDuration(offenseCount);
+  const blockedUntil = new Date(Date.now() + blockDuration * 1000);
 
   await Promise.all([
-    // Redis — takes effect immediately on next request
-    redis.setex(redisKey(ip), BLOCK_TTL_SECONDS, '1'),
+    // Redis — immediate block with metadata
+    redis.setex(
+      redisKey(ip),
+      blockDuration,
+      JSON.stringify({
+        offenseCount,
+        blockedAt: new Date().toISOString(),
+        ttl: blockDuration,
+        reason,
+      })
+    ),
 
-    // DB — persistent record, survives Redis flush, queryable from dashboard
+    // DB — persistent record
     prisma.scanRateLimit.upsert({
       where: {
         identifier_identifier_type: {
@@ -140,20 +204,43 @@ export async function blockIpNow(ip, reason = 'MANUAL_BLOCK') {
         identifier: ip,
         identifier_type: 'IP',
         count: 1,
-        block_count: 1,
+        block_count: offenseCount,
         blocked_until: blockedUntil,
-        blocked_reason: reason,
+        blocked_reason: `${reason}_OFFENSE_${offenseCount}`,
         last_hit: new Date(),
         window_start: new Date(),
       },
       update: {
-        block_count: { increment: 1 },
+        block_count: offenseCount,
         blocked_until: blockedUntil,
-        blocked_reason: reason,
+        blocked_reason: `${reason}_OFFENSE_${offenseCount}`,
         last_hit: new Date(),
       },
     }),
   ]);
 
-  logger.warn({ ip, reason, blockedUntil, type: 'ip_blocked_manual' }, `🚫 IP hard-blocked: ${ip}`);
+  const durationText =
+    blockDuration >= 86400
+      ? `${Math.floor(blockDuration / 86400)} days`
+      : `${Math.floor(blockDuration / 3600)} hours`;
+
+  logger.warn(
+    {
+      ip,
+      reason,
+      offenseCount,
+      blockDuration: durationText,
+      blockedUntil,
+      type: 'ip_blocked_manual',
+    },
+    `🔒 IP PERMANENTLY BLOCKED: ${ip} (offense #${offenseCount} — ${durationText})`
+  );
+}
+
+// ─── Check if IP is blocked (for other middleware) ───────────────────────────
+
+export async function isIpBlocked(ip) {
+  if (NEVER_BLOCK.includes(ip)) return false;
+  const cached = await redis.get(redisKey(ip));
+  return cached !== null;
 }

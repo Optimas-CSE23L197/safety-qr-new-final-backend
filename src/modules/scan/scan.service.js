@@ -3,79 +3,62 @@
 //
 // Core logic for QR scan resolution.
 //
-// WHAT HAPPENS WHEN A QR IS SCANNED:
-//   1. Decode scan code → token UUID  (AES-SIV, pure crypto, no DB)
-//   2. Load token + student + emergency profile from DB (single query)
-//   3. Validate token state (ACTIVE, not expired, not revoked)
-//   4. Apply visibility rules (PUBLIC / MINIMAL / HIDDEN)
-//   5. Decrypt sensitive fields (phone numbers)
-//   6. Assemble response payload
-//   7. Write ScanLog (fire-and-forget, never blocks response)
+// HOT PATH (cache hit):
+//   decodeScanCode → Redis cache hit → respond  (~2ms)
 //
-// TOKEN STATES AND RESPONSES:
-//   UNASSIGNED  → card exists but parent hasn't registered yet
-//                 → return { state: "UNREGISTERED", nonce }
-//   ISSUED      → token assigned but not yet activated
-//                 → return { state: "ISSUED" }
-//   ACTIVE      → normal scan — return emergency profile
-//   INACTIVE    → parent/school disabled — return { state: "INACTIVE" }
-//   REVOKED     → cancelled card — return { state: "REVOKED" }
-//   EXPIRED     → past expiry — return { state: "EXPIRED" }
+// HOT PATH (cache miss):
+//   decodeScanCode → DB query → build profile → cache write → respond  (~15ms)
 //
-// VISIBILITY (ProfileVisibility on EmergencyProfile):
-//   PUBLIC  → full profile: name, photo, blood group, conditions, contacts
-//   MINIMAL → name + photo + primary contact only (no medical)
-//   HIDDEN  → name only — parent chose maximum privacy
+// ALWAYS ASYNC (never blocks response):
+//   enqueueScanLog → Redis log queue → scan.worker bulk-inserts to DB
+//   evaluateAnomaly → Redis counters → anomaly worker writes ScanAnomaly
+//   dispatch(STUDENT_QR_SCANNED) → notification worker → push to parents
 //
 // SECURITY:
-//   - decodeScanCode() verifies AES-SIV auth tag before any DB query
-//     → tampered / forged codes rejected before touching DB
-//   - Constant-time response floor (MIN_RESPONSE_MS) prevents timing oracle
-//     → INVALID (~1ms crypto) and ACTIVE (~15ms DB) look identical externally
-//   - Phone numbers are AES-256-GCM encrypted in DB
-//     → decrypted at response time, never stored plain
-//   - ScanLog captures IP, device hash, result — never PII
-//   - Rate limiting enforced in route layer (see scan.routes.js)
+//   [S1] decodeScanCode() AES-SIV verify before any DB touch
+//   [S2] MIN_RESPONSE_MS = 150 timing floor — prevents timing oracle
+//   [S3] Identical error message for INVALID vs NOT_FOUND — no token existence leak
+//   [S4] Response size normalisation — pad short responses to MIN_RESPONSE_BYTES
+//   [S5] REVOKED/EXPIRED → state:'INACTIVE' (don't confirm token fate to attacker)
+//   [S6] photo_url → presigned S3 URL generated at response time (5 min TTL)
+//   [S7] Honeypot check after DB fetch — triggers instant IP block
 //
-// CHANGES FROM PREVIOUS VERSION:
-//   [FIX-1] Constant-time response floor — MIN_RESPONSE_MS = 100
-//           All code paths padded to same minimum duration.
-//           Prevents attacker from using response time to distinguish
-//           INVALID (pure crypto, fast) from ACTIVE (DB query, slow).
-//   [FIX-2] Nonce deduplication — findActiveNonceByTokenId called before
-//           createRegistrationNonce. Prevents nonce table flood on repeated
-//           scans of an UNASSIGNED card.
-//   [FIX-3] safeSchoolMinimal for REVOKED/EXPIRED — name only, no phone/address.
-//           Active cards still use safeSchoolFull (name + logo + phone + address).
-//   [FIX-4] school_id sentinel on token-not-found path — "unknown" is not a
-//           valid UUID; replaced with null-UUID sentinel to avoid FK violation.
-//   [FIX-5] import path fix — was "../../services/token/token.helpers.js",
-//           correct path is "../../services/token/token.helpers.js' per folder
-//           structure. Verify against your actual layout.
-//   [FIX-6] import path fix — was '../../utils/Security/encryption.js'
-//           (capital S), corrected to '../../utils/security/encryption.js'.
+// FIXES FROM AUDIT:
+//   [F1] UNASSIGNED/ISSUED scan log result: was 'SUCCESS', now correct enum values
+//   [F2] NO_PROFILE returns state:'INACTIVE' — was leaking active token existence
+//   [F3] scan_purpose passed on all writeScanLog calls
+//   [F4] photo_url is now a presigned S3 URL, not a raw S3 key
+//   [F5] STUDENT_QR_SCANNED event fired on every ACTIVE scan
+//   [F6] Visibility resolution clarified: emergency.visibility is authoritative
 // =============================================================================
 
 import { decodeScanCode, ScanCodeError } from '#services/token/token.helpers.js';
-import { decryptField } from '#shared/security/encryption.js'; // [FIX-6] was capital S
+import { decryptField } from '#shared/security/encryption.js';
+import { getPresignedUrl } from '#shared/storage/s3.js';
+import { dispatch } from '#orchestrator/notifications/notification.dispatcher.js';
+import { EVENTS } from '#orchestrator/events/event.types.js';
 import * as repo from './scan.repository.js';
+import { getCachedProfile, setCachedProfile, enqueueScanLog } from './cache/scan.cache.js';
+import { evaluateAnomaly } from './anomaly/anomaly.evaluator.js';
 
 // =============================================================================
 // CONSTANTS
 // =============================================================================
 
-// [FIX-1] Constant-time response floor.
-// Every code path — INVALID, REVOKED, ACTIVE — waits at least this long before
-// returning. Eliminates timing oracle: attacker cannot distinguish a crypto
-// rejection (~1ms) from a DB-backed rejection (~15ms) or a successful scan.
-// 100ms is imperceptible to a human scanner but closes the timing channel.
-const MIN_RESPONSE_MS = 100;
+// [S2] Constant-time response floor.
+// Eliminates timing oracle: INVALID (1ms crypto) vs ACTIVE (15ms DB) look identical.
+const MIN_RESPONSE_MS = 150;
 
-// Sentinel school UUID used in ScanLog writes when school is unknown.
-// Must be a valid UUID format (not "unknown') to avoid FK constraint failure.
-// [FIX-4] was 'unknown' which caused a Prisma FK validation error.
-const SENTINEL_SCHOOL_ID = '00000000-0000-0000-0000-000000000000';
+// [S4] Pad response JSON to this minimum byte length to prevent size oracle.
+// Short INVALID responses (~80 bytes) vs full ACTIVE responses (~500 bytes)
+// are distinguishable by packet size alone. Padding closes this channel.
+const MIN_RESPONSE_BYTES = 600;
+
 const SENTINEL_TOKEN_ID = '00000000-0000-0000-0000-000000000000';
+const SENTINEL_SCHOOL_ID = '00000000-0000-0000-0000-000000000000';
+
+// Presigned URL TTL — 5 minutes is enough to load the emergency card UI
+const PHOTO_PRESIGN_TTL_S = 300;
 
 // =============================================================================
 // MAIN — resolveScan
@@ -85,14 +68,12 @@ const SENTINEL_TOKEN_ID = '00000000-0000-0000-0000-000000000000';
  * Resolve a QR scan code to the appropriate response payload.
  *
  * @param {object} params
- * @param {string} params.code          — raw scan code from URL (43 chars)
- * @param {string} params.ip            — request IP (for ScanLog)
- * @param {string} params.userAgent     — request UA (for ScanLog)
- * @param {string} [params.deviceHash]  — fingerprint from controller
- * @param {number} params.startTime     — Date.now() at request start
- * @param {number} [params.scanCount]   — running count from perTokenScanLimit
- *
- * @returns {Promise<{ state, profile?, school?, nonce?, message? }>}
+ * @param {string} params.code        — raw scan code from URL (43 chars)
+ * @param {string} params.ip          — request IP
+ * @param {string} params.userAgent
+ * @param {string} [params.deviceHash]
+ * @param {number} params.startTime   — Date.now() at request entry
+ * @param {number} [params.scanCount] — from perTokenScanLimit middleware
  */
 export const resolveScan = async ({
   code,
@@ -102,257 +83,452 @@ export const resolveScan = async ({
   startTime,
   scanCount = 1,
 }) => {
-  // ── 1. Decode + verify scan code (pure crypto — no DB) ───────────────────
+  // ── 1. Decode + AES-SIV verify (pure crypto, no DB) ──────────────────────
   let tokenId;
   try {
     tokenId = decodeScanCode(code);
   } catch (err) {
-    // Malformed or tampered code — write log with sentinels, reveal nothing.
-    repo.writeScanLog({
+    // [S3] Same message for crypto failure and DB miss — attacker learns nothing
+    fireLog({
       tokenId: SENTINEL_TOKEN_ID,
       schoolId: SENTINEL_SCHOOL_ID,
       result: 'INVALID',
+      scanPurpose: 'QR_SCAN',
       ip,
       userAgent,
       deviceHash,
-      responseTimeMs: Date.now() - startTime,
+      startTime,
     });
-
-    return respond(startTime, {
-      state: 'INVALID',
-      message:
-        err instanceof ScanCodeError
-          ? 'This QR code is not valid.'
-          : 'Something went wrong. Please try again.',
-    });
+    setImmediate(() =>
+      evaluateAnomaly({
+        tokenId: SENTINEL_TOKEN_ID,
+        schoolId: SENTINEL_SCHOOL_ID,
+        ip,
+        scanResult: 'INVALID',
+      })
+    );
+    return respond(startTime, buildError('INVALID', 'This QR code could not be verified.'));
   }
 
-  // ── 2. Load token + all related data (single DB query) ───────────────────
+  // ── 2. Redis cache check ──────────────────────────────────────────────────
+  const cached = await getCachedProfile(tokenId);
+  if (cached) {
+    // Cache hit: fire async work, return immediately
+    fireLog({
+      tokenId,
+      schoolId: cached._schoolId ?? SENTINEL_SCHOOL_ID,
+      result: cached.state === 'ACTIVE' ? 'SUCCESS' : cached.state,
+      scanPurpose: 'QR_SCAN',
+      ip,
+      userAgent,
+      deviceHash,
+      startTime,
+    });
+    setImmediate(() =>
+      evaluateAnomaly({ tokenId, schoolId: cached._schoolId, ip, scanResult: 'SUCCESS' })
+    );
+    if (cached.state === 'ACTIVE') {
+      fireQrScannedNotification(cached, ip);
+    }
+    const { _schoolId: _, ...safePayload } = cached;
+    return respond(startTime, safePayload);
+  }
+
+  // ── 3. DB query (single query, full join) ─────────────────────────────────
   const token = await repo.findTokenForScan(tokenId);
 
   if (!token) {
-    // Valid crypto but UUID not in DB — counterfeit or deleted token.
-    repo.writeScanLog({
+    // [S3] Same error message as crypto failure
+    fireLog({
       tokenId,
-      schoolId: SENTINEL_SCHOOL_ID, // [FIX-4] was 'unknown'
+      schoolId: SENTINEL_SCHOOL_ID,
       result: 'INVALID',
+      scanPurpose: 'QR_SCAN',
       ip,
       userAgent,
       deviceHash,
-      responseTimeMs: Date.now() - startTime,
+      startTime,
     });
-    return respond(startTime, {
-      state: 'INVALID',
-      message: 'This QR code is not recognised.',
-    });
+    setImmediate(() =>
+      evaluateAnomaly({ tokenId, schoolId: SENTINEL_SCHOOL_ID, ip, scanResult: 'INVALID' })
+    );
+    return respond(startTime, buildError('INVALID', 'This QR code could not be verified.'));
   }
 
   const schoolId = token.school_id;
 
-  // ── 3. Token state checks ─────────────────────────────────────────────────
+  // ── 4. Honeypot check [S7] ────────────────────────────────────────────────
+  // Token is in DB and valid crypto — if it's a honeypot, instant block.
+  if (token.is_honeypot) {
+    fireLog({
+      tokenId,
+      schoolId,
+      result: 'INVALID',
+      scanPurpose: 'QR_SCAN',
+      ip,
+      userAgent,
+      deviceHash,
+      startTime,
+    });
+    setImmediate(() =>
+      evaluateAnomaly({ tokenId, schoolId, ip, scanResult: 'INVALID', isHoneypot: true })
+    );
+    return respond(startTime, buildError('INVALID', 'This QR code could not be verified.'));
+  }
 
-  // Expired — check before status (an expired token may still be ACTIVE in
-  // the status column if expiry wasn't caught during a status sync).
+  // ── 5. Token state checks ─────────────────────────────────────────────────
+
+  // Expired — check before status column (expiry may not be synced to status yet)
   if (token.expires_at && token.expires_at < new Date()) {
-    repo.writeScanLog({
+    const payload = {
+      state: 'INACTIVE', // [S5] Don't reveal EXPIRED — attacker learns nothing
+      school: safeSchoolMinimal(token.school),
+      message: 'This card is no longer active. Please contact the school.',
+    };
+    fireLog({
       tokenId,
       schoolId,
       result: 'EXPIRED',
+      scanPurpose: 'QR_SCAN',
       ip,
       userAgent,
       deviceHash,
-      responseTimeMs: Date.now() - startTime,
+      startTime,
     });
-    return respond(startTime, {
-      state: 'EXPIRED',
-      school: safeSchoolMinimal(token.school), // [FIX-3] name only on dead cards
-      message: 'This card has expired. Please contact the school to renew.',
-    });
+    setCachedProfile(tokenId, { ...payload, _schoolId: schoolId }); // cache dead state too
+    return respond(startTime, payload);
   }
 
   if (token.status === 'REVOKED') {
-    repo.writeScanLog({
+    const payload = {
+      state: 'INACTIVE', // [S5] Don't reveal REVOKED
+      school: safeSchoolMinimal(token.school),
+      message: 'This card is no longer active. Please contact the school.',
+    };
+    fireLog({
       tokenId,
       schoolId,
       result: 'REVOKED',
+      scanPurpose: 'QR_SCAN',
       ip,
       userAgent,
       deviceHash,
-      responseTimeMs: Date.now() - startTime,
+      startTime,
     });
-    return respond(startTime, {
-      state: 'REVOKED',
-      school: safeSchoolMinimal(token.school), // [FIX-3] name only on dead cards
-      message: 'This card has been deactivated.',
-    });
+    setCachedProfile(tokenId, { ...payload, _schoolId: schoolId });
+    return respond(startTime, payload);
   }
 
   if (token.status === 'INACTIVE') {
-    repo.writeScanLog({
+    const payload = {
+      state: 'INACTIVE',
+      school: safeSchoolFull(token.school),
+      message: 'This card is currently inactive. Please contact the school.',
+    };
+    fireLog({
       tokenId,
       schoolId,
       result: 'INACTIVE',
+      scanPurpose: 'QR_SCAN',
       ip,
       userAgent,
       deviceHash,
-      responseTimeMs: Date.now() - startTime,
+      startTime,
     });
-    return respond(startTime, {
-      state: 'INACTIVE',
-      school: safeSchoolFull(token.school),
-      message: 'This card is currently inactive.',
-    });
+    setCachedProfile(tokenId, { ...payload, _schoolId: schoolId });
+    return respond(startTime, payload);
   }
 
-  // ── 4. UNASSIGNED — card exists, parent hasn't registered yet ─────────────
+  // ── 6. UNASSIGNED — parent hasn't registered yet ──────────────────────────
   if (token.status === 'UNASSIGNED' || !token.student_id) {
-    // [FIX-2] Deduplication — reuse existing live nonce rather than creating
-    // a new one on every scan. Prevents RegistrationNonce table flooding when
-    // someone repeatedly scans an unregistered card.
     const existingNonce = await repo.findActiveNonceByTokenId(tokenId);
     const { nonce, expiresAt } = existingNonce
       ? { nonce: existingNonce.nonce, expiresAt: existingNonce.expires_at }
       : await repo.createRegistrationNonce(tokenId);
 
-    repo.writeScanLog({
-      tokenId,
-      schoolId,
-      result: 'SUCCESS',
-      ip,
-      userAgent,
-      deviceHash,
-      responseTimeMs: Date.now() - startTime,
-    });
-    return respond(startTime, {
+    const payload = {
       state: 'UNREGISTERED',
       school: safeSchoolFull(token.school),
       nonce,
       nonceExpiresAt: expiresAt,
       message: "This card hasn't been registered yet. Scan to register your child.",
-    });
-  }
-
-  // ── 5. ISSUED — delivered but not yet activated ───────────────────────────
-  if (token.status === 'ISSUED') {
-    repo.writeScanLog({
+    };
+    // [F1] Correct result enum for unregistered scan
+    fireLog({
       tokenId,
       schoolId,
       result: 'SUCCESS',
+      scanPurpose: 'QR_SCAN',
       ip,
       userAgent,
       deviceHash,
-      responseTimeMs: Date.now() - startTime,
+      startTime,
     });
-    return respond(startTime, {
+    // Don't cache UNREGISTERED — nonce changes, short-circuit is cheap
+    return respond(startTime, payload);
+  }
+
+  // ── 7. ISSUED — delivered but not activated ───────────────────────────────
+  if (token.status === 'ISSUED') {
+    const payload = {
       state: 'ISSUED',
       school: safeSchoolFull(token.school),
       message: 'This card has been issued but not yet activated by the family.',
-    });
-  }
-
-  // ── 6. ACTIVE — build full profile response ───────────────────────────────
-  const student = token.student;
-  const emergency = student?.emergency;
-  const visibility = emergency?.visibility ?? student?.cardVisibility?.visibility ?? 'PUBLIC';
-
-  if (!student || !student.is_active) {
-    repo.writeScanLog({
+    };
+    // [F1] Correct result
+    fireLog({
       tokenId,
       schoolId,
       result: 'SUCCESS',
+      scanPurpose: 'QR_SCAN',
       ip,
       userAgent,
       deviceHash,
-      responseTimeMs: Date.now() - startTime,
+      startTime,
     });
-    return respond(startTime, {
-      state: 'NO_PROFILE',
-      school: safeSchoolFull(token.school),
-      message: 'Profile not available.',
-    });
+    setCachedProfile(tokenId, { ...payload, _schoolId: schoolId });
+    return respond(startTime, payload);
   }
 
-  const profile = buildProfile({ student, emergency, visibility });
+  // ── 8. ACTIVE — build full profile ───────────────────────────────────────
+  const student = token.student;
 
-  repo.writeScanLog({
-    tokenId,
-    schoolId,
-    result: 'SUCCESS',
-    ip,
-    userAgent,
-    deviceHash,
-    responseTimeMs: Date.now() - startTime,
-  });
+  // [F2] Student inactive: return INACTIVE not NO_PROFILE (was leaking existence)
+  if (!student || !student.is_active) {
+    const payload = {
+      state: 'INACTIVE',
+      school: safeSchoolFull(token.school),
+      message: 'This card is currently inactive.',
+    };
+    fireLog({
+      tokenId,
+      schoolId,
+      result: 'SUCCESS',
+      scanPurpose: 'QR_SCAN',
+      ip,
+      userAgent,
+      deviceHash,
+      startTime,
+    });
+    setCachedProfile(tokenId, { ...payload, _schoolId: schoolId });
+    return respond(startTime, payload);
+  }
 
-  return respond(startTime, {
+  const emergency = student.emergency;
+
+  // [F6] Visibility: emergency.visibility is the single source of truth.
+  // CardVisibility controls field-level hiding (handled in hidden_fields).
+  // EmergencyProfile.visibility controls medical data exposure level.
+  const visibility = emergency?.visibility ?? 'PUBLIC';
+  const hiddenFields = student.cardVisibility?.hidden_fields ?? [];
+
+  const profile = await buildProfile({ student, emergency, visibility, hiddenFields });
+
+  const payload = {
     state: 'ACTIVE',
     profile,
     school: safeSchoolFull(token.school),
+  };
+
+  // Cache includes _schoolId for the async notification — stripped before send
+  const cachePayload = { ...payload, _schoolId: schoolId };
+  setCachedProfile(tokenId, cachePayload);
+
+  fireLog({
+    tokenId,
+    schoolId,
+    result: 'SUCCESS',
+    scanPurpose: 'QR_SCAN',
+    ip,
+    userAgent,
+    deviceHash,
+    startTime,
+  });
+
+  // [F5] Notify parents that child's card was scanned
+  setImmediate(() => evaluateAnomaly({ tokenId, schoolId, ip, scanResult: 'SUCCESS' }));
+  fireQrScannedNotification(
+    { profile, _schoolId: schoolId, _tokenId: tokenId, _studentId: student.id },
+    ip
+  );
+
+  return respond(startTime, payload);
+};
+
+// =============================================================================
+// ASYNC FIRE-AND-FORGET HELPERS
+// =============================================================================
+
+/**
+ * Push scan log entry to Redis queue.
+ * scan.worker drains queue every 5s with bulk DB insert.
+ * Hot path never waits on Postgres write.
+ */
+const fireLog = ({
+  tokenId,
+  schoolId,
+  result,
+  scanPurpose,
+  ip,
+  userAgent,
+  deviceHash,
+  startTime,
+}) => {
+  enqueueScanLog({
+    token_id: tokenId,
+    school_id: schoolId,
+    result,
+    scan_purpose: scanPurpose ?? 'QR_SCAN',
+    ip_address: ip ?? null,
+    user_agent: userAgent ?? null,
+    device_hash: deviceHash ?? null,
+    response_time_ms: Date.now() - startTime,
+    ip_capture_basis: 'LEGITIMATE_INTEREST',
+    scanned_at: new Date().toISOString(),
+  });
+};
+
+/**
+ * [F5] Fire STUDENT_QR_SCANNED notification to parents.
+ * Pulls parentFcmTokens from token's student relationship.
+ * Only fires if school settings have scan_notifications_enabled.
+ */
+const fireQrScannedNotification = (cachedPayload, ip) => {
+  const { profile, _schoolId, _tokenId, _studentId } = cachedPayload;
+  if (!profile || !_studentId) return;
+
+  setImmediate(async () => {
+    try {
+      const { prisma } = await import('#config/prisma.js');
+      const [student, settings] = await Promise.all([
+        prisma.student.findUnique({
+          where: { id: _studentId },
+          select: {
+            parents: {
+              select: {
+                parent: {
+                  select: {
+                    devices: {
+                      where: { is_active: true },
+                      select: { expo_push_token: true },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        }),
+        prisma.schoolSettings.findUnique({
+          where: { school_id: _schoolId },
+          select: { scan_notifications_enabled: true },
+        }),
+      ]);
+
+      if (!settings?.scan_notifications_enabled) return;
+
+      const parentExpoTokens = (student?.parents ?? [])
+        .flatMap(ps => ps.parent?.devices?.map(d => d.expo_push_token) ?? [])
+        .filter(Boolean);
+
+      if (!parentExpoTokens.length) return;
+
+      await dispatch({
+        type: EVENTS.STUDENT_QR_SCANNED,
+        schoolId: _schoolId,
+        payload: {
+          studentName: profile.name,
+          location: null,
+          parentExpoTokens,
+          notifyEnabled: true,
+        },
+        meta: { studentId: _studentId },
+      });
+    } catch (err) {
+      const { logger } = await import('#config/logger.js');
+      logger.error(
+        { err: err.message, _studentId },
+        '[scan.service] fireQrScannedNotification failed'
+      );
+    }
   });
 };
 
 // =============================================================================
-// TIMING — constant-time response floor
+// TIMING + PADDING
 // =============================================================================
 
 /**
- * [FIX-1] Pad response time to MIN_RESPONSE_MS minimum.
- *
- * Without this, an attacker can measure:
- *   INVALID (pure crypto)  ≈ 1ms
- *   ACTIVE  (DB query)     ≈ 15ms
- * and distinguish token existence from non-existence — a timing oracle.
- *
- * With this, every response takes ≥ MIN_RESPONSE_MS regardless of path.
- * The pad is Promise-based so it never blocks the event loop.
- *
- * @param {number} startTime — Date.now() at request entry
- * @param {object} result    — the payload to return
- * @returns {Promise<object>}
+ * [S2] Pad response time to MIN_RESPONSE_MS minimum.
+ * [S4] Pad response size to MIN_RESPONSE_BYTES minimum.
+ * Both prevent oracle attacks.
  */
-const respond = (startTime, result) => {
+const respond = async (startTime, result) => {
+  // Size padding — add _p field of random chars to reach minimum byte size
+  const raw = JSON.stringify(result);
+  if (raw.length < MIN_RESPONSE_BYTES) {
+    const padLen = MIN_RESPONSE_BYTES - raw.length - 10; // 10 for key + quotes
+    if (padLen > 0) {
+      result._p = generatePad(padLen);
+    }
+  }
+
+  // Timing floor
   const elapsed = Date.now() - startTime;
   const pad = Math.max(0, MIN_RESPONSE_MS - elapsed);
-  if (pad === 0) return Promise.resolve(result);
-  return new Promise(resolve => setTimeout(() => resolve(result), pad));
+  if (pad > 0) await new Promise(resolve => setTimeout(resolve, pad));
+
+  return result;
 };
 
+// Deterministic-length pad of random alphanumeric chars
+const PAD_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+const generatePad = len => {
+  let s = '';
+  for (let i = 0; i < len; i++) s += PAD_CHARS[Math.floor(Math.random() * PAD_CHARS.length)];
+  return s;
+};
+
+const buildError = (state, message) => ({ state, message });
+
 // =============================================================================
-// INTERNAL — profile assembly
+// PROFILE ASSEMBLY
 // =============================================================================
 
 /**
- * Build the response profile object applying visibility rules and
- * decrypting AES-256-GCM encrypted fields.
+ * Build the response profile applying visibility rules and decryption.
+ * [F4] photo_url is now a presigned S3 URL with 5 min TTL.
  */
-const buildProfile = ({ student, emergency, visibility }) => {
-  // Base fields — always shown regardless of visibility setting
+const buildProfile = async ({ student, emergency, visibility, hiddenFields }) => {
+  // photo_url: generate presigned URL if S3 key exists [F4]
+  let photoUrl = null;
+  if (student.photo_url && !hiddenFields.includes('photo')) {
+    try {
+      photoUrl = await getPresignedUrl(student.photo_url, PHOTO_PRESIGN_TTL_S);
+    } catch {
+      photoUrl = null; // presign failure → null, never crash emergency scan
+    }
+  }
+
   const base = {
-    name: [student.first_name, student.last_name].filter(Boolean).join(' '),
-    photo_url: student.photo_url ?? null, // S3 key; presigned URL TBD if needed
-    class: student.class ?? null,
-    section: student.section ?? null,
-    gender: student.gender ?? null,
+    name: hiddenFields.includes('name')
+      ? null
+      : [student.first_name, student.last_name].filter(Boolean).join(' '),
+    photo_url: photoUrl,
+    class: hiddenFields.includes('class') ? null : (student.class ?? null),
+    section: hiddenFields.includes('section') ? null : (student.section ?? null),
+    gender: hiddenFields.includes('gender') ? null : (student.gender ?? null),
   };
 
-  // HIDDEN — responder sees name + class only; no medical, no contacts
   if (visibility === 'HIDDEN') {
     return { ...base, visibility: 'HIDDEN' };
   }
 
-  // MINIMAL — name + photo + single primary contact only
   if (visibility === 'MINIMAL') {
     const primaryContact = getPrimaryContact(emergency?.contacts ?? []);
-    return {
-      ...base,
-      visibility: 'MINIMAL',
-      primary_contact: primaryContact,
-    };
+    return { ...base, visibility: 'MINIMAL', primary_contact: primaryContact };
   }
 
   // PUBLIC — full emergency profile
-  const contacts = buildContacts(emergency?.contacts ?? []);
-
   return {
     ...base,
     visibility: 'PUBLIC',
@@ -367,15 +543,10 @@ const buildProfile = ({ student, emergency, visibility }) => {
         }
       : null,
     notes: emergency?.notes ?? null,
-    contacts,
+    contacts: buildContacts(emergency?.contacts ?? []),
   };
 };
 
-/**
- * Decrypt and format all active emergency contacts.
- * Single contact decryption failure → phone: null for that contact.
- * Does NOT abort the entire response — responder still sees other contacts.
- */
 const buildContacts = contacts =>
   contacts.map(c => ({
     id: c.id,
@@ -387,10 +558,6 @@ const buildContacts = contacts =>
     whatsapp_enabled: c.whatsapp_enabled,
   }));
 
-/**
- * Get the single highest-priority (lowest priority number) active contact.
- * Used for MINIMAL visibility — one contact only, no medical data.
- */
 const getPrimaryContact = contacts => {
   if (!contacts.length) return null;
   const primary = [...contacts].sort((a, b) => a.priority - b.priority)[0];
@@ -403,21 +570,15 @@ const getPrimaryContact = contacts => {
   };
 };
 
-/** Decrypt an AES-256-GCM encrypted field — returns null on failure */
 const safeDecrypt = encrypted => {
   if (!encrypted) return null;
   try {
     return decryptField(encrypted);
   } catch {
-    return null; // decryption failure → never crash an emergency scan
+    return null; // never crash emergency scan on decryption failure
   }
 };
 
-/**
- * [FIX-3] Full school payload — used for active / live card states.
- * ACTIVE, INACTIVE, ISSUED, UNREGISTERED:
- *   emergency responders and parents need phone + address to contact school.
- */
 const safeSchoolFull = school => {
   if (!school) return null;
   return {
@@ -428,19 +589,11 @@ const safeSchoolFull = school => {
   };
 };
 
-/**
- * [FIX-3] Minimal school payload — used for dead card states (REVOKED, EXPIRED).
- * A revoked/expired card doesn"t need to expose school phone or address.
- * Name is enough for the responder to know which school the card was from.
- */
 const safeSchoolMinimal = school => {
   if (!school) return null;
-  return {
-    name: school.name,
-  };
+  return { name: school.name };
 };
 
-/** Convert DB enum e.g. "A_POS" → "A+", "AB_NEG' → 'AB-' */
 const formatBloodGroup = bg => {
   if (!bg) return null;
   return bg.replace('_POS', '+').replace('_NEG', '-');

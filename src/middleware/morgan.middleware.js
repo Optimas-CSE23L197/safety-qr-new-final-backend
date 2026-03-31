@@ -2,6 +2,7 @@ import morgan from 'morgan';
 import { createStream } from 'rotating-file-stream';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { ENV } from '#config/env.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -11,5 +12,10 @@ const accessStream = createStream('access.log', {
   maxFiles: 14,
 });
 
-// use 'tiny" instead of "dev" — no colors, clean for file
-export const accessLogger = morgan('tiny', { stream: accessStream });
+// Skip health check endpoints
+const skipHealth = req => req.path === '/health' || req.path === '/api/health';
+
+export const accessLogger = morgan(ENV.NODE_ENV === 'production' ? 'tiny' : 'dev', {
+  stream: accessStream,
+  skip: skipHealth,
+});

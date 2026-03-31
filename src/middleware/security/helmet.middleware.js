@@ -60,7 +60,7 @@ export const dashboardHelmet = helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'strict-dynamic'"],
+      scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", 'data:', 'blob:', ENV.CDN_URL].filter(Boolean),
       fontSrc: ["'self'", 'data:'],

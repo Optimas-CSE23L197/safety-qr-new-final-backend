@@ -23,6 +23,7 @@ import { asyncHandler } from '#shared/response/asyncHandler.js';
 
 const DEVICE_CACHE_TTL = 60; // 1 minute — hot path, cache aggressively
 const DEVICE_HEADER = 'x-device-id';
+const LAST_SEEN_GATE_TTL = 60; // 1 minute
 
 // ─── Core Middleware ──────────────────────────────────────────────────────────
 
@@ -121,6 +122,10 @@ async function getDevice(parentId, deviceToken) {
 }
 
 async function updateDeviceLastSeen(deviceId) {
+  const gateKey = `device:last_seen:${deviceId}`;
+  const canUpdate = await redis.set(gateKey, '1', 'EX', LAST_SEEN_GATE_TTL, 'NX');
+  if (!canUpdate) return; // throttled
+
   await prisma.parentDevice.update({
     where: { id: deviceId },
     data: { last_seen_at: new Date() },

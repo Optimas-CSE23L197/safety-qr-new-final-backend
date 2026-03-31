@@ -2,38 +2,26 @@
 // modules/scan/scan.repository.js — RESQID
 //
 // All DB reads for the public QR scan flow.
-// No writes here except ScanLog — this file never modifies profile data.
+// This file never modifies profile data — read-only except ScanLog.
 //
 // QUERY STRATEGY:
-//   Every scan hits one indexed lookup: Token.id (PK).
-//   All joins are via FK relations — no raw SQL, no N+1.
-//   Profile data is loaded in a single query with nested includes.
-//   ScanLog write is fire-and-forget — never blocks the response.
-//
-// CHANGES FROM PREVIOUS VERSION:
-//   [FIX-1] createRegistrationNonce was importing crypto without importing it.
-//           Added missing `import crypto from 'crypto'`.
-//   [FIX-2] Added findActiveNonceByTokenId — looks up an existing unexpired
-//           nonce FOR A TOKEN (not by nonce value). Used to deduplicate nonce
-//           creation on repeated UNASSIGNED scans (prevents nonce table flood).
-//           The existing findActiveNonce(nonce) is for the parent registration
-//           flow (lookup by nonce value) and is kept unchanged.
-//   [FIX-3] writeScanLog school_id sentinel — 'unknown' is not a valid UUID
-//           and will fail the FK constraint on ScanLog.school_id. Changed to
-//           the same null-safe sentinel UUID used for the token_id case.
+//   Single indexed PK lookup: Token.id
+//   All joins via FK relations — no raw SQL, no N+1
+//   ScanLog write is replaced by Redis queue enqueue (see scan.cache.js)
+//   Direct writeScanLog kept for edge cases (emergency worker, etc.)
 // =============================================================================
 
 import { prisma } from '#config/prisma.js';
-import crypto from 'crypto'; // [FIX-1] was missing — createRegistrationNonce crashed
+import crypto from 'crypto';
 
 // =============================================================================
 // TOKEN LOOKUP
 // =============================================================================
 
 /**
- * Find a token by its UUID (decoded from scan code).
- * Returns everything needed to decide what to show — status, expiry, student,
- * emergency profile, contacts — in a single query.
+ * Find a token by UUID for scan resolution.
+ * Single query with all required joins.
+ * Called only on Redis cache miss.
  *
  * @param {string} tokenId
  * @returns {object|null}
@@ -47,8 +35,8 @@ export const findTokenForScan = async tokenId => {
       expires_at: true,
       school_id: true,
       student_id: true,
+      is_honeypot: true, // honeypot check before building any profile
 
-      // School — needed for branding on active cards; minimal fields only
       school: {
         select: {
           id: true,
@@ -60,7 +48,6 @@ export const findTokenForScan = async tokenId => {
         },
       },
 
-      // Student profile
       student: {
         select: {
           id: true,
@@ -73,7 +60,6 @@ export const findTokenForScan = async tokenId => {
           setup_stage: true,
           is_active: true,
 
-          // Card visibility settings (parent-controlled)
           cardVisibility: {
             select: {
               visibility: true,
@@ -81,7 +67,6 @@ export const findTokenForScan = async tokenId => {
             },
           },
 
-          // Emergency profile + contacts
           emergency: {
             select: {
               blood_group: true,
@@ -89,7 +74,7 @@ export const findTokenForScan = async tokenId => {
               conditions: true,
               medications: true,
               doctor_name: true,
-              doctor_phone_encrypted: true, // decrypted in service
+              doctor_phone_encrypted: true,
               notes: true,
               visibility: true,
               is_visible: true,
@@ -100,7 +85,7 @@ export const findTokenForScan = async tokenId => {
                 select: {
                   id: true,
                   name: true,
-                  phone_encrypted: true, // decrypted in service
+                  phone_encrypted: true,
                   relationship: true,
                   priority: true,
                   display_order: true,
@@ -117,20 +102,18 @@ export const findTokenForScan = async tokenId => {
 };
 
 // =============================================================================
-// SCAN LOG (fire-and-forget)
+// SCAN LOG (direct write — for non-hot-path callers like emergency worker)
 // =============================================================================
 
 /**
- * Write a scan log entry.
- * Never awaited at call site — scan log failure must never block response.
- * .catch(() => {}) is intentional — this is observability, not correctness.
- *
- * @param {object} params
+ * Write a scan log entry directly to DB.
+ * For the hot path, use enqueueScanLog() from scan.cache.js instead.
+ * .catch(() => {}) is intentional — observability must never affect correctness.
  */
 export const writeScanLog = ({
   tokenId,
   schoolId,
-  result, // ScanResult enum value
+  result,
   ip,
   userAgent,
   deviceHash,
@@ -145,6 +128,7 @@ export const writeScanLog = ({
         token_id: tokenId,
         school_id: schoolId,
         result,
+        scan_purpose: scanPurpose ?? 'QR_SCAN',
         ip_address: ip ?? null,
         user_agent: userAgent ?? null,
         device_hash: deviceHash ?? null,
@@ -152,23 +136,32 @@ export const writeScanLog = ({
         longitude: longitude ?? null,
         location_derived: latitude != null,
         response_time_ms: responseTimeMs ?? null,
-        scan_purpose: scanPurpose ?? null,
         ip_capture_basis: 'LEGITIMATE_INTEREST',
       },
     })
-    .catch(() => {}); // never throws
+    .catch(() => {});
+
+// =============================================================================
+// BULK SCAN LOG (used by scan.worker)
+// =============================================================================
+
+/**
+ * Bulk insert scan log entries.
+ * Called by scan.worker draining the Redis log queue every 5 seconds.
+ * createMany skips duplicate conflicts rather than failing the whole batch.
+ */
+export const bulkWriteScanLogs = async entries => {
+  if (!entries.length) return;
+  return prisma.scanLog.createMany({
+    data: entries,
+    skipDuplicates: true,
+  });
+};
 
 // =============================================================================
 // REGISTRATION NONCE
 // =============================================================================
 
-/**
- * Find an active (unused, unexpired) registration nonce BY NONCE VALUE.
- * Used during parent registration flow to validate the nonce the parent submits.
- *
- * @param {string} nonce — the nonce value from the parent's registration request
- * @returns {object|null}
- */
 export const findActiveNonce = async nonce => {
   return prisma.registrationNonce.findFirst({
     where: {
@@ -176,23 +169,10 @@ export const findActiveNonce = async nonce => {
       used: false,
       expires_at: { gt: new Date() },
     },
-    select: {
-      id: true,
-      token_id: true,
-      expires_at: true,
-    },
+    select: { id: true, token_id: true, expires_at: true },
   });
 };
 
-/**
- * Find an active (unused, unexpired) registration nonce BY TOKEN ID.
- * [FIX-2] Used before createRegistrationNonce to prevent nonce table flood.
- * If an unexpired nonce already exists for this token, return it instead
- * of creating a new one. One live nonce per token at a time.
- *
- * @param {string} tokenId
- * @returns {object|null} — { nonce, expires_at } or null
- */
 export const findActiveNonceByTokenId = async tokenId => {
   return prisma.registrationNonce.findFirst({
     where: {
@@ -200,17 +180,10 @@ export const findActiveNonceByTokenId = async tokenId => {
       used: false,
       expires_at: { gt: new Date() },
     },
-    select: {
-      nonce: true,
-      expires_at: true,
-    },
+    select: { nonce: true, expires_at: true },
   });
 };
 
-/**
- * Mark a registration nonce as used (consumed on parent register).
- * @param {string} nonceId
- */
 export const consumeNonce = async nonceId => {
   return prisma.registrationNonce.update({
     where: { id: nonceId },
@@ -218,17 +191,9 @@ export const consumeNonce = async nonceId => {
   });
 };
 
-/**
- * Create a registration nonce for a token.
- * Only called when findActiveNonceByTokenId returns null.
- * TTL: 15 minutes.
- *
- * @param {string} tokenId
- * @returns {{ nonce: string, expiresAt: Date }}
- */
 export const createRegistrationNonce = async tokenId => {
-  const nonce = crypto.randomUUID().replace(/-/g, ''); // 32-char hex
-  const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 min
+  const nonce = crypto.randomUUID().replace(/-/g, '');
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
   await prisma.registrationNonce.create({
     data: { nonce, token_id: tokenId, expires_at: expiresAt },

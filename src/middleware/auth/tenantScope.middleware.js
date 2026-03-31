@@ -19,7 +19,7 @@ export const tenantScope = asyncHandler(async (req, _res, next) => {
   }
 
   // School user — scope to their own school
-  if (req.role === 'SCHOOL_USER') {
+  if (req.role === 'ADMIN') {
     const schoolId = req.user?.school_id;
     if (!schoolId) {
       throw ApiError.forbidden('School user has no associated school');

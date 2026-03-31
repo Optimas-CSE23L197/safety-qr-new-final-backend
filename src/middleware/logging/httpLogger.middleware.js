@@ -35,7 +35,7 @@ const SENSITIVE_BODY_KEYS = new Set([
   'cvv',
 ]);
 
-// ─── Routes with elevated logging (full body capture) ─────────────────────────
+// ─── Routes with elevated logging (full body capture) ───────────────────────
 const ELEVATED_LOG_ROUTES = new Set([
   '/api/auth/login',
   '/api/auth/logout',
@@ -46,19 +46,19 @@ const ELEVATED_LOG_ROUTES = new Set([
   '/api/auth/register/verify',
 ]);
 
-// ─── Terminal Logging Helpers ─────────────────────────────────────────────────
+// ─── Terminal Logging Helpers ────────────────────────────────────────────────
 
 // Get method icon
 const getMethodIcon = method => {
   switch (method) {
     case 'GET':
-      return '🔍';
+      return '📥';
     case 'POST':
       return '📤';
     case 'PUT':
-      return '✏️';
+      return '🔄';
     case 'PATCH':
-      return '🔧';
+      return '⚡';
     case 'DELETE':
       return '🗑️';
     default:
@@ -74,34 +74,42 @@ const getStatusIcon = statusCode => {
   return '✅';
 };
 
-// Format duration
+// Format duration with appropriate unit
 const formatDuration = ms => {
   if (ms < 1) return `${Math.round(ms * 1000)}μs`;
   if (ms < 1000) return `${Math.round(ms)}ms`;
   return `${(ms / 1000).toFixed(2)}s`;
 };
 
-// Get colored status text (ANSI colors)
+// Get colored status text with icon
 const getColoredStatus = statusCode => {
   const icon = getStatusIcon(statusCode);
-  if (statusCode >= 500) return `\x1b[31m${icon} ${statusCode}\x1b[0m`; // Red
-  if (statusCode >= 400) return `\x1b[33m${icon} ${statusCode}\x1b[0m`; // Yellow
-  if (statusCode >= 300) return `\x1b[36m${icon} ${statusCode}\x1b[0m`; // Cyan
-  return `\x1b[32m${icon} ${statusCode}\x1b[0m`; // Green
+  if (statusCode >= 500) return `\x1b[31m${icon} ${statusCode}\x1b[0m`;
+  if (statusCode >= 400) return `\x1b[33m${icon} ${statusCode}\x1b[0m`;
+  if (statusCode >= 300) return `\x1b[36m${icon} ${statusCode}\x1b[0m`;
+  return `\x1b[32m${icon} ${statusCode}\x1b[0m`;
+};
+
+// Generate duration bar for visual response time
+const getDurationBar = (ms, maxWidth = 20) => {
+  const barLength = Math.min(Math.floor(ms / 5), maxWidth);
+  if (barLength <= 0) return '';
+  const color = ms < 100 ? '\x1b[32m' : ms < 500 ? '\x1b[33m' : '\x1b[31m';
+  return `${color}█`.repeat(barLength) + '\x1b[0m';
 };
 
 // Display OTP in a beautiful box
 const displayOtpBox = (phone, otp, purpose = 'LOGIN') => {
   const timestamp = new Date().toLocaleTimeString();
-  const border = '╔════════════════════════════════════════════════════════════════════════════╗';
-  const bottom = '╚════════════════════════════════════════════════════════════════════════════╝';
+  const border = '╔══════════════════════════════════════════════════════════════════╗';
+  const bottom = '╚══════════════════════════════════════════════════════════════════╝';
 
   console.log(`\n\x1b[36m${border}\x1b[0m`);
   console.log(
     `\x1b[36m║  \x1b[33m🔐 OTP VERIFICATION CODE\x1b[0m                                                       \x1b[36m║\x1b[0m`
   );
   console.log(
-    `\x1b[36m╠════════════════════════════════════════════════════════════════════════════╣\x1b[0m`
+    `\x1b[36m╠══════════════════════════════════════════════════════════════════╣\x1b[0m`
   );
   console.log(`\x1b[36m║  \x1b[37mPurpose:\x1b[0m ${purpose.padEnd(66)}\x1b[36m║\x1b[0m`);
   console.log(`\x1b[36m║  \x1b[37mPhone:  \x1b[0m ${phone.padEnd(66)}\x1b[36m║\x1b[0m`);
@@ -113,14 +121,15 @@ const displayOtpBox = (phone, otp, purpose = 'LOGIN') => {
 
 // Display error in a box
 const displayErrorBox = (message, statusCode, path) => {
-  console.log(
-    `\n\x1b[31m╔════════════════════════════════════════════════════════════════════════════╗\x1b[0m`
-  );
+  const border = '╔══════════════════════════════════════════════════════════════════╗';
+  const bottom = '╚══════════════════════════════════════════════════════════════════╝';
+
+  console.log(`\n\x1b[31m${border}\x1b[0m`);
   console.log(
     `\x1b[31m║  \x1b[33m❌ API ERROR\x1b[0m                                                               \x1b[31m║\x1b[0m`
   );
   console.log(
-    `\x1b[31m╠════════════════════════════════════════════════════════════════════════════╣\x1b[0m`
+    `\x1b[31m╠══════════════════════════════════════════════════════════════════╣\x1b[0m`
   );
   console.log(
     `\x1b[31m║  \x1b[37mStatus: \x1b[31m${statusCode}\x1b[0m${' '.padEnd(61)}\x1b[31m║\x1b[0m`
@@ -129,12 +138,29 @@ const displayErrorBox = (message, statusCode, path) => {
   console.log(
     `\x1b[31m║  \x1b[37mMessage:\x1b[31m ${message.slice(0, 66).padEnd(66)}\x1b[31m║\x1b[0m`
   );
-  console.log(
-    `\x1b[31m╚════════════════════════════════════════════════════════════════════════════╝\x1b[0m\n`
-  );
+  console.log(`\x1b[31m${bottom}\x1b[0m\n`);
 };
 
-// ─── Core Logger Middleware ───────────────────────────────────────────────────
+// Display success box for critical operations
+const displaySuccessBox = (message, details = '') => {
+  const border = '╔══════════════════════════════════════════════════════════════════╗';
+  const bottom = '╚══════════════════════════════════════════════════════════════════╝';
+
+  console.log(`\n\x1b[32m${border}\x1b[0m`);
+  console.log(
+    `\x1b[32m║  \x1b[36m✨ OPERATION SUCCESS\x1b[0m                                                       \x1b[32m║\x1b[0m`
+  );
+  console.log(
+    `\x1b[32m╠══════════════════════════════════════════════════════════════════╣\x1b[0m`
+  );
+  console.log(`\x1b[32m║  \x1b[37m${message.slice(0, 66).padEnd(66)}\x1b[32m║\x1b[0m`);
+  if (details) {
+    console.log(`\x1b[32m║  \x1b[90m${details.slice(0, 66).padEnd(66)}\x1b[32m║\x1b[0m`);
+  }
+  console.log(`\x1b[32m${bottom}\x1b[0m\n`);
+};
+
+// ─── Core Logger Middleware ──────────────────────────────────────────────────
 
 export function httpLogger(req, res, next) {
   const startAt = process.hrtime.bigint();
@@ -146,10 +172,11 @@ export function httpLogger(req, res, next) {
   // Log incoming request to terminal
   const methodIcon = getMethodIcon(method);
   const userStr = req.userId
-    ? ` [${req.role || 'user'}:${req.userId.slice(0, 8)}]`
-    : ' [anonymous]';
+    ? ` \x1b[90m[${req.role || 'user'}:${req.userId.slice(0, 8)}]\x1b[0m`
+    : ' \x1b[90m[anonymous]\x1b[0m';
+
   console.log(
-    `\n${methodIcon} \x1b[36m${method}\x1b[0m \x1b[90m${path}\x1b[0m${userStr} from \x1b[90m${ip}\x1b[0m`
+    `\n${methodIcon} \x1b[36m${method}\x1b[0m \x1b[2m${path}\x1b[0m${userStr} \x1b[90m→ ${ip}\x1b[0m`
   );
 
   // Create child logger for structured logs
@@ -175,11 +202,10 @@ export function httpLogger(req, res, next) {
 
   // Capture request body for OTP detection
   let requestBody = null;
-  if (
-    req.body &&
-    (req.path === '/api/v1/auth/send-otp' || req.path === '/api/v1/auth/register/init')
-  ) {
+  let otpPurpose = 'LOGIN';
+  if (req.body && (req.path === '/api/auth/send-otp' || req.path === '/api/auth/register/init')) {
     requestBody = { ...req.body };
+    if (req.path === '/api/auth/register/init') otpPurpose = 'REGISTRATION';
   }
 
   // Intercept response finish to log outgoing
@@ -189,19 +215,27 @@ export function httpLogger(req, res, next) {
     const level = resolveLogLevel(res.statusCode);
     const statusCode = res.statusCode;
     const formattedDuration = formatDuration(durationMs);
+    const durationBar = getDurationBar(durationMs);
 
-    // Log response to terminal with colors
+    // Log response to terminal with colors and duration bar
     const coloredStatus = getColoredStatus(statusCode);
-    console.log(`${coloredStatus} \x1b[90m${method} ${path} → ${formattedDuration}\x1b[0m`);
+    console.log(
+      `${coloredStatus} \x1b[2m${method} ${path}\x1b[0m ${durationBar} \x1b[90m(${formattedDuration})\x1b[0m`
+    );
 
-    // If it"s an error response, display error box
+    // If it's an error response, display error box
     if (statusCode >= 400 && res.locals?.errorMessage) {
       displayErrorBox(res.locals.errorMessage, statusCode, path);
     }
 
-    // If this was an OTP request, capture OTP from response
+    // If it's a success response with OTP, display OTP box
     if (requestBody && statusCode === 200 && res.locals?.otp) {
-      displayOtpBox(requestBody.phone, res.locals.otp, 'LOGIN');
+      displayOtpBox(requestBody.phone, res.locals.otp, otpPurpose);
+    }
+
+    // If it's a success response with critical operation, display success box
+    if (statusCode === 200 && res.locals?.successMessage) {
+      displaySuccessBox(res.locals.successMessage, res.locals.successDetails);
     }
 
     // Rebuild child with auth context for structured logs
@@ -234,7 +268,7 @@ export function httpLogger(req, res, next) {
     );
   });
 
-  // Capture OTP from service response (monkey patch send method)
+  // Capture OTP and success messages from service response (monkey patch send method)
   const originalJson = res.json;
   res.json = function (data) {
     // Capture OTP if present in response (for development only)
@@ -244,6 +278,11 @@ export function httpLogger(req, res, next) {
     // Capture error message
     if (!data?.success && data?.message) {
       res.locals.errorMessage = data.message;
+    }
+    // Capture success message for critical operations
+    if (data?.success && data?.message && data?.critical) {
+      res.locals.successMessage = data.message;
+      res.locals.successDetails = data?.details;
     }
     return originalJson.call(this, data);
   };
@@ -255,7 +294,7 @@ export function httpLogger(req, res, next) {
   next();
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function resolveLogLevel(statusCode) {
   if (statusCode >= 500) return 'error';

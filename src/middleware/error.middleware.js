@@ -13,7 +13,7 @@
 //   - Programming errors (unexpected) → 500 + generic message
 // =============================================================================
 
-import { Prisma } from '../../src/generated/index.js';
+import { Prisma } from '../generated/index.js';
 import { ZodError } from 'zod';
 import { logger } from '#config/logger.js';
 import { ENV } from '#config/env.js';

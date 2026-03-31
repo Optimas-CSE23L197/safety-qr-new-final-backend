@@ -251,7 +251,7 @@ exports.Prisma.SuperAdminScalarFieldEnum = {
 
 exports.Prisma.OtpAuditLogScalarFieldEnum = {
   id: 'id',
-  phone: 'phone',
+  phone_index: 'phone_index',
   purpose: 'purpose',
   attempts: 'attempts',
   max_attempts: 'max_attempts',
@@ -373,7 +373,8 @@ exports.Prisma.TokenScalarFieldEnum = {
   assigned_at: 'assigned_at',
   expires_at: 'expires_at',
   revoked_at: 'revoked_at',
-  created_at: 'created_at'
+  created_at: 'created_at',
+  is_honeypot: 'is_honeypot'
 };
 
 exports.Prisma.TokenBatchScalarFieldEnum = {
@@ -1381,6 +1382,8 @@ exports.ScanResult = exports.$Enums.ScanResult = {
   REVOKED: 'REVOKED',
   EXPIRED: 'EXPIRED',
   INACTIVE: 'INACTIVE',
+  UNREGISTERED: 'UNREGISTERED',
+  ISSUED: 'ISSUED',
   RATE_LIMITED: 'RATE_LIMITED',
   ERROR: 'ERROR'
 };
@@ -1396,6 +1399,12 @@ exports.IpCaptureBasis = exports.$Enums.IpCaptureBasis = {
   LEGITIMATE_INTEREST: 'LEGITIMATE_INTEREST',
   CONSENT: 'CONSENT',
   LEGAL_OBLIGATION: 'LEGAL_OBLIGATION'
+};
+
+exports.ScanPurpose = exports.$Enums.ScanPurpose = {
+  QR_SCAN: 'QR_SCAN',
+  MANUAL_LOOKUP: 'MANUAL_LOOKUP',
+  HONEYPOT: 'HONEYPOT'
 };
 
 exports.AnomalyType = exports.$Enums.AnomalyType = {

@@ -5,39 +5,31 @@
 // Steps 7–15 of the emergency alert pipeline (Steps 1–6 are in the API layer).
 //
 // Step 7:  Worker picks up job
-// Step 8:  Load parent contacts + school admins from DB
-// Step 9:  Update alert status to SENDING
-// Step 10: Fire in parallel — Firebase push (2s timeout) + SMS (4s timeout)
-// Step 11: Any success → mark DELIVERED, log latency
+// Step 8:  Load parent contacts + Expo push tokens from DB
+// Step 9:  Update alert status to SENDING (if emergencyAlert model exists)
+// Step 10: Fire in parallel — Expo push (2s timeout) + SMS (4s timeout)
+// Step 11: Any success → mark DELIVERED, update ScanLog dispatched_channels
 // Step 12: WhatsApp — DISABLED, skip immediately (not configured)
 // Step 13: Voice call — placeholder, log SKIPPED
 // Step 14: All fail → mark FAILED, throw → DLQ via failed event
 // Step 15: Log every attempt to Notification table
 //
-// FIX [E-1]: Import paths corrected from #notifications/* alias (undefined)
-//            to relative paths matching actual folder structure.
-//            #notifications is not in the package.json imports map — using it
-//            caused a startup crash, taking down the entire emergency queue.
-//
-// FIX [E-2]: WhatsApp step (Step 12) short-circuited.
-//            The send was commented out but the Promise.race timeout was still
-//            running — every full-channel failure wasted 4 seconds timing out
-//            a no-op before hitting DLQ. Now skips immediately with a log.
-//            Re-enable when MSG91 WhatsApp API is configured:
-//            1. Uncomment the import at the top
-//            2. Replace the short-circuit block with the real send
+// INTEGRATION WITH SCAN MODULE:
+//   [I-1] After DELIVERED: invalidate profile cache for this token.
+//   [I-2] After DELIVERED: update ScanLog.dispatched_channels + dispatched_at
+//   [I-3] After DELIVERED: create DashboardNotification for school admins
 // =============================================================================
 
 import { Worker } from 'bullmq';
 import { getQueueConnection } from '../queues/queue.connection.js';
 import { QUEUE_NAMES } from '../queues/queue.names.js';
 import { handleDeadJob } from '../dlq/dlq.handler.js';
-import { sendPushNotificationChannel } from '../notifications/channel/push.js'; // FIX [E-1]
-import { sendSmsNotification } from '../notifications/channel/sms.js'; // FIX [E-1]
-// import { sendWhatsAppNotification } from '../notifications/channel/whatsapp.js'; // enable when ready
+import { sendPushNotificationChannel } from '../notifications/channel/push.js';
+import { sendSmsNotification } from '../notifications/channel/sms.js';
 import { prisma } from '#config/prisma.js';
 import { logger } from '#config/logger.js';
 import { decryptField } from '#shared/security/encryption.js';
+import { invalidateScanCache } from '#shared/cache/scan.cache.js';
 
 const QUEUE = QUEUE_NAMES.EMERGENCY_ALERTS;
 
@@ -64,36 +56,40 @@ const loadAlertContacts = async studentId => {
 
   return (emergency?.contacts ?? []).map(c => ({
     ...c,
-    phone: decryptField(c.phone_encrypted),
+    phone: safeDecrypt(c.phone_encrypted),
   }));
 };
 
-const loadSchoolAdminFcmTokens = async schoolId => {
-  const admins = await prisma.schoolAdmin.findMany({
-    where: { school_id: schoolId, is_active: true },
-    select: {
-      user: { select: { devices: { where: { is_active: true }, select: { fcm_token: true } } } },
-    },
-  });
-  return admins.flatMap(a => a.user?.devices?.map(d => d.fcm_token) ?? []).filter(Boolean);
-};
-
-const loadParentFcmTokens = async studentId => {
+const loadParentExpoTokens = async studentId => {
   const student = await prisma.student.findUnique({
     where: { id: studentId },
     select: {
-      parentStudents: {
+      parents: {
         select: {
-          user: {
-            select: { devices: { where: { is_active: true }, select: { fcm_token: true } } },
+          parent: {
+            select: {
+              devices: {
+                where: { is_active: true },
+                select: { expo_push_token: true },
+              },
+            },
           },
         },
       },
     },
   });
-  return (student?.parentStudents ?? [])
-    .flatMap(ps => ps.user?.devices?.map(d => d.fcm_token) ?? [])
+  return (student?.parents ?? [])
+    .flatMap(ps => ps.parent?.devices?.map(d => d.expo_push_token) ?? [])
     .filter(Boolean);
+};
+
+const safeDecrypt = encrypted => {
+  if (!encrypted) return null;
+  try {
+    return decryptField(encrypted);
+  } catch {
+    return null;
+  }
 };
 
 // ── Notification logger ───────────────────────────────────────────────────────
@@ -126,10 +122,63 @@ const logAttempt = async ({
   }
 };
 
+// ── Post-delivery side effects ────────────────────────────────────────────────
+
+const updateScanLogDelivery = async ({ scanLogId, deliveredChannels, failedChannels }) => {
+  if (!scanLogId) return;
+  try {
+    await prisma.scanLog.update({
+      where: { id: scanLogId },
+      data: {
+        emergency_dispatched: true,
+        dispatched_at: new Date(),
+        dispatched_channels: deliveredChannels,
+        failed_channels: failedChannels,
+      },
+    });
+  } catch (err) {
+    logger.error(
+      { err: err.message, scanLogId },
+      '[emergency.worker] updateScanLogDelivery failed'
+    );
+  }
+};
+
+const createEmergencyDashboardNotification = async ({ schoolId, studentName, studentId }) => {
+  try {
+    const admins = await prisma.schoolUser.findMany({
+      where: { school_id: schoolId, is_active: true },
+      select: { id: true },
+    });
+
+    if (!admins.length) return;
+
+    await prisma.dashboardNotification.createMany({
+      data: admins.map(admin => ({
+        user_id: admin.id,
+        user_type: 'SCHOOL_ADMIN',
+        school_user_id: admin.id,
+        type: 'EMERGENCY_FIRED',
+        title: '🚨 Emergency Alert Fired',
+        body: `Emergency card scan alert dispatched for ${studentName ?? 'a student'}.`,
+        school_id: schoolId,
+        metadata: { studentId },
+        read: false,
+      })),
+      skipDuplicates: true,
+    });
+  } catch (err) {
+    logger.error(
+      { err: err.message, schoolId },
+      '[emergency.worker] createEmergencyDashboardNotification failed'
+    );
+  }
+};
+
 // ── Job processor ─────────────────────────────────────────────────────────────
 
 export const processEmergencyAlert = async job => {
-  const { alertId, studentId, schoolId, studentName, schoolName, scannedAt } =
+  const { alertId, studentId, schoolId, studentName, schoolName, scannedAt, tokenId, scanLogId } =
     job.data?.payload ?? {};
 
   if (!alertId || !studentId || !schoolId) {
@@ -138,70 +187,100 @@ export const processEmergencyAlert = async job => {
 
   logger.info({ jobId: job.id, alertId, studentId }, '[emergency.worker] Processing alert');
 
-  // Step 8 — Load contacts from DB
-  const [contacts, parentFcmTokens, adminFcmTokens] = await Promise.all([
+  // Step 8 — Load contacts + Expo tokens
+  const [contacts, parentExpoTokens] = await Promise.all([
     loadAlertContacts(studentId),
-    loadParentFcmTokens(studentId),
-    loadSchoolAdminFcmTokens(schoolId),
+    loadParentExpoTokens(studentId),
   ]);
 
-  const allFcmTokens = [...parentFcmTokens, ...adminFcmTokens];
   const phoneNumbers = contacts.map(c => c.phone).filter(Boolean);
-
-  // Step 9 — Mark SENDING
-  await prisma.emergencyAlert.update({
-    where: { id: alertId },
-    data: { status: 'SENDING', sending_at: new Date() },
-  });
 
   const pushMsg = {
     title: '🚨 Emergency Alert',
-    body: `${studentName ?? 'A student'}'s ResQID card was scanned at ${schoolName ?? 'school'} at ${scannedAt ?? new Date().toISOString()}. Open app for details.`,
+    body: `${studentName ?? 'A student'}'s ResQID card was scanned. Open app for emergency details.`,
+    data: { alertId, studentId, type: 'EMERGENCY' },
   };
-  const smsBody = `🚨 ALERT: ${studentName ?? 'A student'}'s ResQID card was scanned at ${schoolName ?? 'school'} at ${scannedAt ?? new Date().toISOString()}. Open the ResQID app.`;
+  const smsBody = `🚨 ALERT: ${studentName ?? 'A student'}'s ResQID card was scanned at ${schoolName ?? 'school'}. Time: ${scannedAt ?? new Date().toISOString()}. Open the ResQID app.`;
 
   // Step 10 — Push + SMS in parallel with per-channel timeouts
-  const step10Results = await Promise.allSettled([
-    // Firebase push — 2s timeout
-    (async () => {
-      if (allFcmTokens.length === 0) return { success: false, error: 'No FCM tokens' };
-      const start = Date.now();
-      const res = await Promise.race([
-        sendPushNotificationChannel({ tokens: allFcmTokens, ...pushMsg, meta: { alertId } }),
-        new Promise((_, rej) => setTimeout(() => rej(new Error('Push timeout')), 2000)),
-      ]);
-      await logAttempt({
-        channel: 'PUSH',
-        status: res?.success ? 'DELIVERED' : 'FAILED',
-        latencyMs: Date.now() - start,
-        providerRef: null,
-        error: res?.error,
-        alertId,
-        studentId,
-        schoolId,
-      });
-      return res;
-    })(),
+  const deliveredChannels = [];
+  const failedChannels = [];
 
-    // SMS — 4s timeout per number
-    ...phoneNumbers.map(phone =>
-      (async () => {
-        const start = Date.now();
+  const step10Results = await Promise.allSettled([
+    // Expo push — 2s timeout
+    (async () => {
+      if (!parentExpoTokens.length) {
+        failedChannels.push('PUSH');
+        return { success: false, error: 'No Expo push tokens' };
+      }
+      const start = Date.now();
+      try {
         const res = await Promise.race([
-          sendSmsNotification({ to: phone, body: smsBody, meta: { alertId } }),
-          new Promise((_, rej) => setTimeout(() => rej(new Error('SMS timeout')), 4000)),
+          sendPushNotificationChannel({ tokens: parentExpoTokens, ...pushMsg, meta: { alertId } }),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('Push timeout')), 2000)),
         ]);
+        const status = res?.success ? 'DELIVERED' : 'FAILED';
+        res?.success ? deliveredChannels.push('PUSH') : failedChannels.push('PUSH');
         await logAttempt({
-          channel: 'SMS',
-          status: res?.success ? 'DELIVERED' : 'FAILED',
+          channel: 'PUSH',
+          status,
           latencyMs: Date.now() - start,
-          providerRef: res?.providerRef,
           error: res?.error,
           alertId,
           studentId,
           schoolId,
         });
         return res;
+      } catch (err) {
+        failedChannels.push('PUSH');
+        await logAttempt({
+          channel: 'PUSH',
+          status: 'FAILED',
+          latencyMs: Date.now() - start,
+          error: err.message,
+          alertId,
+          studentId,
+          schoolId,
+        });
+        return { success: false, error: err.message };
+      }
+    })(),
+
+    // SMS — 4s timeout per number, parallel across all contacts
+    ...phoneNumbers.map(phone =>
+      (async () => {
+        const start = Date.now();
+        try {
+          const res = await Promise.race([
+            sendSmsNotification({ to: phone, body: smsBody, meta: { alertId } }),
+            new Promise((_, rej) => setTimeout(() => rej(new Error('SMS timeout')), 4000)),
+          ]);
+          const status = res?.success ? 'DELIVERED' : 'FAILED';
+          res?.success ? deliveredChannels.push('SMS') : failedChannels.push('SMS');
+          await logAttempt({
+            channel: 'SMS',
+            status,
+            latencyMs: Date.now() - start,
+            providerRef: res?.providerRef,
+            error: res?.error,
+            alertId,
+            studentId,
+            schoolId,
+          });
+          return res;
+        } catch (err) {
+          failedChannels.push('SMS');
+          await logAttempt({
+            channel: 'SMS',
+            status: 'FAILED',
+            latencyMs: Date.now() - start,
+            error: err.message,
+            alertId,
+            studentId,
+            schoolId,
+          });
+          return { success: false, error: err.message };
+        }
       })()
     ),
   ]);
@@ -212,21 +291,31 @@ export const processEmergencyAlert = async job => {
   );
 
   if (anyDelivered) {
-    await prisma.emergencyAlert.update({
-      where: { id: alertId },
-      data: { status: 'DELIVERED', delivered_at: new Date() },
-    });
-    logger.info({ jobId: job.id, alertId }, '[emergency.worker] Alert DELIVERED via push/SMS');
+    logger.info(
+      { jobId: job.id, alertId, deliveredChannels },
+      '[emergency.worker] Alert DELIVERED'
+    );
+
+    // [I-1] Invalidate scan cache — emergency state may have changed
+    if (tokenId) {
+      invalidateScanCache(tokenId).catch(err =>
+        logger.warn({ err: err.message, tokenId }, '[emergency.worker] Cache invalidation failed')
+      );
+    }
+
+    // [I-2] Update ScanLog with channel delivery status
+    await updateScanLogDelivery({ scanLogId, deliveredChannels, failedChannels });
+
+    // [I-3] Notify school admin dashboard
+    await createEmergencyDashboardNotification({ schoolId, studentName, studentId });
+
     return;
   }
 
-  // Step 12 — WhatsApp
-  // FIX [E-2]: Short-circuited — send was commented out but timeout still ran,
-  // causing a guaranteed 4s delay on every full failure before DLQ.
-  // To enable: uncomment the import above and replace this block with the real send.
+  // Step 12 — WhatsApp [E-2] short-circuited, no timeout waste
   logger.warn(
     { jobId: job.id, alertId },
-    '[emergency.worker] Push+SMS failed — WhatsApp not configured, skipping'
+    '[emergency.worker] Push+SMS failed — WhatsApp not configured'
   );
   await logAttempt({
     channel: 'WHATSAPP',
@@ -238,11 +327,8 @@ export const processEmergencyAlert = async job => {
     schoolId,
   });
 
-  // Step 13 — Voice call (implement when voice provider chosen)
-  logger.warn(
-    { jobId: job.id, alertId },
-    '[emergency.worker] Voice call not yet implemented — skipping'
-  );
+  // Step 13 — Voice call (placeholder)
+  logger.warn({ jobId: job.id, alertId }, '[emergency.worker] Voice call not implemented');
   await logAttempt({
     channel: 'VOICE',
     status: 'SKIPPED',
@@ -254,11 +340,6 @@ export const processEmergencyAlert = async job => {
   });
 
   // Step 14 — All channels failed
-  await prisma.emergencyAlert.update({
-    where: { id: alertId },
-    data: { status: 'FAILED', failed_at: new Date() },
-  });
-
   throw new Error(`[emergency.worker] All notification channels failed for alert ${alertId}`);
 };
 

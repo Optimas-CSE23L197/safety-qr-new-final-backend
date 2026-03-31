@@ -8,30 +8,26 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { StorageProvider } from './storage.provider.js';
+import { logger } from '#config/logger.js';
 
-/**
- * S3-compatible storage adapter (AWS SDK v3).
- * Also compatible with Cloudflare R2 via a custom endpoint.
- */
 export class S3Adapter extends StorageProvider {
   constructor(config = {}) {
     super();
 
+    this.endpoint = config.ENDPOINT ?? process.env.AWS_S3_ENDPOINT;
+    this.region = config.REGION ?? process.env.AWS_REGION ?? 'auto';
+    this.bucket = config.BUCKET ?? process.env.AWS_S3_BUCKET;
+    this.cdnDomain = config.CDN_DOMAIN ?? process.env.AWS_CDN_DOMAIN ?? null;
+
     this.s3 = new S3Client({
-      region: config.REGION ?? process.env.AWS_REGION ?? 'auto',
+      region: this.region,
       credentials: {
         accessKeyId: config.ACCESS_KEY_ID ?? process.env.AWS_ACCESS_KEY_ID,
         secretAccessKey: config.SECRET_ACCESS_KEY ?? process.env.AWS_SECRET_ACCESS_KEY,
       },
-      // s3.adapter.js line 27 — fix the env var name
-      ...(config.ENDPOINT || process.env.AWS_S3_ENDPOINT
-        ? { endpoint: config.ENDPOINT ?? process.env.AWS_S3_ENDPOINT }
-        : {}),
+      ...(this.endpoint ? { endpoint: this.endpoint } : {}),
       forcePathStyle: true, // required for R2
     });
-
-    this.bucket = config.BUCKET ?? process.env.AWS_S3_BUCKET;
-    this.cdnDomain = config.CDN_DOMAIN ?? process.env.AWS_CDN_DOMAIN ?? null;
   }
 
   async upload(file, key, options = {}) {
@@ -49,12 +45,14 @@ export class S3Adapter extends StorageProvider {
 
       const location = this.cdnDomain
         ? `https://${this.cdnDomain}/${key}`
-        : `https://${process.env.AWS_ENDPOINT}/${this.bucket}/${key}`;
+        : this.endpoint
+          ? `https://${this.endpoint}/${this.bucket}/${key}`
+          : `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}`;
 
-      console.info(`[Storage] Uploaded "${key}" — ${location}`);
+      logger.info({ key, location }, `[Storage] Uploaded "${key}"`);
       return { success: true, key, location };
     } catch (err) {
-      console.error(`[Storage] Upload failed for key "${key}":`, err.message);
+      logger.error({ err: err.message, key }, `[Storage] Upload failed for key "${key}"`);
       throw err;
     }
   }
@@ -62,14 +60,13 @@ export class S3Adapter extends StorageProvider {
   async download(key) {
     try {
       const response = await this.s3.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
-      // Collect the stream into a Buffer
       const chunks = [];
       for await (const chunk of response.Body) {
         chunks.push(chunk);
       }
       return Buffer.concat(chunks);
     } catch (err) {
-      console.error(`[Storage] Download failed for key "${key}":`, err.message);
+      logger.error({ err: err.message, key }, `[Storage] Download failed for key "${key}"`);
       throw err;
     }
   }
@@ -77,9 +74,9 @@ export class S3Adapter extends StorageProvider {
   async delete(key) {
     try {
       await this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
-      console.info(`[Storage] Deleted object "${key}".`);
+      logger.info({ key }, `[Storage] Deleted object "${key}"`);
     } catch (err) {
-      console.error(`[Storage] Delete failed for key "${key}":`, err.message);
+      logger.error({ err: err.message, key }, `[Storage] Delete failed for key "${key}"`);
       throw err;
     }
   }
@@ -93,7 +90,7 @@ export class S3Adapter extends StorageProvider {
         expiresIn,
       });
     } catch (err) {
-      console.error(`[Storage] Failed to generate URL for key "${key}":`, err.message);
+      logger.error({ err: err.message, key }, `[Storage] Failed to generate URL for key "${key}"`);
       throw err;
     }
   }
@@ -127,12 +124,11 @@ export class S3Adapter extends StorageProvider {
         etag: item.ETag,
       }));
     } catch (err) {
-      console.error(`[Storage] List failed for prefix "${prefix}":`, err.message);
+      logger.error({ err: err.message, prefix }, `[Storage] List failed for prefix "${prefix}"`);
       throw err;
     }
   }
 
-  /** Upload a readable stream (large files / card PDFs). */
   async uploadStream(stream, key, options = {}) {
     return this.upload(stream, key, options);
   }

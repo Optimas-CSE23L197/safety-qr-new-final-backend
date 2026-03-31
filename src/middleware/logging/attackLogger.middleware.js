@@ -21,23 +21,25 @@ import { logger } from '#config/logger.js';
 const ATTACK_PATTERNS = [
   { pattern: /<script[\s\S]*?>[\s\S]*?<\/script>/gi, type: 'XSS_SCRIPT_TAG' },
   { pattern: /javascript\s*:/gi, type: 'XSS_JS_PROTOCOL' },
-  { pattern: /on\w+\s*=\s*[''`]/gi, type: 'XSS_EVENT_HANDLER' },
+  { pattern: /on\w+\s*=\s*['"`]/gi, type: 'XSS_EVENT_HANDLER' },
   { pattern: /data\s*:\s*text\/html/gi, type: 'XSS_DATA_URI' },
   { pattern: /\$where|\$gt|\$lt|\$ne|\$in|\$nin/gi, type: 'NOSQL_INJECTION' },
   { pattern: /union\s+select/gi, type: 'SQL_INJECTION_UNION' },
   { pattern: /drop\s+table/gi, type: 'SQL_INJECTION_DROP' },
   { pattern: /insert\s+into/gi, type: 'SQL_INJECTION_INSERT' },
-  {
-    pattern: /__proto__|constructor\s*\[|prototype\s*\[/gi,
-    type: 'PROTOTYPE_POLLUTION',
-  },
+  { pattern: /__proto__|constructor\s*\[|prototype\s*\[/gi, type: 'PROTOTYPE_POLLUTION' },
   { pattern: /\.\.(\/|\\)/g, type: 'PATH_TRAVERSAL' },
+  { pattern: /eval\s*\(/gi, type: 'CODE_INJECTION_EVAL' },
+  { pattern: /Function\s*\(/gi, type: 'CODE_INJECTION_FUNCTION' },
+  { pattern: /setTimeout\s*\(\s*['"`]/gi, type: 'CODE_INJECTION_TIMEOUT' },
+  { pattern: /setInterval\s*\(\s*['"`]/gi, type: 'CODE_INJECTION_INTERVAL' },
+  { pattern: /\bexec\s*\(/gi, type: 'COMMAND_INJECTION' },
 ];
 
 // ─── Scanner ──────────────────────────────────────────────────────────────────
 
 function scanForAttacks(obj, depth = 0) {
-  if (depth > 5) return null;
+  if (depth > 10) return null;
 
   if (typeof obj === 'string') {
     for (const { pattern, type } of ATTACK_PATTERNS) {
@@ -68,10 +70,17 @@ function scanForAttacks(obj, depth = 0) {
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
 export const attackLogger = (req, _res, next) => {
-  // Only scan if there's a body — skip GET/HEAD/health endpoints
-  if (!req.body || Object.keys(req.body).length === 0) return next();
+  let attackType = null;
 
-  const attackType = scanForAttacks(req.body);
+  // Scan request body if exists
+  if (req.body && Object.keys(req.body).length > 0) {
+    attackType = scanForAttacks(req.body);
+  }
+
+  // Scan query parameters if no attack found in body
+  if (!attackType && req.query && Object.keys(req.query).length > 0) {
+    attackType = scanForAttacks(req.query);
+  }
 
   if (attackType) {
     const ip = req.ip ?? 'unknown';
@@ -95,7 +104,7 @@ export const attackLogger = (req, _res, next) => {
     prisma.auditLog
       .create({
         data: {
-          actor_id: ip,
+          actor_id: 'SYSTEM_ATTACK_DETECTOR',
           actor_type: 'SYSTEM',
           action: `ATTACK_ATTEMPT_${attackType}`,
           entity: 'Request',

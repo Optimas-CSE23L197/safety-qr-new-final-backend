@@ -104,8 +104,9 @@ export const verifyCsrf = asyncHandler(async (req, _res, next) => {
 
   // Mobile app — identified by role or missing cookie
   // Mobile clients authenticate via JWT Bearer only — no CSRF needed
-  if (req.role === 'PARENT_USER') return next();
-
+  const isMobileApp =
+    req.headers['x-client-type'] === 'mobile' || req.headers['user-agent']?.includes('Resqid');
+  if (req.role === 'PARENT_USER' && isMobileApp) return next();
   const cookieValue = req.cookies?.[CSRF_COOKIE];
   const headerValue = req.headers[CSRF_HEADER];
 

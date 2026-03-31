@@ -19,31 +19,30 @@ import { EVENTS } from '../events/event.types.js';
 import { sendSmsNotification } from './channel/sms.js';
 import { sendEmailNotification } from './channel/email.js';
 import { sendPushNotificationChannel } from './channel/push.js';
-import { pushSSE } from '#infrastructure/sse/sse.service.js'; // [FIX-2] SSE
+import { pushSSE } from '#infrastructure/sse/sse.service.js';
 import { smsTemplates, emailTemplates, pushTemplates } from './notification.templates.js';
 import { prisma } from '#config/prisma.js';
 import { logger } from '#config/logger.js';
 
 // ── Contact loaders ───────────────────────────────────────────────────────────
 
-const loadUserContacts = async userId => {
-  try {
-    const user = await prisma.user.findUnique({
+const loadUserContacts = async (userId, userType) => {
+  if (userType === 'PARENT_USER') {
+    const user = await prisma.parentUser.findUnique({
       where: { id: userId },
-      select: {
-        email: true,
-        devices: { where: { is_active: true }, select: { fcm_token: true } },
-      },
+      select: { email: true, devices: { where: { is_active: true }, select: { fcm_token: true } } },
     });
-    if (!user) return { email: null, fcmTokens: [] };
-    return {
-      email: user.email ?? null,
-      fcmTokens: user.devices?.map(d => d.fcm_token).filter(Boolean) ?? [],
-    };
-  } catch (err) {
-    logger.error({ err: err.message, userId }, '[dispatcher] Failed to load user contacts');
-    return { email: null, fcmTokens: [] };
+    return { email: user?.email ?? null, fcmTokens: user?.devices?.map(d => d.fcm_token) ?? [] };
   }
+  // SchoolUser, SuperAdmin have no devices — email only
+  if (userType === 'SCHOOL_USER') {
+    const user = await prisma.schoolUser.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+    return { email: user?.email ?? null, fcmTokens: [] };
+  }
+  return { email: null, fcmTokens: [] };
 };
 
 const loadSchoolAdminFcmTokens = async schoolId => {

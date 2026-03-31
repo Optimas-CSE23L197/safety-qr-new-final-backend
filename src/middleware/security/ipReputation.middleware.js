@@ -1,28 +1,13 @@
 // =============================================================================
 // ipReputation.middleware.js — RESQID
-// IP reputation check for the public emergency API (/api/emergency)
+// STRICT MODE — Zero tolerance for suspicious IPs on public emergency API
 // Blocks known Tor exit nodes, datacenter ranges, and DB-persisted bad IPs
-//
-// Why this matters:
-//   The /api/emergency endpoint is public — no auth required. It serves
-//   children's emergency medical profiles. The ScanAnomaly model has a
-//   SUSPICIOUS_IP type, but nothing was actually checking IP reputation
-//   BEFORE serving the response. This middleware adds that upstream gate.
 //
 // Three-layer check (fastest to slowest):
 //   [1] Redis blocklist — instantly block IPs we've already flagged
 //   [2] DB ScanRateLimit — persistent blocks from rate limit violations
-//   [3] TrustedScanZone — if IP is in a school's trusted range, fast-allow
-//       (suppresses anomaly logging for school premises scans)
-//
-// External IP reputation APIs (e.g., AbuseIPDB, IPQualityScore) are NOT
-// called inline — too slow for a public emergency page. Instead, anomaly
-// detection runs async AFTER the response is served (in the scan handler).
-//
-// Schema models used:
-//   ScanRateLimit  — persistent IP blocks (blocked_until, blocked_reason)
-//   ScanAnomaly    — SUSPICIOUS_IP anomaly type (written by scan handler)
-//   TrustedScanZone — school premises IP ranges (suppress false positives)
+//   [3] Datacenter prefix check — BLOCK immediately (no mercy)
+//   [4] TrustedScanZone — only bypass if explicitly whitelisted
 // =============================================================================
 
 import { prisma } from '#config/prisma.js';
@@ -31,30 +16,29 @@ import { asyncHandler } from '#shared/response/asyncHandler.js';
 import { extractIp } from '#shared/network/extractIp.js';
 import { logger } from '#config/logger.js';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── Constants — STRICT MODE ─────────────────────────────────────────────────
 
 // Redis key prefixes
-const IP_BLOCK_PREFIX = 'ip:blocked:'; // manually blocked IPs
-const IP_ALLOW_PREFIX = 'ip:trusted:'; // trusted scan zone IPs (fast allow)
+const IP_BLOCK_PREFIX = 'ip:blocked:';
+const IP_ALLOW_PREFIX = 'ip:trusted:';
 
-const BLOCK_CACHE_TTL = 5 * 60; // 5 min — re-check DB every 5 min
-const TRUST_CACHE_TTL = 10 * 60; // 10 min — trusted zones change rarely
+const BLOCK_CACHE_TTL = 5 * 60; // 5 min
+const TRUST_CACHE_TTL = 10 * 60; // 10 min
 
-// Known datacenter/hosting CIDR prefixes — QR scans should never come from these
-// These are the top ranges used by bots, scrapers, and vulnerability scanners
-// This is a lightweight static list — not a replacement for full IP rep APIs
+// KNOWN MALICIOUS IP RANGES — BLOCK IMMEDIATELY
+// Datacenter/hosting ranges — QR scans should NEVER come from these
 const DATACENTER_PREFIXES = [
   '104.16.',
   '104.17.',
   '104.18.',
-  '104.19.', // Cloudflare (bot infra)
-  '162.158.', // Cloudflare Warp (often abused)
+  '104.19.', // Cloudflare
+  '162.158.', // Cloudflare Warp
   '198.41.128.',
   '198.41.129.', // Cloudflare
   '3.208.',
   '3.209.',
   '3.210.',
-  '3.211.', // AWS EC2 ranges (common scanner origin)
+  '3.211.', // AWS EC2
   '34.64.',
   '34.65.',
   '34.66.',
@@ -66,30 +50,54 @@ const DATACENTER_PREFIXES = [
   '45.33.',
   '45.56.',
   '45.79.', // Linode/Akamai
+  '54.',
+  '52.',
+  '13.', // AWS global ranges (strict)
+  '18.', // AWS
+  '35.', // GCP
 ];
 
-// ─── Core Middleware ──────────────────────────────────────────────────────────
+// Tor exit nodes — hardcoded common prefixes (full list should be from external API)
+const TOR_PREFIXES = [
+  '5.9.',
+  '46.165.',
+  '62.210.',
+  '66.111.',
+  '77.247.',
+  '82.94.',
+  '86.59.',
+  '89.18.',
+  '93.95.',
+  '109.163.',
+  '131.188.',
+  '176.126.',
+  '178.17.',
+  '185.100.',
+  '193.11.',
+  '195.176.',
+  '212.47.',
+];
 
-/**
- * checkIpReputation
- * Runs BEFORE publicEmergencyLimiter and perTokenScanLimit
- * Only applied to /api/emergency routes
- *
- * Sets req.isTrustedScanZone = true if IP is in a school trusted range
- * so the scan handler can suppress anomaly alerts for school premises scans.
- */
+// IPs that should NEVER be blocked (only loopback and health checks)
+const NEVER_BLOCK = ['127.0.0.1', '::1', '::ffff:127.0.0.1'];
+
+// ─── Core Middleware — STRICT ─────────────────────────────────────────────────
+
 export const checkIpReputation = asyncHandler(async (req, res, next) => {
   const ip = extractIp(req);
 
-  if (!ip) return next(); // no IP extractable — let rate limiter handle it
+  if (!ip) return next();
+  if (NEVER_BLOCK.includes(ip)) return next();
 
-  // [1] Redis blocklist — fastest check first
+  // [1] Redis blocklist — fastest check
   const redisBlock = await redis.get(`${IP_BLOCK_PREFIX}${ip}`);
   if (redisBlock) {
-    return blockRequest(res, req, ip, JSON.parse(redisBlock).reason);
+    const blockData = JSON.parse(redisBlock);
+    logger.warn({ ip, reason: blockData.reason }, 'STRICT: Blocked IP (Redis)');
+    return blockRequest(res, req, ip, blockData.reason);
   }
 
-  // [2] DB persistent block check (ScanRateLimit)
+  // [2] DB persistent block check
   const dbBlock = await prisma.scanRateLimit.findUnique({
     where: {
       identifier_identifier_type: {
@@ -97,51 +105,64 @@ export const checkIpReputation = asyncHandler(async (req, res, next) => {
         identifier_type: 'IP',
       },
     },
-    select: { blocked_until: true, blocked_reason: true },
+    select: { blocked_until: true, blocked_reason: true, block_count: true },
   });
 
   if (dbBlock?.blocked_until && new Date(dbBlock.blocked_until) > new Date()) {
-    // Cache the block in Redis so DB isn't hit on every request
     const ttlSecs = Math.ceil((new Date(dbBlock.blocked_until) - Date.now()) / 1000);
     if (ttlSecs > 0) {
       await redis
         .setex(
           `${IP_BLOCK_PREFIX}${ip}`,
           Math.min(ttlSecs, BLOCK_CACHE_TTL),
-          JSON.stringify({ reason: dbBlock.blocked_reason })
+          JSON.stringify({ reason: dbBlock.blocked_reason, blockCount: dbBlock.block_count })
         )
         .catch(() => {});
     }
+    logger.warn(
+      { ip, reason: dbBlock.blocked_reason, blockCount: dbBlock.block_count },
+      'STRICT: Blocked IP (DB)'
+    );
     return blockRequest(res, req, ip, dbBlock.blocked_reason);
   }
 
-  // [3] Datacenter prefix check — lightweight static blocklist
+  // [3] Datacenter prefix check — BLOCK IMMEDIATELY (no mercy)
   const isDatacenter = DATACENTER_PREFIXES.some(prefix => ip.startsWith(prefix));
   if (isDatacenter) {
-    logger.warn({ ip, path: req.path }, 'ipReputation: datacenter IP blocked from emergency API');
-    // Don't hard block — log and flag as anomaly, still serve (emergency is safety-critical)
-    // Rationale: a genuine first responder might be on a corporate VPN
-    req.isSuspiciousIp = true;
+    logger.warn({ ip, type: 'datacenter' }, 'STRICT: Datacenter IP blocked');
+    // Block immediately — datacenter IPs should NEVER scan emergency QR codes
+    await blockIp(ip, 'DATACENTER_BLOCK', 7 * 24 * 60 * 60 * 1000); // 7 days block
+    return blockRequest(res, req, ip, 'Datacenter IP not permitted');
   }
 
-  // [4] Trusted scan zone check — suppress anomaly alerts for school premises
+  // [4] Tor exit node check — BLOCK IMMEDIATELY
+  const isTor = TOR_PREFIXES.some(prefix => ip.startsWith(prefix));
+  if (isTor) {
+    logger.warn({ ip, type: 'tor' }, 'STRICT: Tor exit node blocked');
+    await blockIp(ip, 'TOR_EXIT_NODE_BLOCK', 30 * 24 * 60 * 60 * 1000); // 30 days block
+    return blockRequest(res, req, ip, 'Tor network not permitted');
+  }
+
+  // [5] Trusted scan zone check — ONLY bypass if explicitly whitelisted
   const isTrusted = await checkTrustedZone(ip);
   if (isTrusted) {
     req.isTrustedScanZone = true;
+    return next();
   }
 
+  // [6] Suspicious IP flag — for monitoring only (still allowed)
+  // This is for corporate VPNs that might be in datacenter ranges
+  req.isSuspiciousIp = false;
   next();
 });
 
-/**
- * blockIp
- * Utility to block an IP — writes to Redis + DB ScanRateLimit
- * Call this from the scan handler when SUSPICIOUS_IP anomaly is detected
- */
-export async function blockIp(ip, reason, durationMs = 60 * 60 * 1000) {
+// ─── Block IP Helper — STRICT ────────────────────────────────────────────────
+
+export async function blockIp(ip, reason, durationMs = 7 * 24 * 60 * 60 * 1000) {
+  if (NEVER_BLOCK.includes(ip)) return;
+
   const blockedUntil = new Date(Date.now() + durationMs);
 
-  // Write to DB for persistence across Redis restarts
   await prisma.scanRateLimit.upsert({
     where: {
       identifier_identifier_type: {
@@ -167,21 +188,39 @@ export async function blockIp(ip, reason, durationMs = 60 * 60 * 1000) {
     },
   });
 
-  // Cache in Redis for fast subsequent checks
   const ttlSecs = Math.ceil(durationMs / 1000);
   await redis.setex(
     `${IP_BLOCK_PREFIX}${ip}`,
     Math.min(ttlSecs, BLOCK_CACHE_TTL),
-    JSON.stringify({ reason })
+    JSON.stringify({ reason, blockedUntil: blockedUntil.toISOString() })
+  );
+
+  logger.warn(
+    { ip, reason, durationMs: Math.floor(durationMs / 86400000), blockedUntil },
+    `🔒 IP BLOCKED: ${ip} (${reason})`
   );
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Whitelist Helper (for schools) ──────────────────────────────────────────
+
+export async function whitelistIp(ip, reason) {
+  if (NEVER_BLOCK.includes(ip)) return;
+
+  // Remove any existing blocks
+  await redis.del(`${IP_BLOCK_PREFIX}${ip}`);
+
+  // Set trusted flag with long TTL
+  await redis.setex(`${IP_ALLOW_PREFIX}${ip}`, TRUST_CACHE_TTL * 6, '1');
+
+  logger.info({ ip, reason }, `✅ IP WHITELISTED: ${ip} (${reason})`);
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function blockRequest(res, req, ip, reason) {
   logger.warn(
     { ip, reason, path: req.path, requestId: req.id },
-    'ipReputation: IP blocked from emergency API'
+    `🚫 IP REPUTATION BLOCK: ${ip} - ${reason}`
   );
 
   return res.status(403).json({
@@ -194,22 +233,18 @@ function blockRequest(res, req, ip, reason) {
 async function checkTrustedZone(ip) {
   const cacheKey = `${IP_ALLOW_PREFIX}${ip}`;
   const cached = await redis.get(cacheKey);
-
   if (cached !== null) return cached === '1';
 
-  // Check if IP falls within any active TrustedScanZone ip_range (CIDR)
-  // For simplicity we do a prefix match — for full CIDR support add a
-  // CIDR library (e.g., `ip-range-check`) in the scan handler instead
   const zones = await prisma.trustedScanZone.findMany({
     where: { is_active: true, ip_range: { not: null } },
     select: { ip_range: true },
   });
 
+  // Simple prefix match (full CIDR support would need ip-range-check library)
   const isTrusted = zones.some(
     z => z.ip_range && ip.startsWith(z.ip_range.split('/')[0].slice(0, -1))
   );
 
   await redis.setex(cacheKey, TRUST_CACHE_TTL, isTrusted ? '1' : '0');
-
   return isTrusted;
 }

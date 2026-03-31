@@ -278,6 +278,19 @@ export const perTokenScanLimit = asyncHandler(async (req, res, next) => {
 export const checkIpBlocked = asyncHandler(async (req, res, next) => {
   const ip = extractIp(req);
 
+  // Fast path — Redis
+  const redisKey = `blocked:ip:${ip}`;
+  const cached = await middlewareRedis.get(redisKey).catch(() => null);
+
+  if (cached) {
+    return res.status(403).json({
+      success: false,
+      message: 'IP address is temporarily blocked',
+      requestId: req.id,
+    });
+  }
+
+  // Slow path — DB (only on Redis miss)
   const block = await prisma.scanRateLimit.findUnique({
     where: {
       identifier_identifier_type: {
@@ -289,6 +302,11 @@ export const checkIpBlocked = asyncHandler(async (req, res, next) => {
   });
 
   if (block?.blocked_until && new Date(block.blocked_until) > new Date()) {
+    // Cache in Redis for future requests
+    const ttl = Math.ceil((new Date(block.blocked_until) - Date.now()) / 1000);
+    if (ttl > 0) {
+      await middlewareRedis.setex(redisKey, ttl, '1').catch(() => {});
+    }
     return res.status(403).json({
       success: false,
       message: 'IP address is temporarily blocked',

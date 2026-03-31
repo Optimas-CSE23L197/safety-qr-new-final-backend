@@ -4,12 +4,11 @@
 // Handles GET /s/:code — the public QR scan endpoint.
 //
 // NO AUTH — this endpoint is called by anyone who scans a QR code.
-// Guards are entirely in the middleware chain (see scan.routes.js):
-//   checkIpBlocked → publicEmergencyLimiter → perTokenScanLimit → here
+// Guards are entirely in the middleware chain (see scan.routes.js).
 //
-// CHANGES FROM PREVIOUS VERSION:
-//   [FIX-1] req.scanCount forwarded to resolveScan so service can use it
-//           for anomaly threshold decisions without a redundant Redis read
+// startTime is captured HERE at controller entry, not in the service.
+// This measures total time including middleware overhead, giving accurate
+// response_time_ms in ScanLog for p99 tracking.
 // =============================================================================
 
 import { resolveScan } from './scan.service.js';
@@ -18,30 +17,35 @@ import { asyncHandler } from '#shared/response/asyncHandler.js';
 import { extractIp } from '#shared/network/extractIp.js';
 import crypto from 'crypto';
 
+const TARGET_RESPONSE_SIZE = 600;
+
 export const scanQr = asyncHandler(async (req, res) => {
   const startTime = Date.now();
   const { code } = req.params;
+  const ip = extractIp(req);
 
-  // Simple device fingerprint — no PII, just for anomaly detection in ScanLog.
-  // SHA-256 of UA + IP gives a stable 64-char hex; we only need the first 16.
+  // Device fingerprint — SHA-256 of UA only (stable across network changes)
+  // No PII stored — only used for anomaly detection in ScanLog.
   const deviceHash = crypto
     .createHash('sha256')
-    .update(`${req.headers['user-agent'] ?? ''}:${extractIp(req)}`)
+    .update(`${req.headers['user-agent'] ?? ''}`)
     .digest('hex')
     .slice(0, 16);
 
   const result = await resolveScan({
     code,
-    ip: extractIp(req),
+    ip,
     userAgent: req.headers['user-agent'] ?? null,
     deviceHash,
     startTime,
-    // [FIX-1] perTokenScanLimit middleware sets req.scanCount before we get here.
-    // Pass it down so the service can flag anomalies without a second Redis read.
     scanCount: req.scanCount ?? 1,
   });
 
-  // All states return 200 — the mobile scanner / PWA reads the `state` field.
-  // Returning 404 for REVOKED/EXPIRED would leak token existence to attackers.
-  return res.json(ApiResponse.ok(result, 'Scan resolved'));
+  const response = ApiResponse.ok(result, 'Scan resolved');
+  const responseString = JSON.stringify(response);
+  const paddingLength = Math.max(0, TARGET_RESPONSE_SIZE - responseString.length);
+  if (paddingLength > 0) {
+    response._pad = crypto.randomBytes(paddingLength).toString('hex');
+  }
+  return res.json(response);
 });

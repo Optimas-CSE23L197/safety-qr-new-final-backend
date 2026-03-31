@@ -19,6 +19,7 @@ import { startEmergencyWorker, stopEmergencyWorker } from './emergency.worker.js
 import { startNotificationWorker, stopNotificationWorker } from './notification.worker.js';
 import { startInvoiceWorker, stopInvoiceWorker } from './invoice.worker.js';
 import { startMaintenanceWorker, stopMaintenanceWorker } from './maintenance.worker.js';
+import { startScanWorker, stopScanWorker } from './scan.worker.js';
 import { closeAllQueues } from '../queues/queue.config.js';
 import { closeQueueConnection } from '../queues/queue.connection.js';
 import { logger } from '#config/logger.js';
@@ -106,6 +107,17 @@ const ALL_WORKERS = [
     desc: 'DB cleanup · token expiry · scheduled jobs',
     start: startMaintenanceWorker,
     stop: stopMaintenanceWorker,
+  },
+  {
+    name: 'ScanWorker',
+    queue: 'none', // no BullMQ queue
+    conc: 1,
+    roles: ['all', 'scan', 'background'], // runs with all or background role
+    deploy: 'railway',
+    col: c.mint,
+    desc: 'Drain Redis log queue → bulk insert scan logs',
+    start: startScanWorker,
+    stop: stopScanWorker,
   },
 ];
 
@@ -383,6 +395,7 @@ const gracefulShutdown = async signal => {
       stopNotificationWorker(),
       stopInvoiceWorker(),
       stopMaintenanceWorker(),
+      stopScanWorker(),
     ]);
 
     step('Closing queues…');

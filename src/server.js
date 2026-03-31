@@ -311,6 +311,7 @@ function printWorkerTopology() {
         { name: 'NotificationWorker', queue: 'NOTIFICATIONS', conc: 10 },
         { name: 'InvoiceWorker', queue: 'BACKGROUND_JOBS', conc: 5 },
         { name: 'MaintenanceWorker', queue: 'BACKGROUND_JOBS', conc: 2 },
+        { name: 'ScanWorker', queue: 'BACKGROUND_JOBS', conc: 1 },
       ],
     },
     {

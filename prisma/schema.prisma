@@ -107,8 +107,16 @@ enum ScanResult {
   REVOKED
   EXPIRED
   INACTIVE
+  UNREGISTERED
+  ISSUED
   RATE_LIMITED
   ERROR
+}
+
+enum ScanPurpose {
+  QR_SCAN
+  MANUAL_LOOKUP
+  HONEYPOT
 }
 
 enum AnomalyType {
@@ -610,7 +618,7 @@ model ParentUser {
 model ParentDevice {
   id            String              @id @default(uuid())
   parent_id     String
-  device_token  String              @unique
+  expo_push_token String?  @unique
   platform      DevicePlatform
   device_name   String?
   device_model  String?
@@ -863,7 +871,10 @@ model Token {
   nonces    RegistrationNonce[]
   scans     ScanLog[]
   qrAsset   QrAsset?
+  is_honeypot  Boolean  @default(false)
 
+
+  @@index([is_honeypot])
   @@index([school_id, status])
   @@index([order_id])
   @@index([token_hash])
@@ -1320,7 +1331,7 @@ model ScanLog {
   device_hash      String?
   device_info      Json?
   user_agent       String?
-  scan_purpose     String?
+  scan_purpose  ScanPurpose  @default(QR_SCAN)
   response_time_ms Int?
 
   emergency_dispatched Boolean   @default(false)

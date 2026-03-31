@@ -17,6 +17,8 @@ import { extractIp } from '#shared/network/extractIp.js';
 import { asyncHandler } from '#shared/response/asyncHandler.js';
 import { ApiError } from '#shared/response/ApiError.js';
 import { ENV } from '#config/env.js';
+import { hashToken } from '#shared/security/hashUtil.js';
+
 // =============================================================================
 // CONSTANTS
 // =============================================================================
@@ -32,6 +34,7 @@ const WINDOWS = {
   MEDIUM: 300,
   LONG: 3600,
   DAY: 86400,
+  ESCALATED: 86400 * 7, // 7 days for repeat offenders
 };
 
 const PATTERNS = {
@@ -110,25 +113,33 @@ async function calculateBehavioralScore(ip, requestData) {
   let score = 0;
   const reasons = [];
 
-  // [1] Request rate anomaly
+  // [1] Request rate anomaly (sliding window using sorted set)
   const rateKey = `behavior:rate:${ip}`;
-  const requestCount = await redis.incr(rateKey);
-  if (requestCount === 1) await redis.expire(rateKey, WINDOWS.SHORT);
+  const now = Date.now();
+  const windowStart = now - WINDOWS.SHORT * 1000;
+
+  await redis.zremrangebyscore(rateKey, 0, windowStart);
+  const requestCount = await redis.zcard(rateKey);
+  await redis.zadd(rateKey, now, `${now}:${Math.random()}`);
+  await redis.expire(rateKey, WINDOWS.SHORT);
 
   if (requestCount > 60) {
     score += Math.min((requestCount - 60) * 2, 40);
     reasons.push(`High request rate: ${requestCount}/min`);
   }
 
-  // [2] Path scanning detection
+  // [2] Path scanning detection (sliding window using sorted set)
   const pathKey = `behavior:paths:${ip}`;
-  const uniquePaths = await redis.sadd(pathKey, requestData.path);
-  if (uniquePaths === 1) await redis.expire(pathKey, WINDOWS.MEDIUM);
+  await redis.zremrangebyscore(pathKey, 0, windowStart);
+  const uniquePaths = new Set();
+  const pathEntries = await redis.zrange(pathKey, 0, -1);
+  pathEntries.forEach(entry => uniquePaths.add(entry.split(':')[0]));
+  await redis.zadd(pathKey, now, `${requestData.path}:${now}`);
+  await redis.expire(pathKey, WINDOWS.MEDIUM);
 
-  const pathCount = await redis.scard(pathKey);
-  if (pathCount > 20) {
-    score += Math.min((pathCount - 20) * 2, 30);
-    reasons.push(`Path scanning: ${pathCount} unique endpoints`);
+  if (uniquePaths.size > 20) {
+    score += Math.min((uniquePaths.size - 20) * 2, 30);
+    reasons.push(`Path scanning: ${uniquePaths.size} unique endpoints`);
   }
 
   // [3] Suspicious endpoint access
@@ -188,21 +199,23 @@ async function calculateBehavioralScore(ip, requestData) {
     reasons.push(`${authFails} failed auth attempts`);
   }
 
-  // [8] Time-based anomaly
-  const hour = new Date().getHours();
-  const isSchoolHour = hour >= 8 && hour <= 18;
-  const isParentHour = hour >= 6 && hour <= 22;
+  // [8] Time-based anomaly (skip for unauthenticated)
+  if (requestData.role) {
+    const hour = new Date().getHours();
+    const isSchoolHour = hour >= 8 && hour <= 18;
+    const isParentHour = hour >= 6 && hour <= 22;
 
-  if (requestData.role === 'ADMIN' && !isSchoolHour) {
-    score += 5;
-    reasons.push('Admin access outside school hours');
-  }
-  if (requestData.role === 'PARENT_USER' && !isParentHour) {
-    score += 3;
-    reasons.push('Parent access outside normal hours');
+    if (requestData.role === 'ADMIN' && !isSchoolHour) {
+      score += 5;
+      reasons.push('Admin access outside school hours');
+    }
+    if (requestData.role === 'PARENT_USER' && !isParentHour) {
+      score += 3;
+      reasons.push('Parent access outside normal hours');
+    }
   }
 
-  // [9] Endpoint mismatch
+  // [9] Endpoint mismatch (skip for unauthenticated)
   if (requestData.role && NORMAL_PATTERNS.NORMAL_ENDPOINTS[requestData.role]) {
     const normalEndpoints = NORMAL_PATTERNS.NORMAL_ENDPOINTS[requestData.role];
     const isNormalEndpoint = normalEndpoints.some(e => requestData.path.startsWith(e));
@@ -212,12 +225,18 @@ async function calculateBehavioralScore(ip, requestData) {
     }
   }
 
-  // Store score
-  await redis.setex(
-    `behavior:score:${ip}`,
-    WINDOWS.LONG,
-    JSON.stringify({ score, reasons, updatedAt: new Date().toISOString() })
-  );
+  // Store score (fire-and-forget)
+  setImmediate(async () => {
+    try {
+      await redis.setex(
+        `behavior:score:${ip}`,
+        WINDOWS.LONG,
+        JSON.stringify({ score, reasons, updatedAt: new Date().toISOString() })
+      );
+    } catch (err) {
+      logger.debug({ ip, err: err.message }, 'Behavioral score store failed');
+    }
+  });
 
   return { score, reasons };
 }
@@ -228,13 +247,15 @@ async function getBehavioralScore(ip) {
   return { score: 0, reasons: [] };
 }
 
-async function blockIpBehavioral(ip, score, reasons) {
-  const blockUntil = new Date(Date.now() + WINDOWS.LONG * 1000);
+async function blockIpBehavioral(ip, score, reasons, previousBlockCount = 0) {
+  // Escalate block duration based on repeat offenses
+  const blockDuration = previousBlockCount >= 3 ? WINDOWS.ESCALATED : WINDOWS.LONG;
+  const blockUntil = new Date(Date.now() + blockDuration * 1000);
   const isPermanent = score >= BEHAVIOR_THRESHOLDS.PERMANENT_BLOCK;
 
   await redis.setex(
     `blocked:behavioral:${ip}`,
-    isPermanent ? WINDOWS.DAY : WINDOWS.LONG,
+    isPermanent ? WINDOWS.DAY : blockDuration,
     JSON.stringify({
       reason: 'Behavioral detection',
       score,
@@ -242,6 +263,7 @@ async function blockIpBehavioral(ip, score, reasons) {
       blockedAt: new Date().toISOString(),
       blockUntil: blockUntil.toISOString(),
       isPermanent,
+      offenseCount: previousBlockCount + 1,
     })
   );
 
@@ -257,7 +279,7 @@ async function blockIpBehavioral(ip, score, reasons) {
       blocked_until: blockUntil,
       blocked_reason: `BEHAVIORAL_BLOCK_${score}`,
       last_hit: new Date(),
-      metadata: { behavioralScore: score, reasons },
+      metadata: { behavioralScore: score, reasons, offenseCount: previousBlockCount + 1 },
     },
     create: {
       identifier: ip,
@@ -268,12 +290,19 @@ async function blockIpBehavioral(ip, score, reasons) {
       blocked_reason: `BEHAVIORAL_BLOCK_${score}`,
       window_start: new Date(),
       last_hit: new Date(),
-      metadata: { behavioralScore: score, reasons },
+      metadata: { behavioralScore: score, reasons, offenseCount: 1 },
     },
   });
 
   logger.warn(
-    { ip, score, reasons, isPermanent, blockUntil: blockUntil.toISOString() },
+    {
+      ip,
+      score,
+      reasons,
+      isPermanent,
+      blockUntil: blockUntil.toISOString(),
+      offenseCount: previousBlockCount + 1,
+    },
     `🚫 IP ${ip} behaviorally blocked (score: ${score})`
   );
 }
@@ -292,15 +321,22 @@ export async function recordFailedAuth(ip, identifier, reason) {
   const { score, reasons } = await getBehavioralScore(ip);
   const newScore = score + 15;
 
+  // Get existing block to check offense count
+  const existingBlock = await redis.get(`blocked:behavioral:${ip}`);
+  const offenseCount = existingBlock ? JSON.parse(existingBlock).offenseCount || 0 : 0;
+
   if (newScore >= BEHAVIOR_THRESHOLDS.BLOCK) {
     reasons.push(`${attempts} failed auth attempts`);
-    await blockIpBehavioral(ip, newScore, reasons);
+    await blockIpBehavioral(ip, newScore, reasons, offenseCount);
   }
+
+  // Store hashed identifier, not raw PII
+  const hashedIdentifier = identifier ? hashToken(identifier).slice(0, 32) : ip;
 
   await prisma.auditLog
     .create({
       data: {
-        actor_id: identifier || ip,
+        actor_id: hashedIdentifier,
         actor_type: 'SYSTEM',
         action: 'AUTH_FAILED',
         entity: 'AuthAttempt',
@@ -373,14 +409,19 @@ export const behavioralSecurity = asyncHandler(async (req, res, next) => {
   if (score >= BEHAVIOR_THRESHOLDS.SUSPICIOUS) {
     logger.warn({ ip, score, reasons, path: req.path }, `⚠️ Suspicious activity (score: ${score})`);
 
+    // Add delay asynchronously — don't block response
     if (score >= BEHAVIOR_THRESHOLDS.SUSPICIOUS && score < BEHAVIOR_THRESHOLDS.BLOCK) {
       const delay = Math.min(score * 10, 2000);
-      await new Promise(resolve => setTimeout(resolve, delay));
+      setTimeout(() => {}, delay); // Fire-and-forget delay, response continues
+      // Note: This doesn't block the response. For true delay, uncomment next line:
+      // await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
 
   if (score >= BEHAVIOR_THRESHOLDS.BLOCK) {
-    await blockIpBehavioral(ip, score, reasons);
+    const existingBlock = await redis.get(`blocked:behavioral:${ip}`);
+    const offenseCount = existingBlock ? JSON.parse(existingBlock).offenseCount || 0 : 0;
+    await blockIpBehavioral(ip, score, reasons, offenseCount);
     throw ApiError.forbidden('Access denied due to suspicious activity');
   }
 
@@ -392,17 +433,23 @@ export const behavioralSecurity = asyncHandler(async (req, res, next) => {
 // =============================================================================
 
 export async function getBehavioralReport() {
-  const keys = await redis.keys('behavior:score:*');
+  // Use SCAN instead of KEYS to avoid blocking Redis
   const reports = [];
+  let cursor = '0';
 
-  for (const key of keys) {
-    const ip = key.replace('behavior:score:', '');
-    const data = await redis.get(key);
-    if (data) {
-      const parsed = JSON.parse(data);
-      reports.push({ ip, ...parsed });
+  do {
+    const [nextCursor, keys] = await redis.scan(cursor, 'MATCH', 'behavior:score:*', 'COUNT', 100);
+    cursor = nextCursor;
+
+    for (const key of keys) {
+      const ip = key.replace('behavior:score:', '');
+      const data = await redis.get(key);
+      if (data) {
+        const parsed = JSON.parse(data);
+        reports.push({ ip, ...parsed });
+      }
     }
-  }
+  } while (cursor !== '0');
 
   reports.sort((a, b) => b.score - a.score);
 
@@ -431,23 +478,32 @@ export async function whitelistIp(ip, reason, adminId) {
 }
 
 export async function blacklistIp(ip, reason, adminId) {
-  await blockIpBehavioral(ip, BEHAVIOR_THRESHOLDS.PERMANENT_BLOCK, [reason]);
+  const existingBlock = await redis.get(`blocked:behavioral:${ip}`);
+  const offenseCount = existingBlock ? JSON.parse(existingBlock).offenseCount || 0 : 0;
+  await blockIpBehavioral(ip, BEHAVIOR_THRESHOLDS.PERMANENT_BLOCK, [reason], offenseCount);
   logger.warn({ ip, reason, adminId }, 'IP manually blacklisted');
 }
 
 export async function behavioralCleanup() {
-  const pattern = 'behavior:*';
-  const keys = await redis.keys(pattern);
+  // Use SCAN instead of KEYS
   let deleted = 0;
+  let total = 0;
+  let cursor = '0';
 
-  for (const key of keys) {
-    const ttl = await redis.ttl(key);
-    if (ttl <= 0) {
-      await redis.del(key);
-      deleted++;
+  do {
+    const [nextCursor, keys] = await redis.scan(cursor, 'MATCH', 'behavior:*', 'COUNT', 100);
+    cursor = nextCursor;
+    total += keys.length;
+
+    for (const key of keys) {
+      const ttl = await redis.ttl(key);
+      if (ttl <= 0) {
+        await redis.del(key);
+        deleted++;
+      }
     }
-  }
+  } while (cursor !== '0');
 
-  logger.info({ deleted, total: keys.length }, 'Behavioral cleanup completed');
-  return { deleted, total: keys.length };
+  logger.info({ deleted, total }, 'Behavioral cleanup completed');
+  return { deleted, total };
 }
