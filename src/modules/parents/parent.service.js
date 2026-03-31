@@ -768,3 +768,10 @@ function maskPhone(phone) {
   const prefix = phone.slice(0, 3);
   return `${prefix}****${last4}`;
 }
+
+// ─── POST /device-token ───────────────────────────────────────────────────────
+
+export async function registerDeviceToken(parentId, body) {
+  const device = await repo.upsertDeviceToken(parentId, body);
+  return device;
+}

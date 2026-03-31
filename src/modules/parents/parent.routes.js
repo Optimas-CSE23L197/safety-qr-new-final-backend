@@ -23,6 +23,7 @@ import {
   requestRenewal,
   changePhone,
   sendPhoneChangeOtp,
+  registerDeviceToken,
 } from './parent.controller.js';
 
 import {
@@ -39,6 +40,7 @@ import {
   validateRequestRenewal,
   validateChangePhone,
   validateSendPhoneOtp,
+  validateRegisterDeviceToken,
 } from './parent.validation.js';
 
 const router = Router();
@@ -95,5 +97,8 @@ router.post('/me/send-phone-otp', validateSendPhoneOtp, sendPhoneChangeOtp);
 
 // ── Account deletion (settings — danger zone) ─────────────────────────────────
 router.delete('/me', deleteAccount);
+
+// parent push notification
+router.post('/device-token', validateRegisterDeviceToken, registerDeviceToken);
 
 export default router;

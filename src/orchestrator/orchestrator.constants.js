@@ -8,7 +8,7 @@ export const QUEUE_NAMES = Object.freeze({
   EMERGENCY_ALERTS: 'emergencyAlertsQueue',
   NOTIFICATIONS_NORMAL: 'notificationsNormalQueue',
   JOBS_BACKGROUND: 'jobsBackgroundQueue',
-  DLQ: 'deadLetterQueue', // ✅ add DLQ for retry.service
+  DLQ: 'deadLetterQueue',
 });
 
 // Job names (used in retry.service.js, dlq.handler.js, etc.)
@@ -32,3 +32,6 @@ export const RETRY_CONFIG = Object.freeze({
 
 // Distributed lock TTL
 export const DISTRIBUTED_LOCK_TTL_MS = 30_000; // 30 seconds
+
+// Idempotency key TTL — how long we remember a completed step to prevent re-runs
+export const IDEMPOTENCY_TTL_SECONDS = 86_400; // 24 hours

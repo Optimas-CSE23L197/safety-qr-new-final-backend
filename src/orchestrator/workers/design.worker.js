@@ -79,7 +79,7 @@ import {
 import { stepLog, stepError } from '../utils/step.logger.js';
 import { publishEvent, publishFailure } from '../events/event.publisher.js';
 import { EVENTS } from '../events/event.types.js';
-import { uploadCardDesign } from '#infrastructure/storage/r2.upload.js';
+import { getStorage, StoragePath } from '#infrastructure/storage/storage.index.js';
 import { generateQrPng } from '#services/qr.service.js';
 
 // Default card dimensions
@@ -447,11 +447,11 @@ async function generateOrderCards(
       const cardImage = await generateCardImage(cardData, template, designConfig);
 
       // Upload to R2
-      const { url: designUrl } = await uploadCardDesign({
-        buffer: cardImage,
-        schoolId: order.school_id,
-        studentId: item.student_id || `preview-${item.id}`,
-        cardNumber: card.card_number,
+      const storage = getStorage();
+      const designKey = StoragePath.studentCard(item.student_id || `preview-${item.id}`);
+      const { location: designUrl } = await storage.upload(cardImage, designKey, {
+        contentType: 'image/png',
+        cacheControl: 'public, max-age=31536000',
       });
 
       // Update card record
@@ -498,13 +498,11 @@ async function generateOrderCards(
     const pdfBuffer = await generateCardsPdf(cardBuffers, order.order_number);
 
     // Upload PDF to R2
-    const storageKey = `cards-pdf/${order.school_id}/${orderId}/cards-${order.order_number}.pdf`;
-    // Use existing upload function
-    const { url } = await uploadCardDesign({
-      buffer: pdfBuffer,
-      schoolId: order.school_id,
-      studentId: 'batch',
-      cardNumber: order.order_number,
+    const storageKey = `orders/${orderId}/cards-${order.order_number}.pdf`;
+    const pdfStorage = getStorage();
+    const { location: url } = await pdfStorage.upload(pdfBuffer, storageKey, {
+      contentType: 'application/pdf',
+      cacheControl: 'private, max-age=86400',
     });
     pdfUrl = url;
   }

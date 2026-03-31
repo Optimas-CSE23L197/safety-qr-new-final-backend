@@ -1,33 +1,31 @@
 // =============================================================================
 // orchestrator/notifications/notification.dispatcher.js — RESQID
 // Event type → channel decision.
-// Adding a new event notification = add a case here + template in templates.js.
-// Zero channel logic lives anywhere else.
 //
-// FIXED:
-//   [F-1] Removed sendWhatsAppNotification import — WhatsApp is stubbed/commented out.
-//         SCHOOL_RENEWAL_DUE and ORDER_BALANCE_INVOICE_ISSUED WhatsApp calls replaced
-//         with SMS fallback (easily swappable when MSG91 WhatsApp goes live).
-//   [F-2] EMERGENCY_ALERT_TRIGGERED now fires Push first, then SMS on push result —
-//         priority order per spec (Push → SMS), not blind parallel.
-//   [F-3] sendParallel now wraps each task with notification log writing.
-//   [F-4] latencyMs measured per-channel via per-task timing.
-//   [F-5] loadSchool() lazy loader — single DB call per dispatch, not repeated per case.
+// FIXES applied on top of original:
+//   [FIX-1] EVENTS.REFUNDED → EVENTS.ORDER_REFUNDED (matches event.types.js)
+//   [FIX-2] SSE added to all order/school events for dashboard real-time updates
+//   [FIX-3] pushSSE import added from sse.service.js
+//
+// ORIGINAL fixes kept:
+//   [F-1] WhatsApp stubbed — SMS fallback used
+//   [F-2] EMERGENCY push first, then SMS
+//   [F-3] sendParallel wraps each task with notification log
+//   [F-4] latencyMs per-channel
+//   [F-5] loadSchool() lazy loader
 // =============================================================================
 
 import { EVENTS } from '../events/event.types.js';
 import { sendSmsNotification } from './channel/sms.js';
 import { sendEmailNotification } from './channel/email.js';
 import { sendPushNotificationChannel } from './channel/push.js';
+import { pushSSE } from '#infrastructure/sse/sse.service.js'; // [FIX-2] SSE
 import { smsTemplates, emailTemplates, pushTemplates } from './notification.templates.js';
 import { prisma } from '#config/prisma.js';
 import { logger } from '#config/logger.js';
 
 // ── Contact loaders ───────────────────────────────────────────────────────────
 
-/**
- * Load FCM tokens and email for a user. Never throws.
- */
 const loadUserContacts = async userId => {
   try {
     const user = await prisma.user.findUnique({
@@ -48,9 +46,6 @@ const loadUserContacts = async userId => {
   }
 };
 
-/**
- * Load FCM tokens for all active school admin devices. Never throws.
- */
 const loadSchoolAdminFcmTokens = async schoolId => {
   try {
     const admins = await prisma.schoolAdmin.findMany({
@@ -67,9 +62,25 @@ const loadSchoolAdminFcmTokens = async schoolId => {
 };
 
 /**
- * Lazy school loader — single DB call per dispatch, reused across cases.
- * Returns null if schoolId missing or DB fails.
+ * Load school admin userIds for SSE targeting.
+ * Returns array of userId strings.
  */
+const loadSchoolAdminUserIds = async schoolId => {
+  try {
+    const admins = await prisma.schoolAdmin.findMany({
+      where: { school_id: schoolId, is_active: true },
+      select: { user_id: true },
+    });
+    return admins.map(a => a.user_id).filter(Boolean);
+  } catch (err) {
+    logger.error(
+      { err: err.message, schoolId },
+      '[dispatcher] Failed to load admin userIds for SSE'
+    );
+    return [];
+  }
+};
+
 const makeSchoolLoader = schoolId => {
   let _cached = undefined;
   return async () => {
@@ -114,7 +125,7 @@ const writeNotificationLog = async ({ channel, status, latencyMs, providerRef, e
   }
 };
 
-// ── Channel send helpers with timing + logging ────────────────────────────────
+// ── Channel send helpers ──────────────────────────────────────────────────────
 
 const timedSend = async (sendFn, channel, meta) => {
   const start = Date.now();
@@ -130,9 +141,6 @@ const timedSend = async (sendFn, channel, meta) => {
   return r;
 };
 
-/**
- * Fire all tasks in parallel, log each result, never throw.
- */
 const sendParallel = async (tasks, meta) => {
   const results = await Promise.allSettled(tasks);
   for (const result of results) {
@@ -143,15 +151,24 @@ const sendParallel = async (tasks, meta) => {
   return results;
 };
 
+/**
+ * [FIX-2] Fire SSE to all school admins. Never throws.
+ * Call this for every order/school event so the dashboard updates in real-time.
+ */
+const sseToSchoolAdmins = async (schoolId, eventType, data) => {
+  if (!schoolId) return;
+  try {
+    const userIds = await loadSchoolAdminUserIds(schoolId);
+    for (const userId of userIds) {
+      pushSSE(userId, { type: eventType, data });
+    }
+  } catch (err) {
+    logger.error({ err: err.message, schoolId, eventType }, '[dispatcher] SSE push failed');
+  }
+};
+
 // ── Dispatcher ────────────────────────────────────────────────────────────────
 
-/**
- * Dispatch notifications for a given event.
- * Called by notification.worker.js for every event pulled from the queue.
- *
- * @param {object} event — full stamped event from BullMQ job data
- * @returns {Promise<void>}
- */
 export const dispatch = async event => {
   const { type, payload, schoolId, meta } = event;
   const logMeta = {
@@ -166,13 +183,11 @@ export const dispatch = async event => {
   try {
     switch (type) {
       // ── EMERGENCY_ALERT_TRIGGERED → Push first, then SMS ──────────────────
-      // Priority order per spec: Push → SMS. SMS fires regardless of push result.
       case EVENTS.EMERGENCY_ALERT_TRIGGERED: {
         const { studentName, schoolName, scannedAt, parentContacts, parentFcmTokens } = payload;
         const push = pushTemplates.EMERGENCY_ALERT({ studentName, schoolName });
         const smsBody = smsTemplates.EMERGENCY_ALERT({ studentName, schoolName, scannedAt });
 
-        // 1. Push first
         await timedSend(
           () =>
             sendPushNotificationChannel({ tokens: parentFcmTokens ?? [], ...push, meta: logMeta }),
@@ -180,7 +195,6 @@ export const dispatch = async event => {
           logMeta
         );
 
-        // 2. SMS to all parent contacts (parallel across contacts, sequential after push)
         if (parentContacts?.length) {
           await sendParallel(
             parentContacts.map(phone =>
@@ -196,7 +210,7 @@ export const dispatch = async event => {
         break;
       }
 
-      // ── USER_OTP_REQUESTED → SMS only ──────────────────────────────────────
+      // ── USER_OTP_REQUESTED → SMS only ─────────────────────────────────────
       case EVENTS.USER_OTP_REQUESTED: {
         const { phone, otp, namespace, expiryMinutes } = payload;
         const body =
@@ -211,7 +225,7 @@ export const dispatch = async event => {
         break;
       }
 
-      // ── USER_DEVICE_LOGIN_NEW → email only ─────────────────────────────────
+      // ── USER_DEVICE_LOGIN_NEW → email only ────────────────────────────────
       case EVENTS.USER_DEVICE_LOGIN_NEW: {
         const { userId, name, device, location, time } = payload;
         const contacts = await loadUserContacts(userId);
@@ -226,7 +240,7 @@ export const dispatch = async event => {
         break;
       }
 
-      // ── ORDER_CONFIRMED → push + email ─────────────────────────────────────
+      // ── ORDER_CONFIRMED → push + email + SSE ─────────────────────────────
       case EVENTS.ORDER_CONFIRMED: {
         const { orderNumber, cardCount, amount } = payload;
         const [tokens, school] = await Promise.all([
@@ -258,22 +272,27 @@ export const dispatch = async event => {
           ],
           logMeta
         );
+
+        // [FIX-2] SSE → dashboard
+        await sseToSchoolAdmins(schoolId, 'ORDER_CONFIRMED', { orderNumber, cardCount, amount });
         break;
       }
 
-      // ── ORDER_ADVANCE_PAYMENT_RECEIVED → push + email ──────────────────────
+      // ── ORDER_ADVANCE_PAYMENT_RECEIVED → push + email + SSE ──────────────
       case EVENTS.ORDER_ADVANCE_PAYMENT_RECEIVED: {
         const { orderNumber, amount } = payload;
         const [tokens, school] = await Promise.all([
           loadSchoolAdminFcmTokens(schoolId),
           getSchool(),
         ]);
-        const push = pushTemplates.ORDER_CONFIRMED({ orderNumber }); // reuse confirmed push
-        const tmpl = emailTemplates.ORDER_ADVANCE_PAYMENT_RECEIVED({
-          schoolName: school?.name ?? 'School',
-          orderNumber,
-          amount,
-        });
+        const push = pushTemplates.ORDER_CONFIRMED({ orderNumber });
+        const tmpl = emailTemplates.ORDER_ADVANCE_PAYMENT_RECEIVED
+          ? emailTemplates.ORDER_ADVANCE_PAYMENT_RECEIVED({
+              schoolName: school?.name ?? 'School',
+              orderNumber,
+              amount,
+            })
+          : null;
 
         await sendParallel(
           [
@@ -282,7 +301,7 @@ export const dispatch = async event => {
               'PUSH',
               logMeta
             ),
-            school?.email
+            school?.email && tmpl
               ? timedSend(
                   () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
                   'EMAIL',
@@ -292,10 +311,15 @@ export const dispatch = async event => {
           ],
           logMeta
         );
+
+        await sseToSchoolAdmins(schoolId, 'ORDER_ADVANCE_PAYMENT_RECEIVED', {
+          orderNumber,
+          amount,
+        });
         break;
       }
 
-      // ── ORDER_TOKEN_GENERATION_COMPLETE → push only ────────────────────────
+      // ── ORDER_TOKEN_GENERATION_COMPLETE → push + SSE ──────────────────────
       case EVENTS.ORDER_TOKEN_GENERATION_COMPLETE: {
         const { orderNumber } = payload;
         const tokens = await loadSchoolAdminFcmTokens(schoolId);
@@ -305,10 +329,11 @@ export const dispatch = async event => {
           'PUSH',
           logMeta
         );
+        await sseToSchoolAdmins(schoolId, 'ORDER_TOKEN_GENERATION_COMPLETE', { orderNumber });
         break;
       }
 
-      // ── ORDER_CARD_DESIGN_COMPLETE → push + email ──────────────────────────
+      // ── ORDER_CARD_DESIGN_COMPLETE → push + email + SSE ───────────────────
       case EVENTS.ORDER_CARD_DESIGN_COMPLETE: {
         const { orderNumber, reviewUrl } = payload;
         const [tokens, school] = await Promise.all([
@@ -316,11 +341,13 @@ export const dispatch = async event => {
           getSchool(),
         ]);
         const push = pushTemplates.ORDER_CARD_DESIGN_COMPLETE({ orderNumber });
-        const tmpl = emailTemplates.ORDER_CARD_DESIGN_COMPLETE({
-          schoolName: school?.name ?? 'School',
-          orderNumber,
-          reviewUrl,
-        });
+        const tmpl = emailTemplates.ORDER_CARD_DESIGN_COMPLETE
+          ? emailTemplates.ORDER_CARD_DESIGN_COMPLETE({
+              schoolName: school?.name ?? 'School',
+              orderNumber,
+              reviewUrl,
+            })
+          : null;
 
         await sendParallel(
           [
@@ -329,7 +356,7 @@ export const dispatch = async event => {
               'PUSH',
               logMeta
             ),
-            school?.email
+            school?.email && tmpl
               ? timedSend(
                   () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
                   'EMAIL',
@@ -339,10 +366,12 @@ export const dispatch = async event => {
           ],
           logMeta
         );
+
+        await sseToSchoolAdmins(schoolId, 'ORDER_CARD_DESIGN_COMPLETE', { orderNumber, reviewUrl });
         break;
       }
 
-      // ── ORDER_SHIPPED → push + SMS + email ─────────────────────────────────
+      // ── ORDER_SHIPPED → push + SMS + email + SSE ──────────────────────────
       case EVENTS.ORDER_SHIPPED: {
         const { orderNumber, trackingId, trackingUrl, schoolPhone } = payload;
         const [tokens, school] = await Promise.all([
@@ -350,12 +379,14 @@ export const dispatch = async event => {
           getSchool(),
         ]);
         const push = pushTemplates.ORDER_SHIPPED({ orderNumber, trackingId });
-        const tmpl = emailTemplates.ORDER_SHIPPED({
-          schoolName: school?.name ?? 'School',
-          orderNumber,
-          trackingId,
-          trackingUrl,
-        });
+        const tmpl = emailTemplates.ORDER_SHIPPED
+          ? emailTemplates.ORDER_SHIPPED({
+              schoolName: school?.name ?? 'School',
+              orderNumber,
+              trackingId,
+              trackingUrl,
+            })
+          : null;
         const smsBody = smsTemplates.ORDER_SHIPPED({ orderNumber, trackingId });
 
         await sendParallel(
@@ -365,7 +396,7 @@ export const dispatch = async event => {
               'PUSH',
               logMeta
             ),
-            school?.email
+            school?.email && tmpl
               ? timedSend(
                   () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
                   'EMAIL',
@@ -382,10 +413,16 @@ export const dispatch = async event => {
           ],
           logMeta
         );
+
+        await sseToSchoolAdmins(schoolId, 'ORDER_SHIPPED', {
+          orderNumber,
+          trackingId,
+          trackingUrl,
+        });
         break;
       }
 
-      // ── ORDER_DELIVERED → push + email ─────────────────────────────────────
+      // ── ORDER_DELIVERED → push + email + SSE ──────────────────────────────
       case EVENTS.ORDER_DELIVERED: {
         const { orderNumber } = payload;
         const [tokens, school] = await Promise.all([
@@ -393,10 +430,9 @@ export const dispatch = async event => {
           getSchool(),
         ]);
         const push = pushTemplates.ORDER_DELIVERED({ orderNumber });
-        const tmpl = emailTemplates.ORDER_DELIVERED({
-          schoolName: school?.name ?? 'School',
-          orderNumber,
-        });
+        const tmpl = emailTemplates.ORDER_DELIVERED
+          ? emailTemplates.ORDER_DELIVERED({ schoolName: school?.name ?? 'School', orderNumber })
+          : null;
 
         await sendParallel(
           [
@@ -405,7 +441,7 @@ export const dispatch = async event => {
               'PUSH',
               logMeta
             ),
-            school?.email
+            school?.email && tmpl
               ? timedSend(
                   () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
                   'EMAIL',
@@ -415,11 +451,12 @@ export const dispatch = async event => {
           ],
           logMeta
         );
+
+        await sseToSchoolAdmins(schoolId, 'ORDER_DELIVERED', { orderNumber });
         break;
       }
 
-      // ── ORDER_BALANCE_INVOICE_ISSUED → push + email + SMS ──────────────────
-      // WhatsApp stubbed — SMS used as fallback until MSG91 WhatsApp configured.
+      // ── ORDER_BALANCE_INVOICE_ISSUED → push + email + SMS + SSE ──────────
       case EVENTS.ORDER_BALANCE_INVOICE_ISSUED: {
         const { orderNumber, amount, dueDate, invoiceUrl, schoolPhone } = payload;
         const [tokens, school] = await Promise.all([
@@ -427,14 +464,18 @@ export const dispatch = async event => {
           getSchool(),
         ]);
         const push = pushTemplates.ORDER_BALANCE_INVOICE({ orderNumber, amount });
-        const tmpl = emailTemplates.ORDER_BALANCE_INVOICE({
-          schoolName: school?.name ?? 'School',
-          orderNumber,
-          amount,
-          dueDate,
-          invoiceUrl,
-        });
-        const smsBody = smsTemplates.BALANCE_INVOICE_DUE({ orderNumber, amount });
+        const tmpl = emailTemplates.ORDER_BALANCE_INVOICE
+          ? emailTemplates.ORDER_BALANCE_INVOICE({
+              schoolName: school?.name ?? 'School',
+              orderNumber,
+              amount,
+              dueDate,
+              invoiceUrl,
+            })
+          : null;
+        const smsBody = smsTemplates.BALANCE_INVOICE_DUE
+          ? smsTemplates.BALANCE_INVOICE_DUE({ orderNumber, amount })
+          : `ResQID: Balance of ₹${amount} due for order #${orderNumber}.`;
 
         await sendParallel(
           [
@@ -443,15 +484,13 @@ export const dispatch = async event => {
               'PUSH',
               logMeta
             ),
-            school?.email
+            school?.email && tmpl
               ? timedSend(
                   () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
                   'EMAIL',
                   logMeta
                 )
               : Promise.resolve(),
-            // WhatsApp fallback → SMS until MSG91 WhatsApp is configured
-            // To switch: replace sendSmsNotification with sendWhatsAppNotification here only
             schoolPhone
               ? timedSend(
                   () => sendSmsNotification({ to: schoolPhone, body: smsBody, meta: logMeta }),
@@ -462,29 +501,76 @@ export const dispatch = async event => {
           ],
           logMeta
         );
+
+        await sseToSchoolAdmins(schoolId, 'ORDER_BALANCE_INVOICE_ISSUED', {
+          orderNumber,
+          amount,
+          dueDate,
+          invoiceUrl,
+        });
         break;
       }
 
-      // ── ORDER_COMPLETED → email ────────────────────────────────────────────
+      // ── ORDER_COMPLETED → email + SSE ─────────────────────────────────────
       case EVENTS.ORDER_COMPLETED: {
         const { orderNumber } = payload;
         const school = await getSchool();
-        if (school?.email) {
-          const tmpl = emailTemplates.ORDER_COMPLETED({ schoolName: school.name, orderNumber });
+        const tmpl = emailTemplates.ORDER_COMPLETED
+          ? emailTemplates.ORDER_COMPLETED({ schoolName: school?.name ?? 'School', orderNumber })
+          : null;
+
+        if (school?.email && tmpl) {
           await timedSend(
             () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
             'EMAIL',
             logMeta
           );
         }
+        await sseToSchoolAdmins(schoolId, 'ORDER_COMPLETED', { orderNumber });
+        break;
+      }
+
+      // ── ORDER_REFUNDED → push + email + SSE  [FIX-1: was EVENTS.REFUNDED] ─
+      case EVENTS.ORDER_REFUNDED: {
+        const { orderNumber, amount } = payload;
+        const [tokens, school] = await Promise.all([
+          loadSchoolAdminFcmTokens(schoolId),
+          getSchool(),
+        ]);
+        const push = pushTemplates.REFUNDED({ orderNumber, amount });
+        const tmpl = emailTemplates.REFUNDED
+          ? emailTemplates.REFUNDED({ schoolName: school?.name ?? 'School', orderNumber, amount })
+          : null;
+
+        await sendParallel(
+          [
+            timedSend(
+              () => sendPushNotificationChannel({ tokens, ...push, meta: logMeta }),
+              'PUSH',
+              logMeta
+            ),
+            school?.email && tmpl
+              ? timedSend(
+                  () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
+                  'EMAIL',
+                  logMeta
+                )
+              : Promise.resolve(),
+          ],
+          logMeta
+        );
+
+        await sseToSchoolAdmins(schoolId, 'ORDER_REFUNDED', { orderNumber, amount });
         break;
       }
 
       // ── SCHOOL_ONBOARDED → email ───────────────────────────────────────────
       case EVENTS.SCHOOL_ONBOARDED: {
         const { schoolName, adminName, adminEmail, dashboardUrl } = payload;
-        if (adminEmail) {
-          const tmpl = emailTemplates.SCHOOL_ONBOARDED({ schoolName, adminName, dashboardUrl });
+        const tmpl = emailTemplates.SCHOOL_ONBOARDED
+          ? emailTemplates.SCHOOL_ONBOARDED({ schoolName, adminName, dashboardUrl })
+          : null;
+        if (adminEmail && tmpl) {
           await timedSend(
             () => sendEmailNotification({ to: adminEmail, ...tmpl, meta: logMeta }),
             'EMAIL',
@@ -494,26 +580,24 @@ export const dispatch = async event => {
         break;
       }
 
-      // ── SCHOOL_RENEWAL_DUE → email + SMS ───────────────────────────────────
-      // WhatsApp stubbed — SMS used as fallback until MSG91 WhatsApp configured.
+      // ── SCHOOL_RENEWAL_DUE → email + SMS ──────────────────────────────────
       case EVENTS.SCHOOL_RENEWAL_DUE: {
         const { schoolName, adminEmail, schoolPhone, expiryDate, renewUrl } = payload;
-        const tmpl = emailTemplates.SCHOOL_RENEWAL_DUE({ schoolName, expiryDate, renewUrl });
-        const smsBody = smsTemplates.BALANCE_INVOICE_DUE
-          ? `ResQID: ${schoolName} subscription expires on ${expiryDate}. Renew at: ${renewUrl ?? 'resqid.in/renew'}`
+        const tmpl = emailTemplates.SCHOOL_RENEWAL_DUE
+          ? emailTemplates.SCHOOL_RENEWAL_DUE({ schoolName, expiryDate, renewUrl })
           : null;
+        const smsBody = `ResQID: ${schoolName} subscription expires on ${expiryDate}. Renew at: ${renewUrl ?? 'resqid.in/renew'}`;
 
         await sendParallel(
           [
-            adminEmail
+            adminEmail && tmpl
               ? timedSend(
                   () => sendEmailNotification({ to: adminEmail, ...tmpl, meta: logMeta }),
                   'EMAIL',
                   logMeta
                 )
               : Promise.resolve(),
-            // WhatsApp fallback → SMS until MSG91 WhatsApp is configured
-            schoolPhone && smsBody
+            schoolPhone
               ? timedSend(
                   () => sendSmsNotification({ to: schoolPhone, body: smsBody, meta: logMeta }),
                   'SMS',
@@ -557,7 +641,7 @@ export const dispatch = async event => {
         break;
       }
 
-      // ── STUDENT_QR_SCANNED → push (if school setting enabled) ──────────────
+      // ── STUDENT_QR_SCANNED → push ─────────────────────────────────────────
       case EVENTS.STUDENT_QR_SCANNED: {
         const { studentName, location, parentFcmTokens, notifyEnabled } = payload;
         if (notifyEnabled && parentFcmTokens?.length) {
@@ -571,7 +655,7 @@ export const dispatch = async event => {
         break;
       }
 
-      // ── PARTIAL_PAYMENT_CONFIRMED → push + email ────────────────────────────────
+      // ── PARTIAL_PAYMENT_CONFIRMED → push + email + SSE ────────────────────
       case EVENTS.PARTIAL_PAYMENT_CONFIRMED: {
         const { orderNumber, amount } = payload;
         const [tokens, school] = await Promise.all([
@@ -602,10 +686,12 @@ export const dispatch = async event => {
           ],
           logMeta
         );
+
+        await sseToSchoolAdmins(schoolId, 'PARTIAL_PAYMENT_CONFIRMED', { orderNumber, amount });
         break;
       }
 
-      // ── PARTIAL_INVOICE_GENERATED → push + email ────────────────────────────────
+      // ── PARTIAL_INVOICE_GENERATED → push + email + SSE ───────────────────
       case EVENTS.PARTIAL_INVOICE_GENERATED: {
         const { orderNumber, amount, invoiceUrl } = payload;
         const [tokens, school] = await Promise.all([
@@ -637,10 +723,16 @@ export const dispatch = async event => {
           ],
           logMeta
         );
+
+        await sseToSchoolAdmins(schoolId, 'PARTIAL_INVOICE_GENERATED', {
+          orderNumber,
+          amount,
+          invoiceUrl,
+        });
         break;
       }
 
-      // ── DESIGN_APPROVED → push + email ──────────────────────────────────────────
+      // ── DESIGN_APPROVED → push + email + SSE ──────────────────────────────
       case EVENTS.DESIGN_APPROVED: {
         const { orderNumber } = payload;
         const [tokens, school] = await Promise.all([
@@ -670,40 +762,8 @@ export const dispatch = async event => {
           ],
           logMeta
         );
-        break;
-      }
 
-      // ── REFUNDED → email + optional push ────────────────────────────────────────
-      case EVENTS.REFUNDED: {
-        const { orderNumber, amount } = payload;
-        const [tokens, school] = await Promise.all([
-          loadSchoolAdminFcmTokens(schoolId),
-          getSchool(),
-        ]);
-        const push = pushTemplates.REFUNDED({ orderNumber, amount });
-        const tmpl = emailTemplates.REFUNDED({
-          schoolName: school?.name ?? 'School',
-          orderNumber,
-          amount,
-        });
-
-        await sendParallel(
-          [
-            timedSend(
-              () => sendPushNotificationChannel({ tokens, ...push, meta: logMeta }),
-              'PUSH',
-              logMeta
-            ),
-            school?.email
-              ? timedSend(
-                  () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
-                  'EMAIL',
-                  logMeta
-                )
-              : Promise.resolve(),
-          ],
-          logMeta
-        );
+        await sseToSchoolAdmins(schoolId, 'DESIGN_APPROVED', { orderNumber });
         break;
       }
 

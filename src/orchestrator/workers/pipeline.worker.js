@@ -33,8 +33,8 @@ import {
   buildScanUrl,
   batchGenerateCardNumbers,
 } from '#services/token/token.helpers.js';
-import { generateQrPng } from '#services/qr/qr.service.js';
-import { uploadQrCode } from '#infrastructure/storage/r2.upload.js';
+import { generateQrPng } from '#services/qr.service.js';
+import { getStorage, StoragePath } from '#infrastructure/storage/storage.index.js';
 
 // Constants
 const TOKEN_BATCH_SIZE = 50;
@@ -176,11 +176,12 @@ async function generateTokens(orderId, stepExecutionId, jobId) {
 
           // Step 5.6: Upload QR to R2 (handle null studentId for blank orders)
           const qrKeyStudentId = item.student_id || `pending-${item.id}`;
+          const qrKey = StoragePath.studentQrCode(qrKeyStudentId);
 
-          const { url: qrUrl } = await uploadQrCode({
-            buffer: qrBuffer,
-            schoolId: order.school_id,
-            studentId: qrKeyStudentId,
+          const storage = getStorage();
+          const { location: qrUrl } = await storage.upload(qrBuffer, qrKey, {
+            contentType: 'image/png',
+            cacheControl: 'public, max-age=31536000',
           });
 
           return {

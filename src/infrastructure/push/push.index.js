@@ -1,8 +1,14 @@
-import { FirebaseAdapter } from './firebase.adapter.js';
+// =============================================================================
+// infrastructure/push/push.index.js — RESQID
+// CHANGED: FirebaseAdapter → ExpoAdapter (Expo push API, no Firebase needed)
+// Everything else untouched — push.js and dispatcher are unaffected.
+// =============================================================================
+
+import { ExpoAdapter } from './expo.adapter.js';
 import { PushProvider } from './push.provider.js';
 
 // ---------------------------------------------------------------------------
-// Notification Templates
+// Notification Templates (kept here for legacy imports)
 // ---------------------------------------------------------------------------
 export const NOTIFICATION_TEMPLATES = {
   EMERGENCY_SCAN: {
@@ -26,7 +32,8 @@ let pushInstance = null;
 
 export function initializePush(config = {}) {
   if (!pushInstance) {
-    pushInstance = new FirebaseAdapter(config);
+    // CHANGED: was FirebaseAdapter — Expo needs no config/service account
+    pushInstance = new ExpoAdapter();
   }
   return pushInstance;
 }
@@ -38,4 +45,6 @@ export function getPush() {
   return pushInstance;
 }
 
-export { PushProvider, FirebaseAdapter };
+// Keep FirebaseAdapter export so any leftover import doesn't hard-crash
+// (just logs a warning). Remove once confirmed nothing else imports it.
+export { PushProvider, ExpoAdapter };

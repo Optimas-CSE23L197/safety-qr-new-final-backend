@@ -278,3 +278,15 @@ export async function sendPhoneChangeOtp(req, res) {
     return handleError(res, err, { fn: 'sendPhoneChangeOtp', parentId });
   }
 }
+
+export async function registerDeviceToken(req, res) {
+  const parentId = requireOwnParent(req, res);
+  if (!parentId) return;
+
+  try {
+    const result = await service.registerDeviceToken(parentId, req.validatedBody);
+    return res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    return handleError(res, err, { fn: 'registerDeviceToken', parentId });
+  }
+}

@@ -472,3 +472,24 @@ export function validateSendPhoneOtp(req, res, next) {
   req.validatedBody = result.data;
   next();
 }
+
+const registerDeviceTokenSchema = z.object({
+  token: z.string().min(10, 'token is required'),
+  platform: z.enum(['IOS', 'ANDROID', 'WEB']),
+  device_name: z.string().max(100).nullable().optional(),
+  deviceModel: z.string().max(100).nullable().optional(),
+  os_version: z.string().max(50).nullable().optional(),
+});
+
+export function validateRegisterDeviceToken(req, res, next) {
+  const result = registerDeviceTokenSchema.safeParse(req.body);
+  if (!result.success) {
+    return res.status(400).json({
+      success: false,
+      code: 'VALIDATION_ERROR',
+      errors: result.error.flatten().fieldErrors,
+    });
+  }
+  req.validatedBody = result.data;
+  next();
+}

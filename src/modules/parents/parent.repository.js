@@ -603,3 +603,61 @@ async function verifyCardOwnership(parentId, cardId) {
 
   return card;
 }
+
+// ─── POST /device-token — Upsert Expo push token ──────────────────────────────
+//
+// Strategy:
+//   • device_token is UNIQUE on ParentDevice.
+//   • If another parent owns this device_token, deactivate their record first
+//     (device handed off / re-registered). Then upsert for current parent.
+//   • Keeps is_active = true and bumps last_seen_at on every call so the
+//     notification dispatcher always has a fresh token.
+
+export async function upsertDeviceToken(
+  parentId,
+  { token, platform, device_name, deviceModel, os_version }
+) {
+  // Deactivate the token if it belongs to a different parent (device reuse)
+  await prisma.parentDevice.updateMany({
+    where: {
+      device_token: token,
+      parent_id: { not: parentId },
+    },
+    data: {
+      is_active: false,
+      logged_out_at: new Date(),
+      logout_reason: 'NEW_DEVICE_LOGIN',
+    },
+  });
+
+  // Upsert for current parent
+  return prisma.parentDevice.upsert({
+    where: { device_token: token },
+    update: {
+      platform,
+      device_name: device_name ?? null,
+      device_model: deviceModel ?? null,
+      os_version: os_version ?? null,
+      is_active: true,
+      last_seen_at: new Date(),
+      logged_out_at: null,
+      logout_reason: null,
+    },
+    create: {
+      parent_id: parentId,
+      device_token: token,
+      platform,
+      device_name: device_name ?? null,
+      device_model: deviceModel ?? null,
+      os_version: os_version ?? null,
+      is_active: true,
+      last_seen_at: new Date(),
+    },
+    select: {
+      id: true,
+      platform: true,
+      is_active: true,
+      last_seen_at: true,
+    },
+  });
+}

@@ -113,3 +113,38 @@ export const publish = async event => {
     throw err;
   }
 };
+
+// ── Convenience wrappers used by pipeline.worker.js + design.worker.js ───────
+
+/**
+ * publishEvent(eventType, orderId, payload)
+ * Quick fire-and-forget for system-generated order events.
+ */
+export const publishEvent = async (eventType, orderId, payload = {}) => {
+  return publish({
+    type: eventType,
+    actorId: 'system',
+    actorType: 'SYSTEM',
+    payload,
+    meta: { orderId },
+  });
+};
+
+/**
+ * publishFailure(orderId, step, error, meta)
+ * Publishes a WORKER_JOB_FAILED event when a pipeline step errors out.
+ */
+export const publishFailure = async (orderId, step, error, extraMeta = {}) => {
+  return publish({
+    type: 'WORKER_JOB_FAILED',
+    actorId: 'system',
+    actorType: 'SYSTEM',
+    payload: {
+      step,
+      error: error?.message ?? String(error),
+      stack: error?.stack ?? null,
+      ...extraMeta,
+    },
+    meta: { orderId },
+  });
+};

@@ -84,7 +84,6 @@ export const publishNotification = {
 
   /**
    * OTP events are published here for audit/logging purposes but
-   * the SMS is sent INLINE by the auth service — never queued.
    * The dispatcher has a case for USER_OTP_REQUESTED that handles the SMS
    * if it does reach the queue (e.g., retry scenarios).
    */

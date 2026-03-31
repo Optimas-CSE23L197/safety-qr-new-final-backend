@@ -33,6 +33,7 @@ import { globalErrorHandler as errorHandler } from './middleware/error.middlewar
 
 // ── Route imports ──────────────────────────────────────────────────────────
 import routes from './routes/index.js';
+import bullBoardRouter from './routes/bullMQ.routes.js';
 
 // ── Health / monitoring ────────────────────────────────────────────────────
 import { healthRouter } from './monitoring/health.js';
@@ -123,6 +124,10 @@ export function createApp() {
   app.use(attackLogger); // 16. Attack logging
   app.use(httpLogger); // 17. HTTP access log (was morganMiddleware)
   app.use(apiVersion); // 18. API version from URL
+
+  // just for BULLMQ
+  app.use('/api/admin/queues', bullBoardRouter);
+
   app.use(tenantScope); // 19. Tenant scope from JWT (after auth on routes)
   app.use(auditLog); // 20. Audit trail
 

@@ -30,11 +30,14 @@ import {
 // Repository imports
 import * as repo from './auth.repository.js';
 
+// notification publisher
+import { publishNotification } from '#orchestrator/notifications/notification.publisher.js';
+
 // =============================================================================
 // CONSTANTS
 // =============================================================================
 
-const OTP_TTL_SECONDS = 10 * 60; // 10 minutes
+const OTP_TTL_SECONDS = 15 * 60; // 15 minutes
 const OTP_MAX_ATTEMPTS = 5;
 const NONCE_TTL = 10 * 60;
 
@@ -316,6 +319,15 @@ export const sendOtp = async ({ phone, ipAddress, deviceId }) => {
   };
 
   await redis.setex(`otp:${phone}`, OTP_TTL_SECONDS, JSON.stringify(otpData));
+  await publishNotification.otpRequested({
+    actorId: phone,
+    payload: {
+      phone,
+      otp,
+      namespace: 'login',
+      expiryMinutes: OTP_TTL_SECONDS / 60,
+    },
+  });
   await redis.del(`otp:attempts:${phone}`);
 
   const response = {
@@ -440,6 +452,16 @@ export const registerInit = async ({ card_number, phone, ipAddress }) => {
     redis.setex(`otp:${phone}`, OTP_TTL_SECONDS, JSON.stringify(otpData)),
     redis.del(`otp:attempts:${phone}`),
   ]);
+
+  await publishNotification.otpRequested({
+    actorId: phone,
+    payload: {
+      phone,
+      otp,
+      namespace: 'register',
+      expiryMinutes: OTP_TTL_SECONDS / 60,
+    },
+  });
 
   const maskedPhone = phone.replace(/(\+\d{2})(\d{5})(\d{5})/, '$1 *****$3');
 
@@ -753,6 +775,16 @@ export const initiatePhoneChange = async ({ userId, newPhone, ipAddress }) => {
   };
 
   await redis.setex(`phone_change:${changeToken}`, OTP_TTL_SECONDS, JSON.stringify(changeData));
+
+  await publishNotification.otpRequested({
+    actorId: userId,
+    payload: {
+      phone: newPhone,
+      otp,
+      namespace: 'login', // or add 'phone_change' namespace if needed
+      expiryMinutes: OTP_TTL_SECONDS / 60,
+    },
+  });
 
   console.log(`✅ [PHONE CHANGE INIT] OTP sent to ${newPhone}`);
 
