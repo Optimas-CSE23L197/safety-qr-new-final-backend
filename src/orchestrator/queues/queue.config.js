@@ -75,6 +75,15 @@ export const backgroundJobsQueue = makeQueue(QUEUE_NAMES.BACKGROUND_JOBS, {
   },
 });
 
+export const pipelineJobsQueue = makeQueue(QUEUE_NAMES.PIPELINE_JOBS, {
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: { type: 'exponential', delay: 5000 },
+    removeOnComplete: { age: 86400, count: 500 },
+    removeOnFail: { age: 604800, count: 2000 },
+  },
+});
+
 // =============================================================================
 // QUEUE REGISTRY
 // =============================================================================
@@ -83,6 +92,7 @@ export const allQueues = {
   [QUEUE_NAMES.EMERGENCY_ALERTS]: emergencyAlertsQueue,
   [QUEUE_NAMES.NOTIFICATIONS]: notificationsQueue,
   [QUEUE_NAMES.BACKGROUND_JOBS]: backgroundJobsQueue,
+  [QUEUE_NAMES.PIPELINE_JOBS]: pipelineJobsQueue,
 };
 
 export const getQueueByName = name => {

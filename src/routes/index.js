@@ -6,10 +6,12 @@
 import { Router } from 'express';
 
 import authRoute from '#modules/auth/auth.routes.js';
+import orderRoute from '#modules/order/order.routes.js';
 
 const router = Router();
 
 router.use('/auth', authRoute);
+router.use('/orders', orderRoute);
 // router.use("/orders", orderRoutes);
 // router.use("/school-admin", schoolAdminRouter);
 // router.use("/parents", parentRoutes);

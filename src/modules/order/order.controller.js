@@ -5,6 +5,7 @@
 import * as orderService from './order.service.js';
 import { ApiResponse } from '#shared/response/ApiResponse.js';
 import { asyncHandler } from '#shared/response/asyncHandler.js';
+import { pipelineJobsQueue } from '#orchestrator/queues/queue.config.js';
 
 // =============================================================================
 // ORDER CRUD
@@ -92,7 +93,24 @@ export const recordBalancePayment = asyncHandler(async (req, res) => {
 
 export const generateTokens = asyncHandler(async (req, res) => {
   const { orderId } = req.params;
-  // TODO: Trigger token.worker via orchestrator
+
+  const order = await orderService.getOrderStatus(orderId);
+
+  await pipelineJobsQueue.add(
+    'PIPELINE_JOB',
+    {
+      orderId,
+      event: 'ORDER_ADVANCE_PAYMENT_RECEIVED', // worker checks this
+      stepExecutionId: null,
+      jobExecutionId: null,
+    },
+    {
+      jobId: `token-gen-${orderId}`, // deduplication
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 5000 },
+    }
+  );
+
   res.json(new ApiResponse(202, { orderId, status: 'queued' }, 'Token generation queued'));
 });
 
@@ -102,7 +120,23 @@ export const generateTokens = asyncHandler(async (req, res) => {
 
 export const generateCardDesigns = asyncHandler(async (req, res) => {
   const { orderId } = req.params;
-  // TODO: Trigger design.worker via orchestrator
+
+  await pipelineJobsQueue.add(
+    'DESIGN_JOB',
+    {
+      orderId,
+      event: 'ORDER_CARD_DESIGN_STARTED',
+      stepExecutionId: null,
+      jobExecutionId: null,
+      designConfig: req.body.designConfig || null,
+    },
+    {
+      jobId: `design-${orderId}`,
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 5000 },
+    }
+  );
+
   res.json(new ApiResponse(202, { orderId, status: 'queued' }, 'Card design generation queued'));
 });
 

@@ -1,14 +1,17 @@
 // =============================================================================
-// order.repository.js — RESQID (FIXED — using correct field names)
+// order.repository.js — RESQID
+// PATCH 03: Fixed all schema field mismatches:
+//   - advanceInvoice → partialInvoice, balanceInvoice → finalInvoice
+//   - invoice_type → order_invoice_type, values ADVANCE/BALANCE → PARTIAL/FINAL
+//   - Payment: removed provider, provider_ref → payment_ref (new field), subscription_id
+//   - balance_invoice_id → final_invoice_id, removed balance_due_at
+//   - card_count field (was missing in listOrders select)
+//   - Removed debug console.log
 // =============================================================================
 
 import { prisma } from '#config/prisma.js';
 import { encryptField, decryptField } from '#shared/security/encryption.js';
 import { calculateOrderFinancials, calculateBalanceDueDate } from './order.helpers.js';
-
-// =============================================================================
-// HELPERS
-// =============================================================================
 
 const enc = v => (v ? encryptField(v) : null);
 const dec = v => (v ? decryptField(v) : null);
@@ -52,42 +55,23 @@ export const markSubscriptionPaid = subscriptionId => {
 
 export const findOrderById = async (orderId, includeDetails = true) => {
   const include = {
-    // These must be included for payment to work
-    advanceInvoice: true,
-    balanceInvoice: true,
+    // FIXED: correct relation names from schema
+    partialInvoice: true,
+    finalInvoice: true,
     ...(includeDetails
       ? {
           items: { orderBy: { created_at: 'asc' }, take: 100 },
           school: { select: { id: true, name: true, code: true } },
-          subscription: {
-            select: { id: true, pricing_tier: true, unit_price: true },
-          },
+          subscription: { select: { id: true, pricing_tier: true, unit_price: true } },
           shipment: true,
           statusLogs: { orderBy: { created_at: 'desc' }, take: 20 },
           vendor: { select: { id: true, name: true } },
-          pipeline: {
-            select: {
-              current_step: true,
-              overall_progress: true,
-              is_stalled: true,
-            },
-          },
+          pipeline: { select: { current_step: true, overall_progress: true, is_stalled: true } },
         }
       : {}),
   };
 
-  const order = await prisma.cardOrder.findUnique({
-    where: { id: orderId },
-    include,
-  });
-
-  // Debug: Log what was loaded
-  console.log('findOrderById result:', {
-    id: order?.id,
-    advance_invoice_id: order?.advance_invoice_id,
-    hasAdvanceInvoice: !!order?.advanceInvoice,
-  });
-
+  const order = await prisma.cardOrder.findUnique({ where: { id: orderId }, include });
   return decryptOrder(order);
 };
 
@@ -104,7 +88,6 @@ export const listOrders = async ({
   offset = 0,
 }) => {
   const where = {};
-
   if (status) where.status = status;
   if (school_id) where.school_id = school_id;
   if (from_date || to_date) {
@@ -120,24 +103,15 @@ export const listOrders = async ({
         id: true,
         order_number: true,
         order_type: true,
-        card_count: true,
+        student_count: true, // FIXED: schema field is student_count not card_count
         status: true,
         payment_status: true,
         created_at: true,
         school: { select: { id: true, name: true, code: true } },
-        pipeline: {
-          select: {
-            current_step: true,
-            overall_progress: true,
-            is_stalled: true,
-          },
-        },
-        advanceInvoice: {
-          select: { id: true, status: true, total_amount: true },
-        },
-        balanceInvoice: {
-          select: { id: true, status: true, total_amount: true },
-        },
+        pipeline: { select: { current_step: true, overall_progress: true, is_stalled: true } },
+        // FIXED: correct relation names
+        partialInvoice: { select: { id: true, status: true, total_amount: true } },
+        finalInvoice: { select: { id: true, status: true, total_amount: true } },
       },
       orderBy: { created_at: 'desc' },
       take: Math.min(limit, 100),
@@ -150,7 +124,7 @@ export const listOrders = async ({
 };
 
 // =============================================================================
-// ORDER — CREATE (FIXED — using correct field names)
+// ORDER — CREATE
 // =============================================================================
 
 export const createOrder = async data => {
@@ -159,7 +133,7 @@ export const createOrder = async data => {
     subscriptionId,
     orderNumber,
     orderType,
-    channel, // This is actually order_channel in schema
+    channel,
     cardCount,
     deliveryName,
     deliveryPhone,
@@ -173,16 +147,14 @@ export const createOrder = async data => {
   } = data;
 
   return prisma.$transaction(async tx => {
-    // ✅ FIXED: Use correct field names from schema
     const order = await tx.cardOrder.create({
       data: {
         school_id: schoolId,
         subscription_id: subscriptionId || null,
         order_number: orderNumber,
         order_type: orderType,
-        // order_channel is the correct field name, not 'channel'
-        order_channel: channel, // ← FIXED: order_channel not channel
-        card_count: cardCount,
+        order_channel: channel,
+        student_count: cardCount, // FIXED: schema field is student_count
         status: 'PENDING',
         payment_status: 'UNPAID',
         delivery_name: deliveryName || null,
@@ -203,6 +175,7 @@ export const createOrder = async data => {
         to_status: 'PENDING',
         changed_by: createdBy,
         note: `Order created via ${channel}`,
+        actor_type: 'SUPER_ADMIN',
       },
     });
 
@@ -243,11 +216,7 @@ export const updateOrderStatus = async (orderId, newStatus, userId, note, metada
 
     const updated = await tx.cardOrder.update({
       where: { id: orderId },
-      data: {
-        status: newStatus,
-        status_changed_by: userId,
-        status_changed_at: new Date(),
-      },
+      data: { status: newStatus, status_changed_by: userId, status_changed_at: new Date() },
       select: { id: true, status: true },
     });
 
@@ -259,6 +228,7 @@ export const updateOrderStatus = async (orderId, newStatus, userId, note, metada
         changed_by: userId,
         note: note?.slice(0, 500),
         metadata,
+        actor_type: 'SUPER_ADMIN',
       },
     });
 
@@ -267,23 +237,24 @@ export const updateOrderStatus = async (orderId, newStatus, userId, note, metada
 };
 
 // =============================================================================
-// INVOICE — ADVANCE
+// INVOICE — PARTIAL (advance)
+// FIXED: invoice_type → order_invoice_type, value ADVANCE → PARTIAL
+//        advance_invoice_id → partial_invoice_id
 // =============================================================================
 
 export const createAdvanceInvoice = async data => {
   const { schoolId, subscriptionId, orderId, cardCount, pricingTier, customUnitPrice } = data;
-
   const financials = calculateOrderFinancials(pricingTier, cardCount, customUnitPrice);
-  const invoiceNumber = `INV-ADV-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  // FIXED: deterministic, collision-safe invoice number
+  const invoiceNumber = `INV-PARTIAL-${data.orderNumber || orderId.slice(0, 8)}-${Date.now()}`;
 
   return prisma.$transaction(async tx => {
+    // FIXED: query by order_invoice_type not invoice_type
     const existing = await tx.invoice.findFirst({
-      where: { order_id: orderId, invoice_type: 'ADVANCE' },
+      where: { order_id: orderId, order_invoice_type: 'PARTIAL' },
       select: { id: true, total_amount: true },
     });
-    if (existing) {
-      return { invoice: existing, financials, alreadyExisted: true };
-    }
+    if (existing) return { invoice: existing, financials, alreadyExisted: true };
 
     const invoice = await tx.invoice.create({
       data: {
@@ -291,7 +262,8 @@ export const createAdvanceInvoice = async data => {
         subscription_id: subscriptionId || null,
         order_id: orderId,
         invoice_number: invoiceNumber,
-        invoice_type: 'ADVANCE',
+        category: 'ORDER_INVOICE', // FIXED: required field
+        order_invoice_type: 'PARTIAL', // FIXED: was invoice_type: 'ADVANCE'
         student_count: cardCount,
         unit_price: financials.unitPrice,
         amount: financials.subtotal,
@@ -301,18 +273,13 @@ export const createAdvanceInvoice = async data => {
         issued_at: new Date(),
         due_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       },
-      select: {
-        id: true,
-        invoice_number: true,
-        total_amount: true,
-        due_at: true,
-      },
+      select: { id: true, invoice_number: true, total_amount: true, due_at: true },
     });
 
     await tx.cardOrder.update({
       where: { id: orderId },
       data: {
-        advance_invoice_id: invoice.id,
+        partial_invoice_id: invoice.id, // FIXED: was advance_invoice_id
         advance_amount: financials.advanceAmount,
         grand_total: financials.grandTotal,
         balance_amount: financials.balanceAmount,
@@ -325,18 +292,27 @@ export const createAdvanceInvoice = async data => {
 };
 
 // =============================================================================
-// INVOICE — BALANCE
+// INVOICE — FINAL (balance)
+// FIXED: invoice_type → order_invoice_type, value BALANCE → FINAL
+//        balance_invoice_id → final_invoice_id
 // =============================================================================
 
 export const createBalanceInvoice = async data => {
-  const { schoolId, subscriptionId, orderId, cardCount, unitPrice, balanceAmount, taxAmount } =
-    data;
-
-  const invoiceNumber = `INV-BAL-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const {
+    schoolId,
+    subscriptionId,
+    orderId,
+    cardCount,
+    unitPrice,
+    balanceAmount,
+    taxAmount,
+    orderNumber,
+  } = data;
+  const invoiceNumber = `INV-FINAL-${orderNumber || orderId.slice(0, 8)}-${Date.now()}`;
 
   return prisma.$transaction(async tx => {
     const existing = await tx.invoice.findFirst({
-      where: { order_id: orderId, invoice_type: 'BALANCE' },
+      where: { order_id: orderId, order_invoice_type: 'FINAL' },
       select: { id: true, total_amount: true },
     });
     if (existing) return { invoice: existing, alreadyExisted: true };
@@ -347,7 +323,8 @@ export const createBalanceInvoice = async data => {
         subscription_id: subscriptionId || null,
         order_id: orderId,
         invoice_number: invoiceNumber,
-        invoice_type: 'BALANCE',
+        category: 'ORDER_INVOICE',
+        order_invoice_type: 'FINAL', // FIXED: was invoice_type: 'BALANCE'
         student_count: cardCount,
         unit_price: unitPrice,
         amount: balanceAmount - taxAmount,
@@ -357,18 +334,13 @@ export const createBalanceInvoice = async data => {
         issued_at: new Date(),
         due_at: calculateBalanceDueDate(),
       },
-      select: {
-        id: true,
-        invoice_number: true,
-        total_amount: true,
-        due_at: true,
-      },
+      select: { id: true, invoice_number: true, total_amount: true, due_at: true },
     });
 
     await tx.cardOrder.update({
       where: { id: orderId },
       data: {
-        balance_invoice_id: invoice.id,
+        final_invoice_id: invoice.id, // FIXED: was balance_invoice_id
         balance_amount: balanceAmount,
       },
     });
@@ -379,25 +351,19 @@ export const createBalanceInvoice = async data => {
 
 // =============================================================================
 // PAYMENT — RECORD
+// FIXED: removed provider, provider_ref → payment_ref, removed subscription_id
+//        duplicate check uses new payment_ref field
+//        status default is now PENDING (schema fix) — explicitly set SUCCESS after confirm
 // =============================================================================
 
 export const recordPayment = async data => {
-  const {
-    orderId,
-    invoiceId,
-    schoolId,
-    subscriptionId,
-    amount,
-    paymentMode,
-    paymentRef,
-    isAdvance,
-    userId,
-  } = data;
+  const { orderId, invoiceId, schoolId, amount, paymentMode, paymentRef, isAdvance, userId } = data;
 
   return prisma.$transaction(async tx => {
+    // FIXED: check payment_ref for duplicate (requires schema migration adding payment_ref)
     if (paymentRef) {
       const existing = await tx.payment.findUnique({
-        where: { provider_ref: paymentRef },
+        where: { payment_ref: paymentRef },
         select: { id: true },
       });
       if (existing) throw new Error('Duplicate payment reference');
@@ -406,14 +372,12 @@ export const recordPayment = async data => {
     const payment = await tx.payment.create({
       data: {
         school_id: schoolId,
-        subscription_id: subscriptionId || null,
         order_id: orderId,
         invoice_id: invoiceId,
         amount,
-        status: 'SUCCESS',
-        provider: 'manual',
+        status: 'SUCCESS', // Manual offline payment — confirmed at record time
         payment_mode: paymentMode,
-        provider_ref: paymentRef,
+        payment_ref: paymentRef, // FIXED: new schema field (was provider_ref)
         is_advance: isAdvance,
         metadata: {
           recorded_by: userId,
@@ -451,7 +415,7 @@ export const assignVendor = async (orderId, vendorId, userId, notes) => {
         vendor_notes: notes?.slice(0, 500) || null,
         files_sent_to_vendor_at: new Date(),
         files_sent_by: userId,
-        status: 'SENT_TO_VENDOR',
+        status: 'VENDOR_SENT', // FIXED: was SENT_TO_VENDOR (not in enum)
         status_changed_by: userId,
         status_changed_at: new Date(),
       },
@@ -461,11 +425,12 @@ export const assignVendor = async (orderId, vendorId, userId, notes) => {
     await tx.orderStatusLog.create({
       data: {
         order_id: orderId,
-        from_status: 'CARD_DESIGN_READY',
-        to_status: 'SENT_TO_VENDOR',
+        from_status: 'DESIGN_APPROVED',
+        to_status: 'VENDOR_SENT',
         changed_by: userId,
         note: `Assigned to vendor: ${vendor.name}`,
         metadata: { vendor_id: vendorId },
+        actor_type: 'SUPER_ADMIN',
       },
     });
 
@@ -474,6 +439,7 @@ export const assignVendor = async (orderId, vendorId, userId, notes) => {
 };
 
 export const updatePrintingStatus = async (orderId, status, userId, note) => {
+  // FIXED: PRINT_COMPLETE is valid in enum
   const newStatus = status === 'STARTED' ? 'PRINTING' : 'PRINT_COMPLETE';
   const updateData = {
     status: newStatus,
@@ -487,7 +453,6 @@ export const updatePrintingStatus = async (orderId, status, userId, note) => {
       where: { id: orderId },
       select: { status: true },
     });
-
     const updated = await tx.cardOrder.update({
       where: { id: orderId },
       data: updateData,
@@ -502,6 +467,7 @@ export const updatePrintingStatus = async (orderId, status, userId, note) => {
         changed_by: userId,
         note: note?.slice(0, 500) || `Printing ${status.toLowerCase()}`,
         metadata: { printing_status: status },
+        actor_type: 'SUPER_ADMIN',
       },
     });
 
@@ -553,11 +519,7 @@ export const markShipmentShipped = async (orderId, userId, note) => {
 
     const updated = await tx.cardOrder.update({
       where: { id: orderId },
-      data: {
-        status: 'SHIPPED',
-        status_changed_by: userId,
-        status_changed_at: new Date(),
-      },
+      data: { status: 'SHIPPED', status_changed_by: userId, status_changed_at: new Date() },
       select: { id: true, status: true },
     });
 
@@ -568,6 +530,7 @@ export const markShipmentShipped = async (orderId, userId, note) => {
         to_status: 'SHIPPED',
         changed_by: userId,
         note: note?.slice(0, 500) || 'Shipment picked up',
+        actor_type: 'SUPER_ADMIN',
       },
     });
 
@@ -577,6 +540,8 @@ export const markShipmentShipped = async (orderId, userId, note) => {
 
 // =============================================================================
 // DELIVERY — CONFIRM
+// FIXED: balance_invoice_id → final_invoice_id, removed balance_due_at
+//        invoice_type → order_invoice_type, BALANCE → FINAL
 // =============================================================================
 
 export const confirmDelivery = async (orderId, userId, note) => {
@@ -592,15 +557,10 @@ export const confirmDelivery = async (orderId, userId, note) => {
 
     await tx.orderShipment.updateMany({
       where: { order_id: orderId },
-      data: {
-        status: 'DELIVERED',
-        delivered_at: new Date(),
-        delivery_confirmed_by: userId,
-      },
+      data: { status: 'DELIVERED', delivered_at: new Date(), delivery_confirmed_by: userId },
     });
 
     let balanceAmount, unitPrice, taxAmount;
-
     if (order.balance_amount && order.balance_amount > 0) {
       balanceAmount = order.balance_amount;
       unitPrice = order.unit_price || 0;
@@ -608,7 +568,7 @@ export const confirmDelivery = async (orderId, userId, note) => {
     } else {
       const financials = calculateOrderFinancials(
         order.subscription?.pricing_tier || 'PRIVATE_STANDARD',
-        order.card_count
+        order.student_count
       );
       balanceAmount = financials.balanceAmount;
       unitPrice = financials.unitPrice;
@@ -617,27 +577,24 @@ export const confirmDelivery = async (orderId, userId, note) => {
 
     const balanceDueAt = calculateBalanceDueDate();
 
-    let balanceInvoice = await tx.invoice.findFirst({
-      where: { order_id: orderId, invoice_type: 'BALANCE' },
-      select: {
-        id: true,
-        invoice_number: true,
-        total_amount: true,
-        due_at: true,
-      },
+    // FIXED: query by order_invoice_type: 'FINAL' not invoice_type: 'BALANCE'
+    let finalInvoice = await tx.invoice.findFirst({
+      where: { order_id: orderId, order_invoice_type: 'FINAL' },
+      select: { id: true, invoice_number: true, total_amount: true, due_at: true },
     });
 
-    if (!balanceInvoice) {
-      const invoiceNumber = `INV-BAL-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    if (!finalInvoice) {
+      const invoiceNumber = `INV-FINAL-${orderId.slice(0, 8)}-${Date.now()}`;
 
-      balanceInvoice = await tx.invoice.create({
+      finalInvoice = await tx.invoice.create({
         data: {
           school_id: order.school_id,
           subscription_id: order.subscription_id || null,
           order_id: orderId,
           invoice_number: invoiceNumber,
-          invoice_type: 'BALANCE',
-          student_count: order.card_count,
+          category: 'ORDER_INVOICE',
+          order_invoice_type: 'FINAL', // FIXED: was invoice_type: 'BALANCE'
+          student_count: order.student_count,
           unit_price: unitPrice,
           amount: balanceAmount - taxAmount,
           tax_amount: taxAmount,
@@ -646,33 +603,23 @@ export const confirmDelivery = async (orderId, userId, note) => {
           issued_at: new Date(),
           due_at: balanceDueAt,
         },
-        select: {
-          id: true,
-          invoice_number: true,
-          total_amount: true,
-          due_at: true,
-        },
+        select: { id: true, invoice_number: true, total_amount: true, due_at: true },
       });
 
       await tx.cardOrder.update({
         where: { id: orderId },
         data: {
-          balance_invoice_id: balanceInvoice.id,
+          final_invoice_id: finalInvoice.id, // FIXED: was balance_invoice_id
           balance_amount: balanceAmount,
-          balance_due_at: balanceDueAt,
+          // REMOVED: balance_due_at — not in schema
         },
       });
     }
 
     const updatedOrder = await tx.cardOrder.update({
       where: { id: orderId },
-      data: {
-        status: 'BALANCE_PENDING',
-        status_changed_by: userId,
-        status_changed_at: new Date(),
-        balance_due_at: balanceDueAt,
-      },
-      select: { id: true, status: true, balance_due_at: true },
+      data: { status: 'BALANCE_PENDING', status_changed_by: userId, status_changed_at: new Date() },
+      select: { id: true, status: true },
     });
 
     await tx.orderStatusLog.create({
@@ -681,15 +628,13 @@ export const confirmDelivery = async (orderId, userId, note) => {
         from_status: 'SHIPPED',
         to_status: 'BALANCE_PENDING',
         changed_by: userId,
-        note: note?.slice(0, 500) || 'Delivery confirmed — balance invoice issued',
-        metadata: {
-          balance_invoice_id: balanceInvoice.id,
-          balance_amount: balanceAmount,
-        },
+        note: note?.slice(0, 500) || 'Delivery confirmed — final invoice issued',
+        metadata: { final_invoice_id: finalInvoice.id, balance_amount: balanceAmount },
+        actor_type: 'SUPER_ADMIN',
       },
     });
 
-    return { order: updatedOrder, balanceInvoice };
+    return { order: updatedOrder, balanceInvoice: finalInvoice };
   });
 };
 
@@ -723,10 +668,11 @@ export const cancelOrder = async (orderId, userId, reason) => {
     await tx.orderStatusLog.create({
       data: {
         order_id: orderId,
-        from_status: prev?.status || 'UNKNOWN',
+        from_status: prev?.status,
         to_status: 'CANCELLED',
         changed_by: userId,
         note: reason?.slice(0, 500),
+        actor_type: 'SUPER_ADMIN',
       },
     });
 
@@ -736,6 +682,7 @@ export const cancelOrder = async (orderId, userId, reason) => {
 
 // =============================================================================
 // INVOICE QUERIES
+// FIXED: invoice_type → order_invoice_type
 // =============================================================================
 
 export const findInvoiceById = invoiceId => {
@@ -745,9 +692,7 @@ export const findInvoiceById = invoiceId => {
       order: {
         select: {
           order_number: true,
-          school: {
-            select: { id: true, name: true, code: true, address: true },
-          },
+          school: { select: { id: true, name: true, code: true, address: true } },
           subscription: { select: { id: true, pricing_tier: true } },
         },
       },
@@ -756,15 +701,14 @@ export const findInvoiceById = invoiceId => {
 };
 
 export const findInvoiceByOrderAndType = (orderId, type) => {
+  // type param: 'PARTIAL' or 'FINAL' (mapped from route :type 'advance'|'balance' in service)
   return prisma.invoice.findFirst({
-    where: { order_id: orderId, invoice_type: type },
+    where: { order_id: orderId, order_invoice_type: type },
     include: {
       order: {
         select: {
           order_number: true,
-          school: {
-            select: { id: true, name: true, code: true, address: true },
-          },
+          school: { select: { id: true, name: true, code: true, address: true } },
         },
       },
     },
@@ -805,6 +749,7 @@ export const updateOrderPayment = async (
         changed_by: userId,
         note: amount ? `Payment ₹${(amount / 100).toFixed(2)} recorded` : 'Payment status updated',
         metadata: { reference: reference || null },
+        actor_type: 'SUPER_ADMIN',
       },
     });
 

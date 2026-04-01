@@ -20,6 +20,24 @@ const USER_PREFIX = 'auth:user:';
 const LAST_ACTIVE_PREFIX = 'auth:la:';
 const BEARER_REGEX = /^Bearer\s[\w-]+\.[\w-]+\.[\w-]+$/;
 
+// ─── PUBLIC PATHS (No authentication required) ────────────────────────────────
+const PUBLIC_PATHS = [
+  '/api/auth/super-admin',
+  '/api/auth/school',
+  '/api/auth/send-otp',
+  '/api/auth/verify-otp',
+  '/api/auth/register/init',
+  '/api/auth/register/verify',
+  '/api/auth/refresh',
+  '/health',
+  '/api/admin/queues',
+];
+
+// ─── Helper to check if path is public ────────────────────────────────────────
+const isPublicPath = path => {
+  return PUBLIC_PATHS.some(publicPath => path === publicPath || path.startsWith(publicPath + '/'));
+};
+
 // ─── Redis values for blacklist ───────────────────────────────────────────────
 // "1' = token IS blacklisted (revoked)
 // '0' = token confirmed clean (cached negative — skip DB check)
@@ -35,6 +53,11 @@ const LAST_ACTIVE_TTL = 60; // 60s  — last_active_at write throttle window
 // ─── Core Auth ────────────────────────────────────────────────────────────────
 
 export const authenticate = asyncHandler(async (req, _res, next) => {
+  // ✅ PUBLIC PATH CHECK — Skip authentication entirely
+  if (isPublicPath(req.path)) {
+    return next();
+  }
+
   let token = null;
 
   // ✅ 1. Try cookie first (for browser)

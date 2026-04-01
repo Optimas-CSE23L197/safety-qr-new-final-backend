@@ -19,6 +19,7 @@ import {
   emergencyAlertsQueue,
   notificationsQueue,
   backgroundJobsQueue,
+  pipelineJobsQueue,
 } from './queue.config.js';
 
 export {
@@ -29,6 +30,7 @@ export {
   emergencyAlertsQueue,
   notificationsQueue,
   backgroundJobsQueue,
+  pipelineJobsQueue,
 };
 
 export function getQueue(name) {

@@ -43,6 +43,7 @@ export class S3Adapter extends StorageProvider {
         })
       );
 
+      // In upload method - update location URL construction
       const location = this.cdnDomain
         ? `https://${this.cdnDomain}/${key}`
         : this.endpoint
@@ -81,10 +82,14 @@ export class S3Adapter extends StorageProvider {
     }
   }
 
+  // In getUrl method - replace the AWS-style fallback with R2-style
   async getUrl(key, expiresIn = 3600) {
     try {
       if (this.cdnDomain) {
         return `https://${this.cdnDomain}/${key}`;
+      }
+      if (this.endpoint) {
+        return `https://${this.endpoint}/${this.bucket}/${key}`;
       }
       return getSignedUrl(this.s3, new GetObjectCommand({ Bucket: this.bucket, Key: key }), {
         expiresIn,

@@ -83,12 +83,12 @@ export async function getOrderForApproval(orderId) {
 }
 
 /**
- * Apply approval — transitions order to CONFIRMED via applyTransition so the
+ * Apply approval — transitions order to CONFIRMED via so the
  * state machine and event bus are notified.
  */
 export async function applyApproval(orderId, approvedBy, notes, metadata = {}) {
   // Import here to avoid circular dependency with orchestrator layer
-  const { applyTransition } = await import('#orchestrator/state/order.guards.js');
+  const {} = await import('#orchestrator/state/order.guards.js');
   const { ORDER_STATUS } = await import('#orchestrator/state/order.states.js');
 
   const order = await prisma.cardOrder.findUnique({
@@ -128,7 +128,7 @@ export async function applyApproval(orderId, approvedBy, notes, metadata = {}) {
  * Reject an order — transitions to CANCELLED via applyTransition.
  */
 export async function rejectOrder(orderId, rejectedBy, reason) {
-  const { applyTransition } = await import('#orchestrator/state/order.guards.js');
+  const {} = await import('#orchestrator/state/order.guards.js');
   const { ORDER_STATUS } = await import('#orchestrator/state/order.states.js');
 
   const order = await prisma.cardOrder.findUnique({

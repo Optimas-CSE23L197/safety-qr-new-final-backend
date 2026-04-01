@@ -26,6 +26,7 @@ import { logger } from '#config/logger.js';
 
 // ── Contact loaders ───────────────────────────────────────────────────────────
 
+// Add fallback for when user not found
 const loadUserContacts = async (userId, userType) => {
   if (userType === 'PARENT_USER') {
     const user = await prisma.parentUser.findUnique({
@@ -34,9 +35,16 @@ const loadUserContacts = async (userId, userType) => {
     });
     return { email: user?.email ?? null, fcmTokens: user?.devices?.map(d => d.fcm_token) ?? [] };
   }
-  // SchoolUser, SuperAdmin have no devices — email only
   if (userType === 'SCHOOL_USER') {
     const user = await prisma.schoolUser.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+    return { email: user?.email ?? null, fcmTokens: [] };
+  }
+  // ✅ Add fallback for SUPER_ADMIN
+  if (userType === 'SUPER_ADMIN') {
+    const user = await prisma.superAdmin.findUnique({
       where: { id: userId },
       select: { email: true },
     });
@@ -66,11 +74,11 @@ const loadSchoolAdminFcmTokens = async schoolId => {
  */
 const loadSchoolAdminUserIds = async schoolId => {
   try {
-    const admins = await prisma.schoolAdmin.findMany({
+    const users = await prisma.schoolUser.findMany({
       where: { school_id: schoolId, is_active: true },
-      select: { user_id: true },
+      select: { id: true },
     });
-    return admins.map(a => a.user_id).filter(Boolean);
+    return users.map(u => u.id).filter(Boolean);
   } catch (err) {
     logger.error(
       { err: err.message, schoolId },
@@ -117,6 +125,10 @@ const writeNotificationLog = async ({ channel, status, latencyMs, providerRef, e
         student_id: meta?.studentId ?? null,
         user_id: meta?.userId ?? null,
         event_type: meta?.eventType ?? null,
+        recipient: meta?.recipient ?? meta?.schoolId ?? 'system',
+        type: meta?.eventType ?? channel,
+        content: meta?.content ?? null,
+        subject: meta?.subject ?? null,
       },
     });
   } catch (err) {
@@ -529,7 +541,7 @@ export const dispatch = async event => {
         break;
       }
 
-      // ── ORDER_REFUNDED → push + email + SSE  [FIX-1: was EVENTS.REFUNDED] ─
+      // ── ORDER_REFUNDED → push + email + SSE [FIX-1: was EVENTS.REFUNDED] ─
       case EVENTS.ORDER_REFUNDED: {
         const { orderNumber, amount } = payload;
         const [tokens, school] = await Promise.all([
@@ -642,11 +654,11 @@ export const dispatch = async event => {
 
       // ── STUDENT_QR_SCANNED → push ─────────────────────────────────────────
       case EVENTS.STUDENT_QR_SCANNED: {
-        const { studentName, location, parentFcmTokens, notifyEnabled } = payload;
-        if (notifyEnabled && parentFcmTokens?.length) {
+        const { studentName, location, parentExpoTokens, notifyEnabled } = payload;
+        if (notifyEnabled && parentExpoTokens?.length) {
           const push = pushTemplates.STUDENT_QR_SCANNED({ studentName, location });
           await timedSend(
-            () => sendPushNotificationChannel({ tokens: parentFcmTokens, ...push, meta: logMeta }),
+            () => sendPushNotificationChannel({ tokens: parentExpoTokens, ...push, meta: logMeta }),
             'PUSH',
             logMeta
           );

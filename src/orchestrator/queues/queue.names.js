@@ -8,12 +8,13 @@ export const QUEUE_NAMES = Object.freeze({
   EMERGENCY_ALERTS: 'emergency_queue',
   NOTIFICATIONS: 'notification_queue',
   BACKGROUND_JOBS: 'background_queue',
+  PIPELINE_JOBS: 'pipeline_queue',
 
   // Aliases
   CRITICAL: 'emergency_queue',
   BACKGROUND: 'background_queue',
   ORDER: 'background_queue',
-  JOBS_BACKGROUND: 'background_queue',
+  JOBS_BACKGROUND: 'pipeline_queue',
 });
 
 // Priority mapping (1 = highest)
@@ -21,6 +22,7 @@ export const QUEUE_PRIORITIES = {
   [QUEUE_NAMES.EMERGENCY_ALERTS]: 1,
   [QUEUE_NAMES.NOTIFICATIONS]: 2,
   [QUEUE_NAMES.BACKGROUND_JOBS]: 3,
+  [QUEUE_NAMES.PIPELINE_JOBS]: 4,
 };
 
 // SLA targets (milliseconds)
@@ -28,4 +30,5 @@ export const QUEUE_SLA_MS = {
   [QUEUE_NAMES.EMERGENCY_ALERTS]: 8000,
   [QUEUE_NAMES.NOTIFICATIONS]: 15000,
   [QUEUE_NAMES.BACKGROUND_JOBS]: 300000,
+  [QUEUE_NAMES.PIPELINE_JOBS]: 600000,
 };

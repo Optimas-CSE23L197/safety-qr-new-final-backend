@@ -21,6 +21,7 @@
 import Redis, { Cluster } from 'ioredis';
 import { ENV } from './env.js';
 import { logger } from './logger.js';
+console.log('ENV.REDIS_TLS:', ENV.REDIS_TLS);
 
 // ─── Base Options (shared across all profiles) ────────────────────────────────
 
@@ -59,7 +60,7 @@ function buildBaseOptions() {
     autoResubscribe: true,
     keyPrefix: ENV.REDIS_KEY_PREFIX || 'resqid:',
 
-    ...(ENV.REDIS_PASSWORD && { password: ENV.REDIS_PASSWORD }),
+    ...(ENV.REDIS_PASSWORD && ENV.REDIS_PASSWORD !== '' && { password: ENV.REDIS_PASSWORD }),
     ...(ENV.REDIS_TLS && {
       tls: { rejectUnauthorized: ENV.IS_PROD },
     }),
@@ -83,9 +84,11 @@ function buildHttpOptions() {
   return {
     ...buildBaseOptions(),
     commandTimeout: ENV.REDIS_COMMAND_TIMEOUT ?? 3_000,
-    enableOfflineQueue: false,
+    enableOfflineQueue: true,
     autoResendUnfulfilledCommands: false,
     maxRetriesPerRequest: ENV.REDIS_MAX_RETRIES_PER_REQUEST ?? 1,
+    // ADD THIS — don't attempt commands before TLS handshake completes
+    lazyConnect: true,
   };
 }
 
@@ -128,12 +131,18 @@ function buildMiddlewareOptions() {
 //   Disabled — BullMQ manages its own timeouts per operation type.
 
 function buildWorkerOptions() {
+  const options = buildBaseOptions();
+  delete options.keyPrefix;
   return {
-    ...buildBaseOptions(),
+    ...options,
     commandTimeout: 0,
     enableOfflineQueue: true,
     autoResendUnfulfilledCommands: true,
     maxRetriesPerRequest: null,
+    tls: { rejectUnauthorized: false },
+    connectTimeout: 30000,
+    lazyConnect: true,
+    family: 4,
   };
 }
 
@@ -223,8 +232,22 @@ export const middlewareRedis =
  * Import this in: queue.manager.js, workers/index.js, idempotency.service.js.
  * enableOfflineQueue: true, maxRetriesPerRequest: null — required by BullMQ.
  */
-export const workerRedis =
-  g.__workerRedis ?? (g.__workerRedis = createRedisClient('worker', buildWorkerOptions()));
+export const workerRedis = new Redis(ENV.REDIS_URL, {
+  maxRetriesPerRequest: null,
+  enableOfflineQueue: true,
+  tls: { rejectUnauthorized: false },
+  connectTimeout: 30000,
+  lazyConnect: true,
+  retryStrategy: times => Math.min(times * 100, 3000),
+});
+
+workerRedis.on('ready', () => {
+  console.log('✅ Worker Redis connection ready');
+});
+
+workerRedis.on('error', err => {
+  console.error('❌ Worker Redis error:', err);
+});
 
 // ─── Pub/Sub Client Factory ───────────────────────────────────────────────────
 

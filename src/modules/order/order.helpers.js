@@ -1,6 +1,6 @@
 // =============================================================================
 // order.helpers.js — RESQID
-// Shared pure utilities for the order pipeline. No DB calls. No side effects.
+// PATCH 02: Fixed VALID_TRANSITIONS to match OrderStatus enum in schema
 // =============================================================================
 
 const PRICING = {
@@ -20,32 +20,25 @@ export const calculateOrderFinancials = (pricingTier, cardCount, customUnitPrice
   const grandTotal = subtotal + taxAmount;
   const advanceAmount = Math.round(grandTotal * 0.5);
   const balanceAmount = grandTotal - advanceAmount;
-  return {
-    unitPrice,
-    subtotal,
-    taxAmount,
-    grandTotal,
-    advanceAmount,
-    balanceAmount,
-  };
+  return { unitPrice, subtotal, taxAmount, grandTotal, advanceAmount, balanceAmount };
 };
 
+// FIXED: All values now match OrderStatus enum exactly
 const VALID_TRANSITIONS = {
   PENDING: ['CONFIRMED', 'CANCELLED'],
   CONFIRMED: ['PAYMENT_PENDING', 'CANCELLED'],
   PAYMENT_PENDING: ['ADVANCE_RECEIVED', 'CANCELLED'],
-  ADVANCE_RECEIVED: ['TOKEN_GENERATION', 'CANCELLED'],
-  TOKEN_GENERATION: ['TOKEN_GENERATED', 'CANCELLED'],
-  TOKEN_GENERATED: ['CARD_DESIGN', 'CANCELLED'],
-  CARD_DESIGN: ['CARD_DESIGN_READY', 'CARD_DESIGN_REVISION', 'CANCELLED'],
-  CARD_DESIGN_REVISION: ['CARD_DESIGN', 'CANCELLED'],
-  CARD_DESIGN_READY: ['SENT_TO_VENDOR', 'CANCELLED'],
-  SENT_TO_VENDOR: ['PRINTING', 'CANCELLED'],
+  ADVANCE_RECEIVED: ['TOKEN_GENERATING', 'CANCELLED'],
+  TOKEN_GENERATING: ['TOKEN_COMPLETE', 'CANCELLED'],
+  TOKEN_COMPLETE: ['DESIGN_GENERATING', 'CANCELLED'],
+  DESIGN_GENERATING: ['DESIGN_COMPLETE', 'CANCELLED'],
+  DESIGN_COMPLETE: ['DESIGN_APPROVED', 'DESIGN_GENERATING', 'CANCELLED'],
+  DESIGN_APPROVED: ['VENDOR_SENT', 'CANCELLED'],
+  VENDOR_SENT: ['PRINTING', 'CANCELLED'],
   PRINTING: ['PRINT_COMPLETE', 'CANCELLED'],
   PRINT_COMPLETE: ['READY_TO_SHIP', 'CANCELLED'],
   READY_TO_SHIP: ['SHIPPED'],
-  SHIPPED: ['OUT_FOR_DELIVERY', 'DELIVERED'],
-  OUT_FOR_DELIVERY: ['DELIVERED'],
+  SHIPPED: ['DELIVERED'],
   DELIVERED: ['BALANCE_PENDING'],
   BALANCE_PENDING: ['COMPLETED'],
   COMPLETED: [],
@@ -62,30 +55,32 @@ export const assertValidTransition = (fromStatus, toStatus) => {
   }
 };
 
+// FIXED: Use actual OrderStatus enum values
 const CANCELLABLE_STATUSES = new Set([
   'PENDING',
   'CONFIRMED',
   'PAYMENT_PENDING',
   'ADVANCE_RECEIVED',
-  'TOKEN_GENERATION',
-  'TOKEN_GENERATED',
-  'CARD_DESIGN',
-  'CARD_DESIGN_REVISION',
-  'CARD_DESIGN_READY',
-  'SENT_TO_VENDOR',
+  'TOKEN_GENERATING',
+  'TOKEN_COMPLETE',
+  'DESIGN_GENERATING',
+  'DESIGN_COMPLETE',
+  'DESIGN_APPROVED',
+  'VENDOR_SENT',
   'PRINTING',
   'PRINT_COMPLETE',
 ]);
 export const isCancellable = status => CANCELLABLE_STATUSES.has(status);
 
+// Statuses where advance has been paid — cancellation requires refund
 const PAID_STATUSES = new Set([
   'ADVANCE_RECEIVED',
-  'TOKEN_GENERATION',
-  'TOKEN_GENERATED',
-  'CARD_DESIGN',
-  'CARD_DESIGN_REVISION',
-  'CARD_DESIGN_READY',
-  'SENT_TO_VENDOR',
+  'TOKEN_GENERATING',
+  'TOKEN_COMPLETE',
+  'DESIGN_GENERATING',
+  'DESIGN_COMPLETE',
+  'DESIGN_APPROVED',
+  'VENDOR_SENT',
   'PRINTING',
   'PRINT_COMPLETE',
 ]);

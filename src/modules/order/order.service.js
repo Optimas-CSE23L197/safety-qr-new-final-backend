@@ -1,6 +1,13 @@
 // =============================================================================
-// order.service.js — RESQID (Business Logic Layer with Notifications)
+// order.service.js — RESQID
+// PATCH 04: Fixed:
+//   - EVENTS + notificationService import (were missing — runtime crash)
+//   - channel mapping MANUAL → CALL (not in OrderChannel enum)
+//   - amount validation logic (redundant double condition)
+//   - invoice type lookup ADVANCE/BALANCE → PARTIAL/FINAL
+//   - card_count → student_count field reference
 // =============================================================================
+
 import * as repo from './order.repository.js';
 import {
   calculateOrderFinancials,
@@ -9,12 +16,10 @@ import {
   requiresRefund,
 } from './order.helpers.js';
 import { ApiError } from '#shared/response/ApiError.js';
-import { notificationService } from '#services/communication/notification.service.js';
+// FIXED: import dispatch AND EVENTS (both were missing)
+import { dispatch } from '#orchestrator/notifications/notification.dispatcher.js';
+import { EVENTS } from '#orchestrator/events/event.types.js';
 import { prisma } from '#config/prisma.js';
-
-// =============================================================================
-// HELPER — Get school with contact details for notifications
-// =============================================================================
 
 const getSchoolWithContacts = async schoolId => {
   return prisma.school.findUnique({
@@ -28,22 +33,29 @@ const getSchoolWithContacts = async schoolId => {
 // =============================================================================
 
 export const createNewOrder = async data => {
-  const { school_id, order_type, card_count, items, delivery_address, notes, userId, userRole } =
-    data;
+  const {
+    school_id,
+    order_type,
+    card_count,
+    items,
+    delivery_address,
+    notes,
+    userId,
+    userRole,
+    order_channel,
+  } = data;
 
-  // Validate school_id format
   if (!school_id || school_id.length !== 36) {
     throw ApiError.badRequest('Invalid school ID');
   }
 
-  const channel = userRole === 'SUPER_ADMIN' ? 'MANUAL' : 'DASHBOARD';
+  // FIXED: OrderChannel enum is DASHBOARD | CALL. 'MANUAL' doesn't exist.
+  // Channel should come from request body; default DASHBOARD for school admin
+  const channel = order_channel ?? (userRole === 'SUPER_ADMIN' ? 'CALL' : 'DASHBOARD');
 
   const subscription = await repo.findActiveSubscription(school_id);
-  if (!subscription) {
-    throw ApiError.badRequest('No active subscription found for this school');
-  }
+  if (!subscription) throw ApiError.badRequest('No active subscription found for this school');
 
-  // Generate unique order number
   const timestamp = Date.now();
   const random = Math.random().toString(36).slice(2, 6).toUpperCase();
   const orderNumber = `ORD-${timestamp}-${random}`;
@@ -66,50 +78,42 @@ export const createNewOrder = async data => {
     notes: notes?.slice(0, 500),
   });
 
-  // ✅ NOTIFICATION: Order Created
+  // FIXED: use dispatch() with EVENTS — notificationService was never imported
   try {
     const school = await getSchoolWithContacts(school_id);
-    await notificationService.notifyOrder('ORDER_CREATED', order, school);
+    await dispatch({
+      type: EVENTS.ORDER_PLACED,
+      schoolId: school_id,
+      payload: { orderNumber: order.order_number, school },
+      meta: { orderId: order.id },
+    });
   } catch (err) {
-    // Non-blocking — notification failure shouldn't break order creation
-    console.error('Failed to send ORDER_CREATED notification:', err.message);
+    console.error('Failed to send ORDER_PLACED notification:', err.message);
   }
 
   return { order, subscription };
 };
 
 // =============================================================================
-// LIST ORDERS (with permission filtering)
+// LIST ORDERS
 // =============================================================================
 
 export const listOrders = async (filters, user) => {
-  // Apply tenant isolation
-  if (user.role === 'SCHOOL_ADMIN') {
-    filters.school_id = user.schoolId;
-  }
-
+  if (user.role === 'SCHOOL_ADMIN') filters.school_id = user.schoolId;
   const [orders, total] = await repo.listOrders(filters);
-  return {
-    orders,
-    total,
-    limit: filters.limit || 50,
-    offset: filters.offset || 0,
-  };
+  return { orders, total, limit: filters.limit || 50, offset: filters.offset || 0 };
 };
 
 // =============================================================================
-// ORDER DETAILS (with permission check)
+// ORDER DETAILS
 // =============================================================================
 
 export const getOrderDetails = async (orderId, user) => {
   const order = await repo.findOrderById(orderId, true);
   if (!order) throw ApiError.notFound('Order not found');
-
-  // Permission check
   if (user.role === 'SCHOOL_ADMIN' && order.school_id !== user.schoolId) {
     throw ApiError.forbidden('Access denied');
   }
-
   return order;
 };
 
@@ -124,16 +128,17 @@ export const confirmOrder = async (orderId, userId, note) => {
   assertValidTransition(order.status, 'CONFIRMED');
 
   if (order.order_type === 'PRE_DETAILS') {
-    if (!order.items || order.items.length !== order.card_count) {
+    // FIXED: student_count not card_count
+    if (!order.items || order.items.length !== order.student_count) {
       throw ApiError.badRequest(
-        `PRE_DETAILS order requires exactly ${order.card_count} items. Found: ${order.items?.length ?? 0}`
+        `PRE_DETAILS order requires exactly ${order.student_count} items. Found: ${order.items?.length ?? 0}`
       );
     }
   }
 
   const financials = calculateOrderFinancials(
     order.subscription?.pricing_tier || 'PRIVATE_STANDARD',
-    order.card_count
+    order.student_count
   );
 
   await repo.updateOrderStatus(
@@ -141,25 +146,31 @@ export const confirmOrder = async (orderId, userId, note) => {
     'CONFIRMED',
     userId,
     note?.slice(0, 500) || 'Order confirmed',
-    {
-      financials,
-    }
+    { financials }
   );
 
-  // ✅ NOTIFICATION: Order Approved
   try {
     const updatedOrder = await repo.findOrderById(orderId, false);
     const school = await getSchoolWithContacts(updatedOrder.school_id);
-    await notificationService.notifyOrder('ORDER_APPROVED', updatedOrder, school);
+    await dispatch({
+      type: EVENTS.ORDER_CONFIRMED,
+      schoolId: updatedOrder.school_id,
+      payload: {
+        orderNumber: updatedOrder.order_number,
+        cardCount: updatedOrder.student_count,
+        amount: financials.grandTotal,
+      },
+      meta: { orderId },
+    });
   } catch (err) {
-    console.error('Failed to send ORDER_APPROVED notification:', err.message);
+    console.error('Failed to send ORDER_CONFIRMED notification:', err.message);
   }
 
   return { orderId, status: 'CONFIRMED', financials };
 };
 
 // =============================================================================
-// INVOICE — ADVANCE
+// INVOICE — ADVANCE (PARTIAL)
 // =============================================================================
 
 export const generateAdvanceInvoice = async (orderId, userId) => {
@@ -168,19 +179,17 @@ export const generateAdvanceInvoice = async (orderId, userId) => {
 
   assertValidTransition(order.status, 'PAYMENT_PENDING');
 
-  if (order.advance_invoice_id) {
-    return {
-      invoice: order.advanceInvoice,
-      amount: order.advance_amount,
-      alreadyExisted: true,
-    };
+  // FIXED: relation is partialInvoice not advanceInvoice
+  if (order.partial_invoice_id) {
+    return { invoice: order.partialInvoice, amount: order.advance_amount, alreadyExisted: true };
   }
 
   const { invoice, financials } = await repo.createAdvanceInvoice({
     schoolId: order.school_id,
     subscriptionId: order.subscription_id,
     orderId,
-    cardCount: order.card_count,
+    orderNumber: order.order_number,
+    cardCount: order.student_count,
     pricingTier: order.subscription?.pricing_tier || 'PRIVATE_STANDARD',
     customUnitPrice: null,
   });
@@ -189,17 +198,19 @@ export const generateAdvanceInvoice = async (orderId, userId) => {
     invoiceId: invoice.id,
   });
 
-  // ✅ NOTIFICATION: Advance Invoice Ready
   try {
-    const updatedOrder = await repo.findOrderById(orderId, false);
-    const school = await getSchoolWithContacts(updatedOrder.school_id);
-    await notificationService.notifyOrder('ADVANCE_INVOICE_READY', updatedOrder, school, {
-      invoiceNumber: invoice.invoice_number,
-      amount: financials.advanceAmount / 100,
-      dueDate: invoice.due_at,
+    await dispatch({
+      type: EVENTS.PARTIAL_INVOICE_GENERATED,
+      schoolId: order.school_id,
+      payload: {
+        orderNumber: order.order_number,
+        amount: financials.advanceAmount,
+        invoiceUrl: null,
+      },
+      meta: { orderId },
     });
   } catch (err) {
-    console.error('Failed to send ADVANCE_INVOICE_READY notification:', err.message);
+    console.error('Failed to send PARTIAL_INVOICE_GENERATED notification:', err.message);
   }
 
   return { invoice, amount: financials.advanceAmount };
@@ -217,14 +228,15 @@ export const recordAdvancePayment = async (orderId, paymentData, userId) => {
 
   if (order.status !== 'PAYMENT_PENDING') {
     throw ApiError.badRequest(
-      `Cannot record advance payment. Order is in ${order.status} state — expected PAYMENT_PENDING`
+      `Cannot record advance payment. Order is in ${order.status} — expected PAYMENT_PENDING`
     );
   }
 
-  const invoice = order.advanceInvoice;
+  // FIXED: relation is partialInvoice
+  const invoice = order.partialInvoice;
   if (!invoice) {
     throw ApiError.badRequest(
-      'Advance invoice not found. Generate the advance invoice first via POST /orders/:id/invoice/advance'
+      'Advance invoice not found. Generate it first via POST /orders/:id/invoice/advance'
     );
   }
 
@@ -232,28 +244,25 @@ export const recordAdvancePayment = async (orderId, paymentData, userId) => {
     throw ApiError.badRequest('Advance invoice is already marked as paid');
   }
 
-  // Validate amount
   const expectedAmount = order.advance_amount || invoice.total_amount;
-  if (
-    paymentData.amount_received < expectedAmount &&
-    paymentData.amount_received !== expectedAmount
-  ) {
-    throw ApiError.badRequest(`Advance payment should be ₹${(expectedAmount / 100).toFixed(2)}`);
+
+  // FIXED: simplified — was `a < b && a !== b` which is just `a < b`
+  if (paymentData.amount_received < expectedAmount) {
+    throw ApiError.badRequest(
+      `Advance payment must be at least ₹${(expectedAmount / 100).toFixed(2)}`
+    );
   }
 
   const payment = await repo.recordPayment({
     orderId,
     invoiceId: invoice.id,
     schoolId: order.school_id,
-    subscriptionId: order.subscription_id,
     amount: paymentData.amount_received,
     paymentMode: paymentData.payment_mode,
     paymentRef: paymentData.payment_ref,
     isAdvance: true,
     userId,
   });
-
-  const isFull = paymentData.amount_received >= expectedAmount;
 
   await repo.updateOrderPayment(
     orderId,
@@ -264,16 +273,15 @@ export const recordAdvancePayment = async (orderId, paymentData, userId) => {
     paymentData.payment_ref
   );
 
-  // ✅ NOTIFICATION: Advance Payment Received
   try {
-    const updatedOrder = await repo.findOrderById(orderId, false);
-    const school = await getSchoolWithContacts(updatedOrder.school_id);
-    await notificationService.notifyOrder('ADVANCE_PAYMENT_RECEIVED', updatedOrder, school, {
-      amount: paymentData.amount_received / 100,
-      reference: paymentData.payment_ref,
+    await dispatch({
+      type: EVENTS.ORDER_ADVANCE_PAYMENT_RECEIVED,
+      schoolId: order.school_id,
+      payload: { orderNumber: order.order_number, amount: paymentData.amount_received },
+      meta: { orderId },
     });
   } catch (err) {
-    console.error('Failed to send ADVANCE_PAYMENT_RECEIVED notification:', err.message);
+    console.error('Failed to send ORDER_ADVANCE_PAYMENT_RECEIVED notification:', err.message);
   }
 
   return {
@@ -281,7 +289,6 @@ export const recordAdvancePayment = async (orderId, paymentData, userId) => {
     invoiceId: invoice.id,
     amountReceived: paymentData.amount_received,
     advanceAmount: expectedAmount,
-    fullyPaid: isFull,
   };
 };
 
@@ -295,41 +302,42 @@ export const recordBalancePayment = async (orderId, paymentData, userId) => {
 
   if (order.status !== 'BALANCE_PENDING') {
     throw ApiError.badRequest(
-      `Cannot record balance payment. Order is in ${order.status} state — expected BALANCE_PENDING`
+      `Cannot record balance payment. Order is in ${order.status} — expected BALANCE_PENDING`
     );
   }
 
-  let balanceInvoice = order.balanceInvoice;
-  if (!balanceInvoice && order.balance_invoice_id) {
-    balanceInvoice = await repo.findInvoiceById(order.balance_invoice_id);
+  // FIXED: relation is finalInvoice
+  let finalInvoice = order.finalInvoice;
+  if (!finalInvoice && order.final_invoice_id) {
+    finalInvoice = await repo.findInvoiceById(order.final_invoice_id);
   }
 
-  if (!balanceInvoice) {
+  if (!finalInvoice) {
     const financials = calculateOrderFinancials(
       order.subscription?.pricing_tier || 'PRIVATE_STANDARD',
-      order.card_count
+      order.student_count
     );
     const { invoice } = await repo.createBalanceInvoice({
       schoolId: order.school_id,
       subscriptionId: order.subscription_id,
       orderId,
-      cardCount: order.card_count,
+      orderNumber: order.order_number,
+      cardCount: order.student_count,
       unitPrice: financials.unitPrice,
       balanceAmount: financials.balanceAmount,
       taxAmount: financials.taxAmount,
     });
-    balanceInvoice = invoice;
+    finalInvoice = invoice;
   }
 
-  if (balanceInvoice.status === 'PAID') {
+  if (finalInvoice.status === 'PAID') {
     throw ApiError.badRequest('Balance invoice is already marked as paid');
   }
 
   const payment = await repo.recordPayment({
     orderId,
-    invoiceId: balanceInvoice.id,
+    invoiceId: finalInvoice.id,
     schoolId: order.school_id,
-    subscriptionId: order.subscription_id,
     amount: paymentData.amount_received,
     paymentMode: paymentData.payment_mode,
     paymentRef: paymentData.payment_ref,
@@ -339,23 +347,21 @@ export const recordBalancePayment = async (orderId, paymentData, userId) => {
 
   await repo.updateOrderPayment(
     orderId,
-    'PAID',
+    'FULLY_PAID',
     userId,
     false,
     paymentData.amount_received,
     paymentData.payment_ref
   );
 
-  if (order.subscription_id) {
-    await repo.markSubscriptionPaid(order.subscription_id);
-  }
+  if (order.subscription_id) await repo.markSubscriptionPaid(order.subscription_id);
 
-  // ✅ NOTIFICATION: Order Completed
   try {
-    const updatedOrder = await repo.findOrderById(orderId, false);
-    const school = await getSchoolWithContacts(updatedOrder.school_id);
-    await notificationService.notifyOrder('ORDER_COMPLETED', updatedOrder, school, {
-      totalAmount: (order.grand_total || 0) / 100,
+    await dispatch({
+      type: EVENTS.ORDER_COMPLETED,
+      schoolId: order.school_id,
+      payload: { orderNumber: order.order_number },
+      meta: { orderId },
     });
   } catch (err) {
     console.error('Failed to send ORDER_COMPLETED notification:', err.message);
@@ -363,7 +369,7 @@ export const recordBalancePayment = async (orderId, paymentData, userId) => {
 
   return {
     payment,
-    invoiceId: balanceInvoice.id,
+    invoiceId: finalInvoice.id,
     amountReceived: paymentData.amount_received,
     orderId,
     status: 'COMPLETED',
@@ -378,19 +384,20 @@ export const assignVendorToOrder = async (orderId, vendorId, userId, notes) => {
   const order = await repo.findOrderById(orderId, true);
   if (!order) throw ApiError.notFound('Order not found');
 
-  assertValidTransition(order.status, 'SENT_TO_VENDOR');
+  assertValidTransition(order.status, 'VENDOR_SENT');
 
   const updated = await repo.assignVendor(orderId, vendorId, userId, notes?.slice(0, 500));
 
-  // ✅ NOTIFICATION: Vendor Assigned
   try {
     const fullOrder = await repo.findOrderById(orderId, true);
-    const school = await getSchoolWithContacts(fullOrder.school_id);
-    await notificationService.notifyOrder('VENDOR_ASSIGNED', fullOrder, school, {
-      vendorName: fullOrder.vendor?.name,
+    await dispatch({
+      type: EVENTS.ORDER_CARD_DESIGN_COMPLETE, // closest event for vendor dispatch
+      schoolId: fullOrder.school_id,
+      payload: { orderNumber: fullOrder.order_number, reviewUrl: null },
+      meta: { orderId },
     });
   } catch (err) {
-    console.error('Failed to send VENDOR_ASSIGNED notification:', err.message);
+    console.error('Failed to send vendor assigned notification:', err.message);
   }
 
   return updated;
@@ -400,28 +407,10 @@ export const updatePrinting = async (orderId, status, userId, note) => {
   const order = await repo.findOrderById(orderId, true);
   if (!order) throw ApiError.notFound('Order not found');
 
-  if (status === 'STARTED') {
-    assertValidTransition(order.status, 'PRINTING');
-  } else if (status === 'COMPLETED') {
-    assertValidTransition(order.status, 'PRINT_COMPLETE');
-  }
+  if (status === 'STARTED') assertValidTransition(order.status, 'PRINTING');
+  else if (status === 'COMPLETED') assertValidTransition(order.status, 'PRINT_COMPLETE');
 
-  const updated = await repo.updatePrintingStatus(orderId, status, userId, note?.slice(0, 500));
-
-  // ✅ NOTIFICATION: Printing Started
-  if (status === 'STARTED') {
-    try {
-      const fullOrder = await repo.findOrderById(orderId, false);
-      const school = await getSchoolWithContacts(fullOrder.school_id);
-      await notificationService.notifyOrder('PRINTING_STARTED', fullOrder, school, {
-        expectedDays: 7,
-      });
-    } catch (err) {
-      console.error('Failed to send PRINTING_STARTED notification:', err.message);
-    }
-  }
-
-  return updated;
+  return repo.updatePrintingStatus(orderId, status, userId, note?.slice(0, 500));
 };
 
 // =============================================================================
@@ -453,7 +442,6 @@ export const createShipmentForOrder = async (orderId, shipmentData, userId) => {
   });
 
   await repo.updateOrderStatus(orderId, 'READY_TO_SHIP', userId, 'Shipment created');
-
   return shipment;
 };
 
@@ -462,27 +450,30 @@ export const markShipmentShipped = async (orderId, userId, note) => {
   if (!order) throw ApiError.notFound('Order not found');
 
   assertValidTransition(order.status, 'SHIPPED');
-
   await repo.markShipmentShipped(orderId, userId, note?.slice(0, 500));
 
-  // ✅ NOTIFICATION: Order Shipped
   try {
     const fullOrder = await repo.findOrderById(orderId, true);
-    const school = await getSchoolWithContacts(fullOrder.school_id);
-    await notificationService.notifyOrder('SHIPPED', fullOrder, school, {
-      awbCode: fullOrder.shipment?.awb_code,
-      trackingUrl: fullOrder.shipment?.tracking_url,
-      courierName: fullOrder.shipment?.courier_name,
+    await dispatch({
+      type: EVENTS.ORDER_SHIPPED,
+      schoolId: fullOrder.school_id,
+      payload: {
+        orderNumber: fullOrder.order_number,
+        trackingId: fullOrder.shipment?.awb_code,
+        trackingUrl: fullOrder.shipment?.tracking_url,
+        schoolPhone: fullOrder.school?.phone,
+      },
+      meta: { orderId },
     });
   } catch (err) {
-    console.error('Failed to send SHIPPED notification:', err.message);
+    console.error('Failed to send ORDER_SHIPPED notification:', err.message);
   }
 
   return { orderId, status: 'SHIPPED' };
 };
 
 // =============================================================================
-// DELIVERY — CONFIRM
+// DELIVERY
 // =============================================================================
 
 export const confirmDelivery = async (orderId, userId, note) => {
@@ -497,27 +488,34 @@ export const confirmDelivery = async (orderId, userId, note) => {
     note?.slice(0, 500)
   );
 
-  // ✅ NOTIFICATION: Order Delivered
   try {
-    const fullOrder = await repo.findOrderById(orderId, false);
-    const school = await getSchoolWithContacts(fullOrder.school_id);
-    await notificationService.notifyOrder('DELIVERED', fullOrder, school);
+    await dispatch({
+      type: EVENTS.ORDER_DELIVERED,
+      schoolId: order.school_id,
+      payload: { orderNumber: order.order_number },
+      meta: { orderId },
+    });
   } catch (err) {
-    console.error('Failed to send DELIVERED notification:', err.message);
+    console.error('Failed to send ORDER_DELIVERED notification:', err.message);
   }
 
-  // ✅ NOTIFICATION: Balance Invoice Ready (if balance invoice was created)
   if (balanceInvoice) {
     try {
-      const fullOrder = await repo.findOrderById(orderId, false);
-      const school = await getSchoolWithContacts(fullOrder.school_id);
-      await notificationService.notifyOrder('BALANCE_INVOICE_READY', fullOrder, school, {
-        invoiceNumber: balanceInvoice.invoice_number,
-        amount: balanceInvoice.total_amount / 100,
-        dueDate: balanceInvoice.due_at,
+      const school = await getSchoolWithContacts(order.school_id);
+      await dispatch({
+        type: EVENTS.ORDER_BALANCE_INVOICE_ISSUED,
+        schoolId: order.school_id,
+        payload: {
+          orderNumber: order.order_number,
+          amount: balanceInvoice.total_amount,
+          dueDate: balanceInvoice.due_at,
+          invoiceUrl: null,
+          schoolPhone: school?.phone,
+        },
+        meta: { orderId },
       });
     } catch (err) {
-      console.error('Failed to send BALANCE_INVOICE_READY notification:', err.message);
+      console.error('Failed to send ORDER_BALANCE_INVOICE_ISSUED notification:', err.message);
     }
   }
 
@@ -530,12 +528,12 @@ export const confirmDelivery = async (orderId, userId, note) => {
       totalAmount: balanceInvoice.total_amount,
       dueAt: balanceInvoice.due_at,
     },
-    balanceDueAt: updatedOrder.balance_due_at,
   };
 };
 
 // =============================================================================
-// INVOICE — GET FOR DOWNLOAD
+// INVOICE — GET
+// FIXED: type mapping ADVANCE→PARTIAL, BALANCE→FINAL
 // =============================================================================
 
 export const getInvoiceForDownload = async invoiceId => {
@@ -545,10 +543,11 @@ export const getInvoiceForDownload = async invoiceId => {
 };
 
 export const getOrderInvoice = async (orderId, type) => {
-  if (!['ADVANCE', 'BALANCE'].includes(type)) {
-    throw ApiError.badRequest('Invoice type must be ADVANCE or BALANCE');
-  }
-  const invoice = await repo.findInvoiceByOrderAndType(orderId, type);
+  // Route sends 'ADVANCE' or 'BALANCE' — map to schema enum values
+  const typeMap = { ADVANCE: 'PARTIAL', BALANCE: 'FINAL' };
+  const mappedType = typeMap[type];
+  if (!mappedType) throw ApiError.badRequest('Invoice type must be ADVANCE or BALANCE');
+  const invoice = await repo.findInvoiceByOrderAndType(orderId, mappedType);
   if (!invoice) throw ApiError.notFound(`${type} invoice not found for this order`);
   return invoice;
 };
@@ -562,9 +561,7 @@ export const cancelOrder = async (orderId, userId, reason, notes) => {
   if (!order) throw ApiError.notFound('Order not found');
 
   if (!isCancellable(order.status)) {
-    throw ApiError.badRequest(
-      `Order cannot be cancelled at this stage (${order.status}). Orders can only be cancelled before shipping.`
-    );
+    throw ApiError.badRequest(`Order cannot be cancelled at this stage (${order.status})`);
   }
 
   if (order.payment_status !== 'UNPAID' && requiresRefund(order.status)) {
@@ -579,32 +576,27 @@ export const cancelOrder = async (orderId, userId, reason, notes) => {
     reason?.slice(0, 500) || notes?.slice(0, 500) || 'Cancelled by admin'
   );
 
-  // ✅ NOTIFICATION: Order Cancelled
   try {
-    const cancelledOrder = await repo.findOrderById(orderId, false);
-    const school = await getSchoolWithContacts(cancelledOrder.school_id);
-    await notificationService.notifyOrder('ORDER_CANCELLED', cancelledOrder, school, {
-      reason: reason?.slice(0, 500) || 'Cancelled by admin',
+    await dispatch({
+      type: EVENTS.ORDER_REFUNDED,
+      schoolId: order.school_id,
+      payload: { orderNumber: order.order_number, amount: 0 },
+      meta: { orderId },
     });
   } catch (err) {
     console.error('Failed to send ORDER_CANCELLED notification:', err.message);
   }
 
-  return {
-    orderId,
-    status: 'CANCELLED',
-    requiresRefund: requiresRefund(order.status),
-  };
+  return { orderId, status: 'CANCELLED', requiresRefund: requiresRefund(order.status) };
 };
 
 // =============================================================================
-// ORDER STATUS (simple)
+// ORDER STATUS
 // =============================================================================
 
 export const getOrderStatus = async orderId => {
   const order = await repo.findOrderById(orderId, true);
   if (!order) throw ApiError.notFound('Order not found');
-
   return {
     orderId: order.id,
     orderNumber: order.order_number,

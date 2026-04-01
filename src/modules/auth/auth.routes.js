@@ -17,7 +17,6 @@ import {
   registerInitValidation,
   registerVerifyValidation,
   changePasswordValidation,
-  refreshTokenValidation,
 } from './auth.validation.js';
 
 import {
@@ -92,13 +91,7 @@ router.post(
 );
 
 // ── Refresh Token ─────────────────────────────────────────────────────────────
-router.post(
-  '/refresh',
-  authSlowDown,
-  authLimiter,
-  validate(refreshTokenValidation),
-  refreshTokenController
-);
+router.post('/refresh', authSlowDown, authLimiter, refreshTokenController);
 
 // ── Logout ────────────────────────────────────────────────────────────────────
 router.post('/logout', authenticate, logoutController);

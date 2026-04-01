@@ -1,35 +1,3 @@
-// ═══════════════════════════════════════════════════════════════════════════════════════════
-//  RESQID — coreZ Technologies Pvt. Ltd.
-//  Database Schema v8.0 — ORCHESTRATOR READY
-//  Fixed: 2026-03-29
-// ═══════════════════════════════════════════════════════════════════════════════════════════
-// 
-//  FIXES APPLIED (Orchestrator System Prompt v2.0 Audit):
-//  ─────────────────────────────────────────────────────────────────────────────────────────
-//  CRITICAL:
-//    [C1] Added DATABASE_URL to datasource block
-//    [C2] Created DashboardUserType enum + changed DashboardNotification.user_type to use it
-//
-//  HIGH:
-//    [H1] Added DashboardNotification FK relations to SchoolUser and SuperAdmin
-//    [H2] Removed dashboardNotifications relation from ParentUser
-//    [H3] Added Invoice.pdf_generated_at field for idempotency
-//    [H4] Created PipelineStatus + DesignStatus enums; updated Student fields
-//    [H5] Added CardOrder.pipeline_started_at + design_started_at timestamps
-//
-//  MEDIUM:
-//    [M1] Added ScanLog.dispatched_channels + failed_channels fields
-//    [M2] Renamed OtpLog → OtpAuditLog, removed otp_hash (now Redis-only)
-//    [M3] Removed Payment.provider field (offline payments)
-//    [M4] Added OrderStatusLog.actor_type field
-//    [M5] Added DashboardNotification composite index on (user_id, user_type)
-//
-//  LOW:
-//    [L1] Replaced CardOrderItem.qr_generated with pipeline_status enum
-//    [L2] Documented Student.token vs token_hash usage
-//
-// ═══════════════════════════════════════════════════════════════════════════════════════════
-
 generator client {
   provider = "prisma-client-js"
   output   = "../src/generated"
@@ -39,9 +7,1257 @@ datasource db {
   provider = "postgresql"
 }
 
-// =============================================================================
-// ENUMS (UPDATED)
-// =============================================================================
+model School {
+  id                     String                  @id @default(uuid())
+  name                   String
+  address                String?
+  city                   String?
+  state                  String?
+  pincode                String?
+  country                String                  @default("IN")
+  code                   String                  @unique
+  serial_number          Int                     @unique @default(autoincrement())
+  email                  String?
+  phone                  String?
+  logo_url               String?
+  timezone               String                  @default("Asia/Kolkata")
+  school_type            SchoolType              @default(PRIVATE)
+  pricing_tier           PricingTier             @default(PRIVATE_STANDARD)
+  udise_code             String?                 @unique
+  affiliation_num        String?
+  affiliated_board       String?
+  contract_signed_at     DateTime?
+  contract_expires_at    DateTime?
+  onboarded_by           String?
+  onboarded_at           DateTime?
+  is_active              Boolean                 @default(true)
+  created_at             DateTime                @default(now())
+  updated_at             DateTime                @updatedAt
+  apiKeys                ApiKey[]
+  auditLogs              AuditLog[]
+  cards                  Card[]
+  cardOrders             CardOrder[]
+  cardRenewals           CardRenewal[]
+  cardTemplate           CardTemplate?
+  dashboardNotifications DashboardNotification[]
+  invoices               Invoice[]
+  locationEvents         LocationEvent[]
+  notifications          Notification[]
+  parentEditLogs         ParentEditLog[]
+  payments               Payment[]
+  qrAssets               QrAsset[]
+  scanLogs               ScanLog[]
+  featureFlags           SchoolFeatureFlag[]
+  settings               SchoolSettings?
+  users                  SchoolUser[]
+  students               Student[]
+  subscriptions          Subscription[]
+  tokens                 Token[]
+  tokenBatches           TokenBatch[]
+  trustedScanZones       TrustedScanZone[]
+  webhooks               Webhook[]
+
+  @@index([code])
+  @@index([is_active])
+  @@index([serial_number])
+}
+
+model SchoolSettings {
+  id                         String            @id @default(uuid())
+  school_id                  String            @unique
+  allow_location             Boolean           @default(false)
+  allow_parent_edit          Boolean           @default(true)
+  scan_notifications_enabled Boolean           @default(true)
+  notify_on_every_scan       Boolean           @default(false)
+  scan_alert_cooldown_mins   Int               @default(60)
+  token_validity_months      Int               @default(12)
+  max_tokens_per_student     Int               @default(1)
+  default_profile_visibility ProfileVisibility @default(PUBLIC)
+  renewal_reminder_days      Int[]             @default([30, 15, 7, 1])
+  auto_deactivate_on_expiry  Boolean           @default(true)
+  school_hours_start         String            @default("08:00")
+  school_hours_end           String            @default("17:00")
+  school_days                Int[]             @default([1, 2, 3, 4, 5])
+  created_at                 DateTime          @default(now())
+  updated_at                 DateTime          @updatedAt
+  school                     School            @relation(fields: [school_id], references: [id], onDelete: Cascade)
+
+  @@index([allow_location])
+}
+
+model SchoolUser {
+  id                     String                  @id @default(uuid())
+  school_id              String
+  email                  String                  @unique
+  password_hash          String
+  name                   String?
+  role                   SchoolRole              @default(ADMIN)
+  is_active              Boolean                 @default(true)
+  last_login_at          DateTime?
+  created_at             DateTime                @default(now())
+  updated_at             DateTime                @updatedAt
+  dashboardNotifications DashboardNotification[]
+  school                 School                  @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  sessions               Session[]
+
+  @@index([school_id])
+}
+
+model ParentUser {
+  id                 String                  @id @default(uuid())
+  email              String?                 @unique
+  phone              String                  @unique
+  phone_index        String?                 @unique
+  password_hash      String?
+  name               String?
+  avatar_url         String?
+  preferred_language String                  @default("en")
+  preferred_theme    AppTheme                @default(SYSTEM)
+  is_phone_verified  Boolean                 @default(false)
+  is_email_verified  Boolean                 @default(false)
+  status             UserStatus              @default(ACTIVE)
+  last_login_at      DateTime?
+  deleted_at         DateTime?
+  created_at         DateTime                @default(now())
+  updated_at         DateTime                @updatedAt
+  deviceLoginLogs    DeviceLoginLog[]
+  notifications      Notification[]
+  devices            ParentDevice[]
+  editLogs           ParentEditLog[]
+  notificationPrefs  ParentNotificationPref?
+  children           ParentStudent[]
+  sessions           Session[]
+
+  @@index([phone_index])
+}
+
+model ParentDevice {
+  id              String              @id @default(uuid())
+  parent_id       String
+  platform        DevicePlatform
+  device_name     String?
+  device_model    String?
+  os_version      String?
+  app_version     String?
+  is_active       Boolean             @default(true)
+  last_seen_at    DateTime?
+  logged_out_at   DateTime?
+  logout_reason   DeviceLogoutReason?
+  created_at      DateTime            @default(now())
+  expo_push_token String?             @unique
+  parent          ParentUser          @relation(fields: [parent_id], references: [id], onDelete: Cascade)
+
+  @@index([parent_id, is_active])
+}
+
+model ParentNotificationPref {
+  id                        String     @id @default(uuid())
+  parent_id                 String     @unique
+  scan_notify_enabled       Boolean    @default(true)
+  scan_notify_push          Boolean    @default(true)
+  scan_notify_sms           Boolean    @default(false)
+  scan_notify_email         Boolean    @default(false)
+  anomaly_notify_enabled    Boolean    @default(true)
+  anomaly_notify_push       Boolean    @default(true)
+  anomaly_notify_sms        Boolean    @default(true)
+  anomaly_notify_email      Boolean    @default(true)
+  card_expiry_notify        Boolean    @default(true)
+  card_blocked_notify       Boolean    @default(true)
+  device_login_notify_email Boolean    @default(true)
+  account_change_notify     Boolean    @default(true)
+  quiet_hours_enabled       Boolean    @default(false)
+  quiet_hours_start         String?
+  quiet_hours_end           String?
+  created_at                DateTime   @default(now())
+  updated_at                DateTime   @updatedAt
+  parent                    ParentUser @relation(fields: [parent_id], references: [id], onDelete: Cascade)
+}
+
+model SuperAdmin {
+  id                     String                  @id @default(uuid())
+  name                   String
+  email                  String                  @unique
+  password_hash          String
+  is_active              Boolean                 @default(true)
+  last_login_at          DateTime?
+  created_at             DateTime                @default(now())
+  updated_at             DateTime                @updatedAt
+  dashboardNotifications DashboardNotification[]
+  sessions               Session[]
+
+  @@index([email])
+}
+
+model OtpAuditLog {
+  id           String     @id @default(uuid())
+  purpose      OtpPurpose
+  attempts     Int        @default(0)
+  max_attempts Int        @default(5)
+  verified     Boolean    @default(false)
+  verified_at  DateTime?
+  expires_at   DateTime
+  invalidated  Boolean    @default(false)
+  msg91_req_id String?
+  ip_address   String?
+  created_at   DateTime   @default(now())
+  phone_index  String
+
+  @@index([phone_index, purpose])
+  @@index([expires_at])
+}
+
+model Student {
+  id                    String            @id @default(uuid())
+  school_id             String?
+  profile_type          ProfileType       @default(STUDENT)
+  setup_stage           SetupStage        @default(PENDING)
+  first_name            String?
+  last_name             String?
+  photo_url             String?
+  gender                Gender?
+  dob_encrypted         String?
+  class                 String?
+  section               String?
+  roll_number           String?
+  admission_number      String?
+  is_active             Boolean           @default(true)
+  created_at            DateTime          @default(now())
+  updated_at            DateTime          @updatedAt
+  deleted_at            DateTime?
+  card_design_url       String?
+  card_number           String?           @unique
+  design_completed_at   DateTime?
+  design_started_at     DateTime?
+  design_status         DesignStatus?     @default(PENDING)
+  pipeline_completed_at DateTime?
+  pipeline_started_at   DateTime?
+  pipeline_status       PipelineStatus?   @default(PENDING)
+  qr_code_url           String?
+  scan_url              String?
+  token                 String?           @unique
+  token_hash            String?           @unique
+  cards                 Card[]
+  orderItems            CardOrderItem[]
+  cardRenewals          CardRenewal[]
+  cardVisibility        CardVisibility?
+  emergency             EmergencyProfile?
+  locationConsent       LocationConsent?
+  locationEvents        LocationEvent[]
+  notifications         Notification[]
+  editLogs              ParentEditLog[]
+  parents               ParentStudent[]
+  scanLogs              ScanLog[]
+  school                School?           @relation(fields: [school_id], references: [id])
+  tokens                Token[]
+
+  @@index([school_id])
+  @@index([setup_stage])
+  @@index([pipeline_status])
+  @@index([card_number])
+  @@index([token_hash])
+}
+
+model ParentStudent {
+  id           String     @id @default(uuid())
+  parent_id    String
+  student_id   String
+  relationship String?
+  is_primary   Boolean    @default(false)
+  created_at   DateTime   @default(now())
+  parent       ParentUser @relation(fields: [parent_id], references: [id], onDelete: Cascade)
+  student      Student    @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@unique([parent_id, student_id])
+}
+
+model EmergencyProfile {
+  id                     String             @id @default(uuid())
+  student_id             String             @unique
+  blood_group            BloodGroup?
+  allergies              String?
+  conditions             String?
+  medications            String?
+  doctor_name            String?
+  doctor_phone_encrypted String?
+  notes                  String?
+  visibility             ProfileVisibility  @default(PUBLIC)
+  is_visible             Boolean            @default(true)
+  created_at             DateTime           @default(now())
+  updated_at             DateTime           @updatedAt
+  contacts               EmergencyContact[]
+  student                Student            @relation(fields: [student_id], references: [id], onDelete: Cascade)
+}
+
+model EmergencyContact {
+  id               String           @id @default(uuid())
+  profile_id       String
+  name             String
+  phone_encrypted  String
+  relationship     String?
+  priority         Int
+  display_order    Int              @default(0)
+  is_active        Boolean          @default(true)
+  call_enabled     Boolean          @default(true)
+  whatsapp_enabled Boolean          @default(true)
+  created_at       DateTime         @default(now())
+  updated_at       DateTime         @updatedAt
+  profile          EmergencyProfile @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+
+  @@unique([profile_id, priority])
+  @@index([profile_id])
+}
+
+model CardVisibility {
+  id                String            @id @default(uuid())
+  student_id        String            @unique
+  visibility        ProfileVisibility @default(PUBLIC)
+  hidden_fields     String[]          @default([])
+  updated_by_parent Boolean           @default(false)
+  created_at        DateTime          @default(now())
+  updated_at        DateTime          @updatedAt
+  student           Student           @relation(fields: [student_id], references: [id], onDelete: Cascade)
+}
+
+model ParentEditLog {
+  id          String         @id @default(uuid())
+  school_id   String?
+  student_id  String
+  parent_id   String
+  field_group ParentEditType
+  old_value   Json?
+  new_value   Json
+  ip_address  String?
+  user_agent  String?
+  created_at  DateTime       @default(now())
+  parent      ParentUser     @relation(fields: [parent_id], references: [id], onDelete: Cascade)
+  school      School?        @relation(fields: [school_id], references: [id])
+  student     Student        @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@index([student_id])
+  @@index([parent_id])
+  @@index([created_at])
+}
+
+model Token {
+  id             String              @id @default(uuid())
+  school_id      String
+  student_id     String?
+  token_hash     String              @unique
+  status         TokenStatus         @default(UNASSIGNED)
+  batch_id       String?
+  order_id       String?
+  order_item_id  String?             @unique
+  replaced_by_id String?
+  activated_at   DateTime?
+  assigned_at    DateTime?
+  expires_at     DateTime?
+  revoked_at     DateTime?
+  created_at     DateTime            @default(now())
+  is_honeypot    Boolean             @default(false)
+  cards          Card[]
+  locations      LocationEvent[]
+  qrAsset        QrAsset?
+  nonces         RegistrationNonce[]
+  anomalies      ScanAnomaly[]
+  scans          ScanLog[]
+  batch          TokenBatch?         @relation(fields: [batch_id], references: [id])
+  order          CardOrder?          @relation(fields: [order_id], references: [id])
+  orderItem      CardOrderItem?      @relation(fields: [order_item_id], references: [id])
+  replacedBy     Token?              @relation("TokenReplacement", fields: [replaced_by_id], references: [id])
+  replacements   Token[]             @relation("TokenReplacement")
+  school         School              @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  student        Student?            @relation(fields: [student_id], references: [id])
+
+  @@index([is_honeypot])
+  @@index([school_id, status])
+  @@index([order_id])
+  @@index([token_hash])
+  @@index([student_id])
+}
+
+model TokenBatch {
+  id              String           @id @default(uuid())
+  school_id       String
+  order_id        String?
+  count           Int
+  generated_count Int              @default(0)
+  failed_count    Int              @default(0)
+  status          TokenBatchStatus @default(PENDING)
+  created_by      String
+  notes           String?
+  completed_at    DateTime?
+  error_log       Json?
+  created_at      DateTime         @default(now())
+  updated_at      DateTime         @updatedAt
+  tokens          Token[]
+  order           CardOrder?       @relation(fields: [order_id], references: [id])
+  school          School           @relation(fields: [school_id], references: [id], onDelete: Cascade)
+
+  @@index([order_id])
+  @@index([status])
+}
+
+model QrAsset {
+  id           String     @id @default(uuid())
+  token_id     String     @unique
+  school_id    String
+  storage_key  String     @unique
+  public_url   String
+  format       QrFormat   @default(PNG)
+  width_px     Int        @default(512)
+  height_px    Int        @default(512)
+  file_size_kb Int?
+  qr_type      QrType
+  generated_by String
+  order_id     String?
+  is_active    Boolean    @default(true)
+  generated_at DateTime   @default(now())
+  order        CardOrder? @relation(fields: [order_id], references: [id])
+  school       School     @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  token        Token      @relation(fields: [token_id], references: [id], onDelete: Cascade)
+
+  @@index([school_id])
+  @@index([order_id])
+}
+
+model CardOrder {
+  id                       String                  @id @default(uuid())
+  school_id                String
+  subscription_id          String?
+  order_number             String                  @unique
+  order_type               OrderType
+  status                   OrderStatus             @default(PENDING)
+  payment_status           OrderPaymentStatus      @default(UNPAID)
+  advance_amount           Int?
+  advance_paid_at          DateTime?
+  balance_amount           Int?
+  balance_paid_at          DateTime?
+  delivery_name            String?
+  delivery_phone           String?
+  delivery_address         String?
+  delivery_city            String?
+  delivery_state           String?
+  delivery_pincode         String?
+  caller_name              String?
+  caller_phone             String?
+  call_notes               String?
+  notes                    String?
+  admin_notes              String?
+  confirmed_by             String?
+  confirmed_at             DateTime?
+  tokens_generated_by      String?
+  tokens_generated_at      DateTime?
+  card_design_files        Json?
+  card_design_by           String?
+  card_design_at           DateTime?
+  vendor_id                String?
+  vendor_notes             String?
+  files_sent_to_vendor_at  DateTime?
+  files_sent_by            String?
+  print_complete_at        DateTime?
+  print_complete_noted_by  String?
+  status_changed_by        String?
+  status_changed_at        DateTime?
+  status_note              String?
+  created_at               DateTime                @default(now())
+  updated_at               DateTime                @updatedAt
+  grand_total              Int?
+  unit_price               Int?
+  order_channel            OrderChannel?
+  design_completed_count   Int                     @default(0)
+  design_started_at        DateTime?
+  final_invoice_id         String?                 @unique
+  partial_invoice_id       String?                 @unique
+  pipeline_completed_count Int                     @default(0)
+  pipeline_started_at      DateTime?
+  student_count            Int                     // ✅ This is the correct field name
+  cards                    Card[]
+  finalInvoice             Invoice?                @relation("FinalInvoiceForOrder", fields: [final_invoice_id], references: [id])
+  partialInvoice           Invoice?                @relation("PartialInvoiceForOrder", fields: [partial_invoice_id], references: [id])
+  school                   School                  @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  subscription             Subscription?           @relation(fields: [subscription_id], references: [id])
+  vendor                   VendorProfile?          @relation(fields: [vendor_id], references: [id])
+  items                    CardOrderItem[]
+  dashboardNotifications   DashboardNotification[]
+  invoices                 Invoice[]
+  pipeline                 OrderPipeline?
+  shipment                 OrderShipment?
+  statusLogs               OrderStatusLog[]
+  payments                 Payment[]
+  qrAssets                 QrAsset[]
+  tokens                   Token[]
+  tokenBatches             TokenBatch[]
+
+  @@index([school_id])
+  @@index([status])
+  @@index([payment_status])
+  @@index([created_at])
+}
+
+model CardOrderItem {
+  id              String          @id @default(uuid())
+  order_id        String
+  student_id      String?
+  token_id        String?         @unique
+  student_name    String
+  class           String?
+  section         String?
+  roll_number     String?
+  photo_url       String?
+  status          OrderItemStatus @default(PENDING)
+  card_design_url String?
+  card_printed    Boolean         @default(false)
+  has_issue       Boolean         @default(false)
+  issue_note      String?
+  created_at      DateTime        @default(now())
+  updated_at      DateTime        @updatedAt
+  pipeline_status PipelineStatus  @default(PENDING)
+  order           CardOrder       @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  student         Student?        @relation(fields: [student_id], references: [id])
+  token           Token?
+
+  @@index([order_id])
+  @@index([student_id])
+}
+
+model OrderStatusLog {
+  id          String       @id @default(uuid())
+  order_id    String
+  from_status OrderStatus?
+  to_status   OrderStatus
+  changed_by  String
+  note        String?
+  metadata    Json?
+  created_at  DateTime     @default(now())
+  actor_type  ActorType    @default(SYSTEM)
+  order       CardOrder    @relation(fields: [order_id], references: [id], onDelete: Cascade)
+
+  @@index([order_id, created_at])
+}
+
+model OrderShipment {
+  id                     String            @id @default(uuid())
+  order_id               String            @unique
+  shiprocket_order_id    String?
+  shiprocket_shipment_id String?
+  awb_code               String?           @unique
+  courier_name           String?
+  courier_id             Int?
+  tracking_url           String?
+  label_url              String?
+  manifest_url           String?
+  pickup_vendor_id       String?
+  pickup_name            String?
+  pickup_contact         String?
+  pickup_address         String?
+  pickup_city            String?
+  pickup_state           String?
+  pickup_pincode         String?
+  delivery_name          String?
+  delivery_phone         String?
+  delivery_address       String?
+  delivery_city          String?
+  delivery_state         String?
+  delivery_pincode       String?
+  status                 ShipmentStatus    @default(PENDING)
+  shiprocket_status      ShiprocketStatus?
+  created_by             String?
+  tracking_shared_at     DateTime?
+  tracking_shared_by     String?
+  pickup_scheduled_at    DateTime?
+  picked_up_at           DateTime?
+  estimated_delivery_at  DateTime?
+  delivered_at           DateTime?
+  delivery_confirmed_by  String?
+  notes                  String?
+  created_at             DateTime          @default(now())
+  updated_at             DateTime          @updatedAt
+  order                  CardOrder         @relation(fields: [order_id], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([awb_code])
+}
+
+model VendorProfile {
+  id                  String       @id @default(uuid())
+  name                String
+  contact_name        String?
+  phone               String?
+  email               String?
+  status              VendorStatus @default(ACTIVE)
+  address             String?
+  city                String?
+  state               String?
+  pincode             String?
+  gstin               String?
+  speciality          String?
+  avg_turnaround_days Int?
+  notes               String?
+  created_at          DateTime     @default(now())
+  updated_at          DateTime     @updatedAt
+  orders              CardOrder[]
+
+  @@index([status])
+}
+
+model Card {
+  id           String        @id @default(uuid())
+  school_id    String
+  student_id   String?
+  token_id     String?
+  order_id     String?
+  card_number  String        @unique
+  file_url     String?
+  print_status PrintStatus   @default(PENDING)
+  printed_at   DateTime?
+  created_at   DateTime      @default(now())
+  order        CardOrder?    @relation(fields: [order_id], references: [id])
+  school       School        @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  student      Student?      @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  token        Token?        @relation(fields: [token_id], references: [id])
+  renewals     CardRenewal[]
+
+  @@index([school_id])
+  @@index([token_id])
+  @@index([order_id])
+  @@index([card_number])
+}
+
+model CardRenewal {
+  id           String       @id @default(uuid())
+  card_id      String
+  student_id   String
+  school_id    String
+  renewed_by   String?
+  renewer_type ActorType    @default(PARENT_USER)
+  old_expiry   DateTime
+  new_expiry   DateTime
+  amount_paid  Int
+  tax_amount   Int          @default(0)
+  payment_id   String?
+  school_type  SchoolType?
+  pricing_tier PricingTier?
+  created_at   DateTime     @default(now())
+  card         Card         @relation(fields: [card_id], references: [id], onDelete: Cascade)
+  payment      Payment?     @relation("RenewalPayment", fields: [payment_id], references: [id])
+  school       School       @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  student      Student      @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@index([card_id])
+  @@index([student_id])
+}
+
+model Subscription {
+  id                   String             @id @default(uuid())
+  school_id            String
+  plan                 PlanType           @default(GOVT_STANDARD)
+  status               SubscriptionStatus @default(TRIALING)
+  pricing_tier         PricingTier        @default(PRIVATE_STANDARD)
+  student_count        Int                @default(0)
+  unit_price           Int                @default(19900)
+  grand_total          Int                @default(0)
+  fully_paid_at        DateTime?
+  current_period_start DateTime
+  current_period_end   DateTime
+  trial_ends_at        DateTime?
+  created_at           DateTime           @default(now())
+  updated_at           DateTime           @updatedAt
+  cardOrders           CardOrder[]
+  invoices             Invoice[]
+  school               School             @relation(fields: [school_id], references: [id], onDelete: Cascade)
+
+  @@index([school_id])
+  @@index([status])
+}
+
+model Invoice {
+  id                   String              @id @default(uuid())
+  school_id            String
+  invoice_number       String              @unique
+  student_count        Int
+  unit_price           Int
+  amount               Int
+  tax_amount           Int
+  total_amount         Int
+  status               InvoiceStatus       @default(ISSUED)  // ✅ No DRAFT status
+  issued_at            DateTime            @default(now())
+  due_at               DateTime?
+  paid_at              DateTime?
+  pdf_url              String?
+  order_id             String?
+  subscription_id      String?
+  category             InvoiceCategory
+  order_invoice_type   OrderInvoiceType?
+  pdf_generated_at     DateTime?
+  renewal_invoice_type RenewalInvoiceType?
+  finalOrder           CardOrder?          @relation("FinalInvoiceForOrder")
+  partialOrder         CardOrder?          @relation("PartialInvoiceForOrder")
+  order                CardOrder?          @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  school               School              @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  subscription         Subscription?       @relation(fields: [subscription_id], references: [id])
+  payments             Payment[]
+
+  @@index([order_id])
+  @@index([category, order_invoice_type])
+  @@index([status])
+  @@index([invoice_number])
+}
+
+model Payment {
+  id              String        @id @default(uuid())
+  school_id       String
+  order_id        String
+  invoice_id      String?
+  amount          Int
+  payment_ref     String?       @unique  // ✅ ADDED for duplicate detection
+  status          PaymentStatus @default(PENDING)  // ✅ FIXED: PENDING default, not SUCCESS
+  payment_mode    PaymentMode   @default(BANK_TRANSFER)
+  is_advance      Boolean       @default(true)
+  metadata        Json?
+  created_at      DateTime      @default(now())
+  subscription_id String?
+  renewals        CardRenewal[] @relation("RenewalPayment")
+  invoice         Invoice?      @relation(fields: [invoice_id], references: [id])
+  order           CardOrder     @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  school          School        @relation(fields: [school_id], references: [id], onDelete: Cascade)
+
+  @@index([order_id])
+  @@index([invoice_id])
+  @@index([created_at])
+  @@index([payment_ref])  // ✅ ADDED index for payment_ref
+}
+
+model DashboardNotification {
+  id             String                    @id @default(uuid())
+  user_id        String
+  user_type      DashboardUserType
+  type           DashboardNotificationType
+  title          String
+  body           String
+  metadata       Json?
+  read           Boolean                   @default(false)
+  read_at        DateTime?
+  created_at     DateTime                  @default(now())
+  school_id      String?
+  order_id       String?
+  school_user_id String?
+  super_admin_id String?
+  order          CardOrder?                @relation(fields: [order_id], references: [id])
+  school         School?                   @relation(fields: [school_id], references: [id])
+  schoolUser     SchoolUser?               @relation(fields: [school_user_id], references: [id], onDelete: Cascade)
+  superAdmin     SuperAdmin?               @relation(fields: [super_admin_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, user_type])
+  @@index([user_id, read])
+  @@index([user_id, created_at])
+  @@index([type, created_at])
+  @@index([school_id])
+}
+
+model ScanLog {
+  id                   String         @id @default(uuid())
+  token_id             String
+  school_id            String
+  result               ScanResult
+  ip_address           String?
+  ip_city              String?
+  ip_country           String?
+  ip_region            String?
+  ip_capture_basis     IpCaptureBasis @default(LEGITIMATE_INTEREST)
+  location_derived     Boolean        @default(true)
+  latitude             Float?
+  longitude            Float?
+  device_hash          String?
+  user_agent           String?
+  response_time_ms     Int?
+  created_at           DateTime       @default(now())
+  device_info          Json?
+  dispatched_at        DateTime?
+  dispatched_channels  String[]       @default([])
+  emergency_dispatched Boolean        @default(false)
+  failed_channels      String[]       @default([])
+  scan_type            ScanType       @default(OTHER)
+  scanned_at           DateTime       @default(now())
+  scanned_by           String?
+  student_id           String?
+  scan_purpose         ScanPurpose    @default(QR_SCAN)
+  school               School         @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  student              Student?       @relation(fields: [student_id], references: [id])
+  token                Token          @relation(fields: [token_id], references: [id], onDelete: Cascade)
+
+  @@index([token_id, created_at])
+  @@index([student_id, created_at])
+  @@index([school_id, created_at])
+  @@index([school_id, result])
+  @@index([scan_type, created_at])
+  @@index([emergency_dispatched, dispatched_at])
+}
+
+model ScanAnomaly {
+  id           String          @id @default(uuid())
+  token_id     String
+  anomaly_type AnomalyType
+  severity     AnomalySeverity @default(MEDIUM)
+  reason       String?
+  metadata     Json?
+  resolved     Boolean         @default(false)
+  resolved_at  DateTime?
+  resolved_by  String?
+  created_at   DateTime        @default(now())
+  token        Token           @relation(fields: [token_id], references: [id], onDelete: Cascade)
+
+  @@index([token_id])
+  @@index([anomaly_type])
+}
+
+model ScanRateLimit {
+  id              String                  @id @default(uuid())
+  identifier      String
+  identifier_type RateLimitIdentifierType
+  count           Int                     @default(1)
+  window_start    DateTime                @default(now())
+  last_hit        DateTime                @default(now())
+  blocked_until   DateTime?
+  blocked_reason  String?
+  block_count     Int                     @default(0)
+
+  @@unique([identifier, identifier_type])
+  @@index([blocked_until])
+}
+
+model LocationConsent {
+  id           String   @id @default(uuid())
+  student_id   String   @unique
+  enabled      Boolean  @default(false)
+  consented_by String?
+  consent_text String?
+  ip_address   String?
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+  student      Student  @relation(fields: [student_id], references: [id], onDelete: Cascade)
+}
+
+model LocationEvent {
+  id         String         @id @default(uuid())
+  student_id String
+  school_id  String
+  token_id   String?
+  latitude   Float
+  longitude  Float
+  accuracy   Float?
+  altitude   Float?
+  source     LocationSource @default(SCAN_TRIGGER)
+  created_at DateTime       @default(now())
+  school     School         @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  student    Student        @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  token      Token?         @relation(fields: [token_id], references: [id])
+
+  @@index([student_id, created_at])
+  @@index([school_id, created_at])
+}
+
+model RegistrationNonce {
+  id          String    @id @default(uuid())
+  nonce       String    @unique
+  token_id    String
+  phone_index String?
+  expires_at  DateTime
+  used        Boolean   @default(false)
+  used_at     DateTime?
+  created_at  DateTime  @default(now())
+  token       Token     @relation(fields: [token_id], references: [id], onDelete: Cascade)
+
+  @@index([token_id])
+  @@index([expires_at])
+}
+
+model TrustedScanZone {
+  id         String   @id @default(uuid())
+  school_id  String
+  label      String
+  ip_range   String?
+  latitude   Float?
+  longitude  Float?
+  radius_m   Int      @default(200)
+  is_active  Boolean  @default(true)
+  created_by String?
+  updated_by String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  school     School   @relation(fields: [school_id], references: [id], onDelete: Cascade)
+
+  @@index([school_id, is_active])
+}
+
+model Notification {
+  id          String              @id @default(uuid())
+  school_id   String
+  student_id  String?
+  parent_id   String?
+  channel     NotificationChannel
+  status      NotificationStatus  @default(QUEUED)
+  payload     Json?
+  retry_count Int                 @default(0)
+  sent_at     DateTime?
+  error       String?
+  created_at  DateTime            @default(now())
+  content     String?
+  recipient   String
+  subject     String?
+  type        String
+  order_id    String?              // ✅ ADDED for order notifications
+  event_type  String?              // ✅ ADDED for notification event type
+  latency_ms  Int?                 // ✅ ADDED for performance tracking
+  provider_ref String?             // ✅ ADDED for provider reference (e.g., Msg91 ID)
+  parent      ParentUser?         @relation(fields: [parent_id], references: [id])
+  school      School              @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  student     Student?            @relation(fields: [student_id], references: [id])
+
+  @@index([school_id])
+  @@index([status, created_at])
+  @@index([channel, status])
+  @@index([order_id])              // ✅ ADDED index
+  @@index([event_type, created_at]) // ✅ ADDED index
+}
+
+model AuditLog {
+  id         String    @id @default(uuid())
+  school_id  String?
+  actor_id   String
+  actor_type ActorType
+  action     String
+  entity     String
+  entity_id  String
+  old_value  Json?
+  new_value  Json?
+  metadata   Json?
+  ip_address String?
+  user_agent String?
+  created_at DateTime  @default(now())
+  school     School?   @relation(fields: [school_id], references: [id])
+
+  @@index([actor_id])
+  @@index([school_id])
+  @@index([entity, entity_id])
+  @@index([created_at])
+}
+
+model ApiKey {
+  id           String    @id @default(uuid())
+  school_id    String
+  name         String
+  key_hash     String    @unique
+  key_prefix   String
+  scopes       String[]
+  last_used_at DateTime?
+  expires_at   DateTime?
+  revoked_at   DateTime?
+  created_at   DateTime  @default(now())
+  school       School    @relation(fields: [school_id], references: [id], onDelete: Cascade)
+
+  @@index([school_id])
+}
+
+model Webhook {
+  id          String            @id @default(uuid())
+  school_id   String
+  url         String
+  secret_hash String
+  events      String[]
+  is_active   Boolean           @default(true)
+  created_at  DateTime          @default(now())
+  school      School            @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  deliveries  WebhookDelivery[]
+
+  @@index([school_id, is_active])
+}
+
+model WebhookDelivery {
+  id              String    @id @default(uuid())
+  webhook_id      String
+  idempotency_key String?   @unique
+  event_type      String
+  payload         Json
+  status_code     Int?
+  response        String?
+  attempt         Int       @default(1)
+  delivered_at    DateTime?
+  created_at      DateTime  @default(now())
+  webhook         Webhook   @relation(fields: [webhook_id], references: [id], onDelete: Cascade)
+
+  @@index([webhook_id, created_at])
+}
+
+model WebhookEvent {
+  id           String    @id @default(uuid())
+  provider     String
+  event_type   String
+  payload      Json
+  received_at  DateTime  @default(now())
+  processed    Boolean   @default(false)
+  processed_at DateTime?
+  error        String?
+
+  @@index([provider, event_type])
+  @@index([processed])
+}
+
+model DeadLetterQueue {
+  id            String    @id @default(uuid())
+  job_type      String
+  payload       Json
+  error_message String
+  retry_count   Int       @default(0)
+  last_attempt  DateTime  @default(now())
+  resolved      Boolean   @default(false)
+  resolved_at   DateTime?
+  created_at    DateTime  @default(now())
+
+  @@index([job_type, resolved])
+}
+
+model IdempotencyKey {
+  id            String   @id @default(uuid())
+  key           String   @unique
+  resource_type String
+  resource_id   String
+  status        String
+  response      Json?
+  expires_at    DateTime
+  created_at    DateTime @default(now())
+
+  @@index([expires_at])
+}
+
+model FeatureFlagOverride {
+  id          String    @id @default(uuid())
+  flag_key    String
+  target_type String
+  target_id   String
+  enabled     Boolean
+  percentage  Int?
+  expires_at  DateTime?
+  created_by  String
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+
+  @@unique([flag_key, target_type, target_id])
+  @@index([flag_key])
+}
+
+model AuthAttempt {
+  id              String   @id @default(uuid())
+  identifier      String
+  identifier_type String
+  success         Boolean  @default(false)
+  failure_reason  String?
+  ip_address      String?
+  user_agent      String?
+  created_at      DateTime @default(now())
+
+  @@index([identifier, created_at])
+  @@index([ip_address, created_at])
+}
+
+model IpBlocklist {
+  id         String    @id @default(uuid())
+  ip_address String    @unique
+  reason     String
+  blocked_by String
+  blocked_at DateTime  @default(now())
+  expires_at DateTime?
+  is_active  Boolean   @default(true)
+
+  @@index([ip_address, is_active])
+  @@index([expires_at])
+}
+
+model OrderPipeline {
+  id               String               @id @default(uuid())
+  order_id         String               @unique
+  current_step     PipelineStepName
+  overall_progress Int                  @default(0)
+  is_stalled       Boolean              @default(false)
+  stalled_at       DateTime?
+  stalled_reason   String?
+  started_at       DateTime             @default(now())
+  completed_at     DateTime?
+  updated_at       DateTime             @updatedAt
+  order            CardOrder            @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  steps            OrderStepExecution[]
+
+  @@index([order_id])
+  @@index([current_step])
+  @@index([is_stalled])
+}
+
+model OrderStepExecution {
+  id              String           @id @default(uuid())
+  pipeline_id     String
+  order_id        String
+  step            PipelineStepName
+  attempt_number  Int              @default(1)
+  status          StepStatus       @default(PENDING)
+  started_at      DateTime?
+  completed_at    DateTime?
+  duration_ms     Int?
+  progress        Int              @default(0)
+  progress_detail Json?
+  result_summary  Json?
+  error_log       Json?
+  triggered_by    String
+  triggered_at    DateTime         @default(now())
+  jobs            JobExecution[]
+  pipeline        OrderPipeline    @relation(fields: [pipeline_id], references: [id], onDelete: Cascade)
+  logs            StepLog[]
+
+  @@unique([pipeline_id, step, attempt_number])
+  @@index([pipeline_id])
+  @@index([order_id])
+  @@index([step, status])
+}
+
+model JobExecution {
+  id                String             @id @default(uuid())
+  step_execution_id String
+  order_id          String
+  queue_name        String
+  bullmq_job_id     String?
+  job_name          String
+  status            JobStatus          @default(QUEUED)
+  payload           Json
+  queued_at         DateTime           @default(now())
+  started_at        DateTime?
+  completed_at      DateTime?
+  duration_ms       Int?
+  progress          Int                @default(0)
+  attempt_number    Int                @default(1)
+  max_attempts      Int                @default(3)
+  last_error        String?
+  error_log         Json?
+  result            Json?
+  stepExecution     OrderStepExecution @relation(fields: [step_execution_id], references: [id], onDelete: Cascade)
+
+  @@index([step_execution_id])
+  @@index([order_id])
+  @@index([queue_name, status])
+}
+
+model StepLog {
+  id                String             @id @default(uuid())
+  step_execution_id String
+  order_id          String
+  job_execution_id  String?
+  level             String
+  message           String
+  context           Json?
+  created_at        DateTime           @default(now())
+  stepExecution     OrderStepExecution @relation(fields: [step_execution_id], references: [id], onDelete: Cascade)
+
+  @@index([step_execution_id])
+  @@index([order_id, created_at])
+  @@index([level, created_at])
+}
+
+model FeatureFlag {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  enabled     Boolean  @default(false)
+  description String?
+  metadata    Json?
+  updated_at  DateTime @updatedAt
+}
+
+model SchoolFeatureFlag {
+  id         String   @id @default(uuid())
+  school_id  String
+  key        String
+  enabled    Boolean
+  updated_at DateTime @updatedAt
+  school     School   @relation(fields: [school_id], references: [id], onDelete: Cascade)
+
+  @@unique([school_id, key])
+  @@index([school_id])
+}
+
+model CardTemplate {
+  id                 String   @id @default(uuid())
+  school_id          String   @unique
+  logo_url           String?
+  background_color   String   @default("#FFFFFF")
+  primary_color      String   @default("#000000")
+  text_color         String   @default("#000000")
+  qr_dark_color      String   @default("#000000")
+  qr_light_color     String   @default("#FFFFFF")
+  cover_accent_color String   @default("#E8342A")
+  cover_tagline      String?
+  cards_per_sheet    Int      @default(8)
+  card_width         Int      @default(640)
+  card_height        Int      @default(400)
+  show_student_name  Boolean  @default(true)
+  show_class         Boolean  @default(true)
+  show_school_name   Boolean  @default(true)
+  show_photo         Boolean  @default(true)
+  is_locked          Boolean  @default(true)
+  updated_by         String?
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+  school             School   @relation(fields: [school_id], references: [id], onDelete: Cascade)
+}
+
+model Session {
+  id                 String               @id @default(uuid())
+  parent_user_id     String?
+  school_user_id     String?
+  admin_user_id      String?
+  refresh_token_hash String               @unique
+  device_id          String?
+  device_info        String?
+  user_agent         String?
+  ip_address         String?
+  is_active          Boolean              @default(true)
+  revoked_at         DateTime?
+  revoke_reason      SessionRevokeReason?
+  last_active_at     DateTime?
+  expires_at         DateTime
+  created_at         DateTime             @default(now())
+  superAdmin         SuperAdmin?          @relation(fields: [admin_user_id], references: [id], onDelete: Cascade)
+  parentUser         ParentUser?          @relation(fields: [parent_user_id], references: [id], onDelete: Cascade)
+  schoolUser         SchoolUser?          @relation(fields: [school_user_id], references: [id], onDelete: Cascade)
+
+  @@index([parent_user_id, is_active])
+  @@index([school_user_id, is_active])
+  @@index([admin_user_id])
+  @@index([expires_at])
+}
+
+model BlacklistToken {
+  token_hash String   @id
+  expires_at DateTime
+  created_at DateTime @default(now())
+
+  @@index([expires_at])
+}
+
+model DeviceLoginLog {
+  id            String         @id @default(uuid())
+  parent_id     String
+  device_name   String?
+  device_model  String?
+  platform      DevicePlatform
+  os_version    String?
+  app_version   String?
+  ip_address    String?
+  ip_city       String?
+  ip_country    String?
+  login_at      DateTime       @default(now())
+  email_sent    Boolean        @default(false)
+  email_sent_at DateTime?
+  was_forced    Boolean        @default(false)
+  parent        ParentUser     @relation(fields: [parent_id], references: [id], onDelete: Cascade)
+
+  @@index([parent_id, login_at])
+}
 
 enum UserStatus {
   ACTIVE
@@ -180,7 +1396,6 @@ enum RenewalInvoiceType {
 }
 
 enum InvoiceStatus {
-  DRAFT
   ISSUED
   PAID
   OVERDUE
@@ -204,17 +1419,22 @@ enum OrderChannel {
 
 enum OrderStatus {
   PENDING
-  PARTIAL_PAYMENT_CONFIRMED
-  PARTIAL_INVOICE_GENERATED
-  TOKEN_GENERATING
-  TOKEN_COMPLETE
-  DESIGN_GENERATING
-  DESIGN_COMPLETE
+  CONFIRMED
+  PAYMENT_PENDING
+  ADVANCE_RECEIVED
+  TOKEN_GENERATED          // ✅ Keep this (replaces TOKEN_GENERATING/TOKEN_COMPLETE)
+  CARD_DESIGN              // ✅ Keep this (replaces DESIGN_GENERATING)
+  CARD_DESIGN_REVISION
+  CARD_DESIGN_READY        // ✅ Keep this (replaces DESIGN_COMPLETE)
   DESIGN_APPROVED
-  VENDOR_SENT
+  SENT_TO_VENDOR           // ✅ Keep this (replaces VENDOR_SENT)
   PRINTING
+  PRINT_COMPLETE
   SHIPPED
+  READY_TO_SHIP
+  OUT_FOR_DELIVERY
   DELIVERED
+  BALANCE_PENDING
   COMPLETED
   CANCELLED
   REFUNDED
@@ -306,7 +1526,6 @@ enum QrType {
   PRE_DETAILS
 }
 
-// [C2] NEW ENUM: Dashboard user type for typed notifications
 enum DashboardUserType {
   SUPER_ADMIN
   SCHOOL_ADMIN
@@ -425,10 +1644,6 @@ enum ScanType {
   OTHER
 }
 
-// =============================================================================
-// PIPELINE ENUMS
-// =============================================================================
-
 enum PipelineStepName {
   CREATE
   CONFIRM
@@ -466,7 +1681,6 @@ enum JobStatus {
   DEAD
 }
 
-// [H4] NEW ENUMS: Pipeline and Design status tracking
 enum PipelineStatus {
   PENDING
   IN_PROGRESS
@@ -479,1375 +1693,4 @@ enum DesignStatus {
   IN_PROGRESS
   COMPLETE
   FAILED
-}
-
-// =============================================================================
-// SCHOOL
-// =============================================================================
-
-model School {
-  id                  String      @id @default(uuid())
-  name                String
-  address             String?
-  city                String?
-  state               String?
-  pincode             String?
-  country             String      @default("IN")
-  code                String      @unique
-  serial_number       Int         @unique @default(autoincrement())
-  email               String?
-  phone               String?
-  logo_url            String?
-  timezone            String      @default("Asia/Kolkata")
-  school_type         SchoolType  @default(PRIVATE)
-  pricing_tier        PricingTier @default(PRIVATE_STANDARD)
-  udise_code          String?     @unique
-  affiliation_num     String?
-  affiliated_board    String?
-  contract_signed_at  DateTime?
-  contract_expires_at DateTime?
-  onboarded_by        String?
-  onboarded_at        DateTime?
-  is_active           Boolean     @default(true)
-  created_at          DateTime    @default(now())
-  updated_at          DateTime    @updatedAt
-
-  apiKeys                ApiKey[]
-  auditLogs              AuditLog[]
-  cards                  Card[]
-  cardOrders             CardOrder[]
-  cardRenewals           CardRenewal[]
-  cardTemplate           CardTemplate?
-  dashboardNotifications DashboardNotification[]
-  featureFlags           SchoolFeatureFlag[]
-  invoices               Invoice[]
-  notifications          Notification[]
-  parentEditLogs         ParentEditLog[]
-  payments               Payment[]
-  scanLogs               ScanLog[]
-  locationEvents         LocationEvent[]
-  settings               SchoolSettings?
-  students               Student[]
-  subscriptions          Subscription[]
-  tokens                 Token[]
-  tokenBatches           TokenBatch[]
-  trustedScanZones       TrustedScanZone[]
-  users                  SchoolUser[]
-  webhooks               Webhook[]
-  qrAssets               QrAsset[]
-
-  @@index([code])
-  @@index([is_active])
-  @@index([serial_number])
-}
-
-model SchoolSettings {
-  id                         String            @id @default(uuid())
-  school_id                  String            @unique
-  allow_location             Boolean           @default(false)
-  allow_parent_edit          Boolean           @default(true)
-  scan_notifications_enabled Boolean           @default(true)
-  notify_on_every_scan       Boolean           @default(false)
-  scan_alert_cooldown_mins   Int               @default(60)
-  token_validity_months      Int               @default(12)
-  max_tokens_per_student     Int               @default(1)
-  default_profile_visibility ProfileVisibility @default(PUBLIC)
-  renewal_reminder_days      Int[]             @default([30, 15, 7, 1])
-  auto_deactivate_on_expiry  Boolean           @default(true)
-  school_hours_start         String            @default("08:00")
-  school_hours_end           String            @default("17:00")
-  school_days                Int[]             @default([1, 2, 3, 4, 5])
-  created_at                 DateTime          @default(now())
-  updated_at                 DateTime          @updatedAt
-  school                     School            @relation(fields: [school_id], references: [id], onDelete: Cascade)
-
-  @@index([allow_location])
-}
-
-// =============================================================================
-// USERS
-// =============================================================================
-
-model SchoolUser {
-  id                     String                  @id @default(uuid())
-  school_id              String
-  email                  String                  @unique
-  password_hash          String
-  name                   String?
-  role                   SchoolRole              @default(ADMIN)
-  is_active              Boolean                 @default(true)
-  last_login_at          DateTime?
-  created_at             DateTime                @default(now())
-  updated_at             DateTime                @updatedAt
-  school                 School                  @relation(fields: [school_id], references: [id], onDelete: Cascade)
-  sessions               Session[]
-  dashboardNotifications DashboardNotification[]
-
-  @@index([school_id])
-}
-
-model ParentUser {
-  id                 String                  @id @default(uuid())
-  email              String?                 @unique
-  phone              String                  @unique
-  phone_index        String?                 @unique
-  password_hash      String?
-  name               String?
-  avatar_url         String?
-  preferred_language String                  @default("en")
-  preferred_theme    AppTheme                @default(SYSTEM)
-  is_phone_verified  Boolean                 @default(false)
-  is_email_verified  Boolean                 @default(false)
-  status             UserStatus              @default(ACTIVE)
-  last_login_at      DateTime?
-  deleted_at         DateTime?
-  created_at         DateTime                @default(now())
-  updated_at         DateTime                @updatedAt
-  children           ParentStudent[]
-  devices            ParentDevice[]
-  editLogs           ParentEditLog[]
-  notificationPrefs  ParentNotificationPref?
-  notifications      Notification[]
-  sessions           Session[]
-  deviceLoginLogs    DeviceLoginLog[]
-  // [H2] REMOVED: dashboardNotifications — parents use mobile app, not dashboard
-
-  @@index([phone_index])
-}
-
-model ParentDevice {
-  id            String              @id @default(uuid())
-  parent_id     String
-  expo_push_token String?  @unique
-  platform      DevicePlatform
-  device_name   String?
-  device_model  String?
-  os_version    String?
-  app_version   String?
-  is_active     Boolean             @default(true)
-  last_seen_at  DateTime?
-  logged_out_at DateTime?
-  logout_reason DeviceLogoutReason?
-  created_at    DateTime            @default(now())
-  parent        ParentUser          @relation(fields: [parent_id], references: [id], onDelete: Cascade)
-
-  @@index([parent_id, is_active])
-}
-
-model ParentNotificationPref {
-  id                        String     @id @default(uuid())
-  parent_id                 String     @unique
-  scan_notify_enabled       Boolean    @default(true)
-  scan_notify_push          Boolean    @default(true)
-  scan_notify_sms           Boolean    @default(false)
-  scan_notify_email         Boolean    @default(false)
-  anomaly_notify_enabled    Boolean    @default(true)
-  anomaly_notify_push       Boolean    @default(true)
-  anomaly_notify_sms        Boolean    @default(true)
-  anomaly_notify_email      Boolean    @default(true)
-  card_expiry_notify        Boolean    @default(true)
-  card_blocked_notify       Boolean    @default(true)
-  device_login_notify_email Boolean    @default(true)
-  account_change_notify     Boolean    @default(true)
-  quiet_hours_enabled       Boolean    @default(false)
-  quiet_hours_start         String?
-  quiet_hours_end           String?
-  created_at                DateTime   @default(now())
-  updated_at                DateTime   @updatedAt
-  parent                    ParentUser @relation(fields: [parent_id], references: [id], onDelete: Cascade)
-}
-
-model SuperAdmin {
-  id                     String                  @id @default(uuid())
-  name                   String
-  email                  String                  @unique
-  password_hash          String
-  is_active              Boolean                 @default(true)
-  last_login_at          DateTime?
-  created_at             DateTime                @default(now())
-  updated_at             DateTime                @updatedAt
-  sessions               Session[]
-  dashboardNotifications DashboardNotification[]
-
-  @@index([email])
-}
-
-// =============================================================================
-// OTP - REDIS ONLY (Audit log only)
-// [M2] RENAMED: OtpLog → OtpAuditLog, removed otp_hash field
-// OTP verification now uses Redis only per Orchestrator Rule 2
-// =============================================================================
-
-model OtpAuditLog {
-  id           String     @id @default(uuid())
-  phone_index  String
-  purpose      OtpPurpose
-  attempts     Int        @default(0)
-  max_attempts Int        @default(5)
-  verified     Boolean    @default(false)
-  verified_at  DateTime?
-  expires_at   DateTime
-  invalidated  Boolean    @default(false)
-  msg91_req_id String?
-  ip_address   String?
-  created_at   DateTime   @default(now())
-
-  @@index([phone_index, purpose])
-  @@index([expires_at])
-}
-
-// =============================================================================
-// STUDENTS (UPDATED with pipeline fields)
-// =============================================================================
-
-model Student {
-  id               String      @id @default(uuid())
-  school_id        String?
-  profile_type     ProfileType @default(STUDENT)
-  setup_stage      SetupStage  @default(PENDING)
-  first_name       String?
-  last_name        String?
-  photo_url        String?
-  gender           Gender?
-  dob_encrypted    String?
-  class            String?
-  section          String?
-  roll_number      String?
-  admission_number String?
-  is_active        Boolean     @default(true)
-  created_at       DateTime    @default(now())
-  updated_at       DateTime    @updatedAt
-  deleted_at       DateTime?
-
-  // Pipeline tracking fields
-  card_number           String?         @unique
-  token                 String?         @unique
-  token_hash            String?         @unique
-  scan_url              String?
-  qr_code_url           String?
-  card_design_url       String?
-  pipeline_status       PipelineStatus? @default(PENDING)
-  pipeline_started_at   DateTime?
-  pipeline_completed_at DateTime?
-  design_status         DesignStatus?   @default(PENDING)
-  design_started_at     DateTime?
-  design_completed_at   DateTime?
-
-  // Relations
-  cards           Card[]
-  cardRenewals    CardRenewal[]
-  cardVisibility  CardVisibility?
-  editLogs        ParentEditLog[]
-  emergency       EmergencyProfile?
-  locationConsent LocationConsent?
-  locationEvents  LocationEvent[]
-  notifications   Notification[]
-  parents         ParentStudent[]
-  school          School?           @relation(fields: [school_id], references: [id], onDelete: SetNull)
-  tokens          Token[]
-  scanLogs        ScanLog[] // ADDED: opposite of ScanLog.student
-  orderItems      CardOrderItem[]
-
-  @@index([school_id])
-  @@index([setup_stage])
-  @@index([pipeline_status])
-  @@index([card_number])
-  @@index([token_hash])
-}
-
-model ParentStudent {
-  id           String     @id @default(uuid())
-  parent_id    String
-  student_id   String
-  relationship String?
-  is_primary   Boolean    @default(false)
-  created_at   DateTime   @default(now())
-  parent       ParentUser @relation(fields: [parent_id], references: [id], onDelete: Cascade)
-  student      Student    @relation(fields: [student_id], references: [id], onDelete: Cascade)
-
-  @@unique([parent_id, student_id])
-}
-
-model EmergencyProfile {
-  id                     String             @id @default(uuid())
-  student_id             String             @unique
-  blood_group            BloodGroup?
-  allergies              String?
-  conditions             String?
-  medications            String?
-  doctor_name            String?
-  doctor_phone_encrypted String?
-  notes                  String?
-  visibility             ProfileVisibility  @default(PUBLIC)
-  is_visible             Boolean            @default(true)
-  created_at             DateTime           @default(now())
-  updated_at             DateTime           @updatedAt
-  contacts               EmergencyContact[]
-  student                Student            @relation(fields: [student_id], references: [id], onDelete: Cascade)
-}
-
-model EmergencyContact {
-  id               String           @id @default(uuid())
-  profile_id       String
-  name             String
-  phone_encrypted  String
-  relationship     String?
-  priority         Int
-  display_order    Int              @default(0)
-  is_active        Boolean          @default(true)
-  call_enabled     Boolean          @default(true)
-  whatsapp_enabled Boolean          @default(true)
-  created_at       DateTime         @default(now())
-  updated_at       DateTime         @updatedAt
-  profile          EmergencyProfile @relation(fields: [profile_id], references: [id], onDelete: Cascade)
-
-  @@unique([profile_id, priority])
-  @@index([profile_id])
-}
-
-model CardVisibility {
-  id                String            @id @default(uuid())
-  student_id        String            @unique
-  visibility        ProfileVisibility @default(PUBLIC)
-  hidden_fields     String[]          @default([])
-  updated_by_parent Boolean           @default(false)
-  created_at        DateTime          @default(now())
-  updated_at        DateTime          @updatedAt
-  student           Student           @relation(fields: [student_id], references: [id], onDelete: Cascade)
-}
-
-model ParentEditLog {
-  id          String         @id @default(uuid())
-  school_id   String?
-  student_id  String
-  parent_id   String
-  field_group ParentEditType
-  old_value   Json?
-  new_value   Json
-  ip_address  String?
-  user_agent  String?
-  created_at  DateTime       @default(now())
-  school      School?        @relation(fields: [school_id], references: [id], onDelete: SetNull)
-  student     Student        @relation(fields: [student_id], references: [id], onDelete: Cascade)
-  parent      ParentUser     @relation(fields: [parent_id], references: [id], onDelete: Cascade)
-
-  @@index([student_id])
-  @@index([parent_id])
-  @@index([created_at])
-}
-
-// =============================================================================
-// TOKENS & QR
-// =============================================================================
-
-model Token {
-  id             String      @id @default(uuid())
-  school_id      String
-  student_id     String?
-  token_hash     String      @unique
-  status         TokenStatus @default(UNASSIGNED)
-  batch_id       String?
-  order_id       String?
-  order_item_id  String?     @unique
-  replaced_by_id String?
-  activated_at   DateTime?
-  assigned_at    DateTime?
-  expires_at     DateTime?
-  revoked_at     DateTime?
-  created_at     DateTime    @default(now())
-
-  // Relations
-  orderItem    CardOrderItem? @relation(fields: [order_item_id], references: [id])
-  order        CardOrder?     @relation(fields: [order_id], references: [id])
-  batch        TokenBatch?    @relation(fields: [batch_id], references: [id])
-  school       School         @relation(fields: [school_id], references: [id], onDelete: Cascade)
-  student      Student?       @relation(fields: [student_id], references: [id], onDelete: SetNull)
-  replacedBy   Token?         @relation("TokenReplacement", fields: [replaced_by_id], references: [id])
-  replacements Token[]        @relation("TokenReplacement")
-
-  cards     Card[]
-  anomalies ScanAnomaly[]
-  locations LocationEvent[]
-  nonces    RegistrationNonce[]
-  scans     ScanLog[]
-  qrAsset   QrAsset?
-  is_honeypot  Boolean  @default(false)
-
-
-  @@index([is_honeypot])
-  @@index([school_id, status])
-  @@index([order_id])
-  @@index([token_hash])
-  @@index([student_id])
-}
-
-model TokenBatch {
-  id              String           @id @default(uuid())
-  school_id       String
-  order_id        String?
-  count           Int
-  generated_count Int              @default(0)
-  failed_count    Int              @default(0)
-  status          TokenBatchStatus @default(PENDING)
-  created_by      String
-  notes           String?
-  completed_at    DateTime?
-  error_log       Json?
-  created_at      DateTime         @default(now())
-  updated_at      DateTime         @updatedAt
-  order           CardOrder?       @relation(fields: [order_id], references: [id])
-  tokens          Token[]
-  school          School           @relation(fields: [school_id], references: [id], onDelete: Cascade)
-
-  @@index([order_id])
-  @@index([status])
-}
-
-model QrAsset {
-  id           String     @id @default(uuid())
-  token_id     String     @unique
-  school_id    String
-  storage_key  String     @unique
-  public_url   String
-  format       QrFormat   @default(PNG)
-  width_px     Int        @default(512)
-  height_px    Int        @default(512)
-  file_size_kb Int?
-  qr_type      QrType
-  generated_by String
-  order_id     String?
-  is_active    Boolean    @default(true)
-  generated_at DateTime   @default(now())
-  token        Token      @relation(fields: [token_id], references: [id], onDelete: Cascade)
-  order        CardOrder? @relation(fields: [order_id], references: [id])
-  school       School     @relation(fields: [school_id], references: [id], onDelete: Cascade)
-
-  @@index([school_id])
-  @@index([order_id])
-}
-
-// =============================================================================
-// CARD ORDER SYSTEM
-// =============================================================================
-
-model CardOrder {
-  id              String        @id @default(uuid())
-  school_id       String
-  subscription_id String?
-  order_number    String        @unique
-  order_type      OrderType
-  student_count   Int
-  status          OrderStatus   @default(PENDING)
-  order_channel   OrderChannel?
-
-  // Financial denorm
-  unit_price     Int?
-  grand_total    Int?
-  advance_amount Int?
-  balance_amount Int?
-
-  // Payment tracking
-  payment_status  OrderPaymentStatus @default(UNPAID)
-  advance_paid_at DateTime?
-  balance_paid_at DateTime?
-
-  // Pipeline progress tracking
-  pipeline_completed_count Int @default(0)
-  design_completed_count   Int @default(0)
-
-  // [H5] NEW: Timestamps for stalled job detection
-  pipeline_started_at DateTime?
-  design_started_at   DateTime?
-
-  // Invoice tracking
-  partial_invoice_id String? @unique
-  final_invoice_id   String? @unique
-
-  partialInvoice Invoice? @relation("PartialInvoiceForOrder", fields: [partial_invoice_id], references: [id])
-  finalInvoice   Invoice? @relation("FinalInvoiceForOrder", fields: [final_invoice_id], references: [id])
-
-  // Direct payments
-  payments Payment[]
-
-  // Delivery address
-  delivery_name    String?
-  delivery_phone   String?
-  delivery_address String?
-  delivery_city    String?
-  delivery_state   String?
-  delivery_pincode String?
-
-  // Audit
-  confirmed_by            String?
-  confirmed_at            DateTime?
-  tokens_generated_by     String?
-  tokens_generated_at     DateTime?
-  card_design_files       Json?
-  card_design_by          String?
-  card_design_at          DateTime?
-  vendor_id               String?
-  vendor_notes            String?
-  files_sent_to_vendor_at DateTime?
-  files_sent_by           String?
-  print_complete_at       DateTime?
-  print_complete_noted_by String?
-  status_changed_by       String?
-  status_changed_at       DateTime?
-  status_note             String?
-  notes                   String?
-  admin_notes             String?
-  caller_name             String?
-  caller_phone            String?
-  call_notes              String?
-
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-
-  // Relations
-  items                  CardOrderItem[]
-  qrAssets               QrAsset[]
-  shipment               OrderShipment?
-  cards                  Card[]
-  statusLogs             OrderStatusLog[]
-  tokens                 Token[]
-  tokenBatches           TokenBatch[]
-  pipeline               OrderPipeline?
-  vendor                 VendorProfile?          @relation(fields: [vendor_id], references: [id])
-  school                 School                  @relation(fields: [school_id], references: [id], onDelete: Cascade)
-  subscription           Subscription?           @relation(fields: [subscription_id], references: [id])
-  invoices               Invoice[]
-  dashboardNotifications DashboardNotification[]
-
-  @@index([school_id])
-  @@index([status])
-  @@index([payment_status])
-  @@index([created_at])
-}
-
-model CardOrderItem {
-  id              String          @id @default(uuid())
-  order_id        String
-  student_id      String?
-  token_id        String?         @unique
-  student_name    String
-  class           String?
-  section         String?
-  roll_number     String?
-  photo_url       String?
-  status          OrderItemStatus @default(PENDING)
-  // [L1] FIXED: Replaced qr_generated Boolean with pipeline_status enum
-  pipeline_status PipelineStatus  @default(PENDING)
-  card_design_url String?
-  card_printed    Boolean         @default(false)
-  has_issue       Boolean         @default(false)
-  issue_note      String?
-  created_at      DateTime        @default(now())
-  updated_at      DateTime        @updatedAt
-  order           CardOrder       @relation(fields: [order_id], references: [id], onDelete: Cascade)
-  token           Token?          @relation
-  student         Student?        @relation(fields: [student_id], references: [id])
-
-  @@index([order_id])
-  @@index([student_id])
-}
-
-model OrderStatusLog {
-  id          String       @id @default(uuid())
-  order_id    String
-  from_status OrderStatus?
-  to_status   OrderStatus
-  changed_by  String
-  // [M4] NEW: Actor type for audit trail
-  actor_type  ActorType    @default(SYSTEM)
-  note        String?
-  metadata    Json?
-  created_at  DateTime     @default(now())
-  order       CardOrder    @relation(fields: [order_id], references: [id], onDelete: Cascade)
-
-  @@index([order_id, created_at])
-}
-
-model OrderShipment {
-  id                     String            @id @default(uuid())
-  order_id               String            @unique
-  shiprocket_order_id    String?
-  shiprocket_shipment_id String?
-  awb_code               String?           @unique
-  courier_name           String?
-  courier_id             Int?
-  tracking_url           String?
-  label_url              String?
-  manifest_url           String?
-  pickup_vendor_id       String?
-  pickup_name            String?
-  pickup_contact         String?
-  pickup_address         String?
-  pickup_city            String?
-  pickup_state           String?
-  pickup_pincode         String?
-  delivery_name          String?
-  delivery_phone         String?
-  delivery_address       String?
-  delivery_city          String?
-  delivery_state         String?
-  delivery_pincode       String?
-  status                 ShipmentStatus    @default(PENDING)
-  shiprocket_status      ShiprocketStatus?
-  created_by             String?
-  tracking_shared_at     DateTime?
-  tracking_shared_by     String?
-  pickup_scheduled_at    DateTime?
-  picked_up_at           DateTime?
-  estimated_delivery_at  DateTime?
-  delivered_at           DateTime?
-  delivery_confirmed_by  String?
-  notes                  String?
-  created_at             DateTime          @default(now())
-  updated_at             DateTime          @updatedAt
-  order                  CardOrder         @relation(fields: [order_id], references: [id], onDelete: Cascade)
-
-  @@index([status])
-  @@index([awb_code])
-}
-
-model VendorProfile {
-  id                  String       @id @default(uuid())
-  name                String
-  contact_name        String?
-  phone               String?
-  email               String?
-  status              VendorStatus @default(ACTIVE)
-  address             String?
-  city                String?
-  state               String?
-  pincode             String?
-  gstin               String?
-  speciality          String?
-  avg_turnaround_days Int?
-  notes               String?
-  created_at          DateTime     @default(now())
-  updated_at          DateTime     @updatedAt
-  orders              CardOrder[]
-
-  @@index([status])
-}
-
-model Card {
-  id           String        @id @default(uuid())
-  school_id    String
-  student_id   String?
-  token_id     String?
-  order_id     String?
-  card_number  String        @unique
-  file_url     String?
-  print_status PrintStatus   @default(PENDING)
-  printed_at   DateTime?
-  created_at   DateTime      @default(now())
-  renewals     CardRenewal[]
-  school       School        @relation(fields: [school_id], references: [id], onDelete: Cascade)
-  student      Student?      @relation(fields: [student_id], references: [id], onDelete: Cascade)
-  token        Token?        @relation(fields: [token_id], references: [id])
-  order        CardOrder?    @relation(fields: [order_id], references: [id])
-
-  @@index([school_id])
-  @@index([token_id])
-  @@index([order_id])
-  @@index([card_number])
-}
-
-model CardRenewal {
-  id           String       @id @default(uuid())
-  card_id      String
-  student_id   String
-  school_id    String
-  renewed_by   String?
-  renewer_type ActorType    @default(PARENT_USER)
-  old_expiry   DateTime
-  new_expiry   DateTime
-  amount_paid  Int
-  tax_amount   Int          @default(0)
-  payment_id   String?
-  school_type  SchoolType?
-  pricing_tier PricingTier?
-  created_at   DateTime     @default(now())
-  card         Card         @relation(fields: [card_id], references: [id], onDelete: Cascade)
-  payment      Payment?     @relation("RenewalPayment", fields: [payment_id], references: [id])
-  school       School       @relation(fields: [school_id], references: [id], onDelete: Cascade)
-  student      Student      @relation(fields: [student_id], references: [id], onDelete: Cascade)
-
-  @@index([card_id])
-  @@index([student_id])
-}
-
-// =============================================================================
-// MONEY (UPDATED Invoice)
-// =============================================================================
-
-model Subscription {
-  id                   String             @id @default(uuid())
-  school_id            String
-  plan                 PlanType           @default(GOVT_STANDARD)
-  status               SubscriptionStatus @default(TRIALING)
-  pricing_tier         PricingTier        @default(PRIVATE_STANDARD)
-  student_count        Int                @default(0)
-  unit_price           Int                @default(19900)
-  grand_total          Int                @default(0)
-  current_period_start DateTime
-  current_period_end   DateTime
-  trial_ends_at        DateTime?
-  fully_paid_at        DateTime?
-  created_at           DateTime           @default(now())
-  updated_at           DateTime           @updatedAt
-  cardOrders           CardOrder[]
-  school               School             @relation(fields: [school_id], references: [id], onDelete: Cascade)
-  invoices             Invoice[]
-
-  @@index([school_id])
-  @@index([status])
-}
-
-model Invoice {
-  id              String  @id @default(uuid())
-  school_id       String
-  order_id        String?
-  subscription_id String?
-
-  // Invoice categorization
-  category             InvoiceCategory
-  order_invoice_type   OrderInvoiceType?
-  renewal_invoice_type RenewalInvoiceType?
-
-  invoice_number   String        @unique
-  student_count    Int
-  unit_price       Int
-  amount           Int
-  tax_amount       Int
-  total_amount     Int
-  status           InvoiceStatus @default(ISSUED)
-  issued_at        DateTime      @default(now())
-  due_at           DateTime?
-  paid_at          DateTime?
-  pdf_url          String?
-  // [H3] NEW: PDF generation timestamp for idempotency
-  pdf_generated_at DateTime?
-
-  // Relations
-  order        CardOrder?    @relation(fields: [order_id], references: [id], onDelete: Cascade)
-  subscription Subscription? @relation(fields: [subscription_id], references: [id], onDelete: SetNull)
-  payments     Payment[]
-  school       School        @relation(fields: [school_id], references: [id], onDelete: Cascade)
-
-  // Reverse relations for CardOrder's partial/final invoices
-  partialOrder CardOrder? @relation("PartialInvoiceForOrder")
-  finalOrder   CardOrder? @relation("FinalInvoiceForOrder")
-
-  @@index([order_id])
-  @@index([category, order_invoice_type])
-  @@index([status])
-  @@index([invoice_number])
-}
-
-model Payment {
-  id              String        @id @default(uuid())
-  school_id       String
-  order_id        String
-  invoice_id      String?
-  subscription_id String?
-  amount          Int
-  status          PaymentStatus @default(SUCCESS)
-  // [M3] REMOVED: provider field (offline payments don't have a provider)
-  payment_mode    PaymentMode   @default(BANK_TRANSFER)
-  is_advance      Boolean       @default(true)
-  metadata        Json?
-  created_at      DateTime      @default(now())
-  order           CardOrder     @relation(fields: [order_id], references: [id], onDelete: Cascade)
-  invoice         Invoice?      @relation(fields: [invoice_id], references: [id])
-  school          School        @relation(fields: [school_id], references: [id], onDelete: Cascade)
-  renewals        CardRenewal[] @relation("RenewalPayment")
-
-  @@index([order_id])
-  @@index([invoice_id])
-  @@index([created_at])
-}
-
-// =============================================================================
-// DASHBOARD NOTIFICATIONS (UPDATED)
-// =============================================================================
-
-model DashboardNotification {
-  id         String                    @id @default(uuid())
-  user_id    String
-  // [C2] FIXED: Changed from String to enum
-  user_type  DashboardUserType
-  type       DashboardNotificationType
-  title      String
-  body       String
-  metadata   Json?
-  read       Boolean                   @default(false)
-  read_at    DateTime?
-  created_at DateTime                  @default(now())
-
-  school_id String?
-  order_id  String?
-
-  // [H1] NEW: Typed FK relations to SchoolUser and SuperAdmin
-  school_user_id String?
-  super_admin_id String?
-
-  school     School?     @relation(fields: [school_id], references: [id], onDelete: SetNull)
-  order      CardOrder?  @relation(fields: [order_id], references: [id], onDelete: SetNull)
-  schoolUser SchoolUser? @relation(fields: [school_user_id], references: [id], onDelete: Cascade)
-  superAdmin SuperAdmin? @relation(fields: [super_admin_id], references: [id], onDelete: Cascade)
-
-  // [M5] NEW: Composite index for efficient queries
-  @@index([user_id, user_type])
-  @@index([user_id, read])
-  @@index([user_id, created_at])
-  @@index([type, created_at])
-  @@index([school_id])
-}
-
-// =============================================================================
-// SCAN LOGS (UPDATED)
-// =============================================================================
-
-model ScanLog {
-  id               String         @id @default(uuid())
-  token_id         String
-  student_id       String?
-  school_id        String
-  result           ScanResult
-  scan_type        ScanType       @default(OTHER)
-  scanned_by       String?
-  scanned_at       DateTime       @default(now())
-  ip_address       String?
-  ip_city          String?
-  ip_country       String?
-  ip_region        String?
-  ip_capture_basis IpCaptureBasis @default(LEGITIMATE_INTEREST)
-  location_derived Boolean        @default(true)
-  latitude         Float?
-  longitude        Float?
-  device_hash      String?
-  device_info      Json?
-  user_agent       String?
-  scan_purpose  ScanPurpose  @default(QR_SCAN)
-  response_time_ms Int?
-
-  emergency_dispatched Boolean   @default(false)
-  dispatched_at        DateTime?
-
-  // [M1] NEW: Track per-channel delivery status
-  dispatched_channels String[] @default([])
-  failed_channels     String[] @default([])
-
-  created_at DateTime @default(now())
-
-  // Relations - SINGLE definition of student
-  token   Token    @relation(fields: [token_id], references: [id], onDelete: Cascade)
-  student Student? @relation(fields: [student_id], references: [id], onDelete: SetNull)
-  school  School   @relation(fields: [school_id], references: [id], onDelete: Cascade)
-
-  @@index([token_id, created_at])
-  @@index([student_id, created_at])
-  @@index([school_id, created_at])
-  @@index([school_id, result])
-  @@index([scan_type, created_at])
-  @@index([emergency_dispatched, dispatched_at])
-}
-
-model ScanAnomaly {
-  id           String          @id @default(uuid())
-  token_id     String
-  anomaly_type AnomalyType
-  severity     AnomalySeverity @default(MEDIUM)
-  reason       String?
-  metadata     Json?
-  resolved     Boolean         @default(false)
-  resolved_at  DateTime?
-  resolved_by  String?
-  created_at   DateTime        @default(now())
-  token        Token           @relation(fields: [token_id], references: [id], onDelete: Cascade)
-
-  @@index([token_id])
-  @@index([anomaly_type])
-}
-
-model ScanRateLimit {
-  id              String                  @id @default(uuid())
-  identifier      String
-  identifier_type RateLimitIdentifierType
-  count           Int                     @default(1)
-  window_start    DateTime                @default(now())
-  last_hit        DateTime                @default(now())
-  blocked_until   DateTime?
-  blocked_reason  String?
-  block_count     Int                     @default(0)
-
-  @@unique([identifier, identifier_type])
-  @@index([blocked_until])
-}
-
-// =============================================================================
-// LOCATION
-// =============================================================================
-
-model LocationConsent {
-  id           String   @id @default(uuid())
-  student_id   String   @unique
-  enabled      Boolean  @default(false)
-  consented_by String?
-  consent_text String?
-  ip_address   String?
-  created_at   DateTime @default(now())
-  updated_at   DateTime @updatedAt
-  student      Student  @relation(fields: [student_id], references: [id], onDelete: Cascade)
-}
-
-model LocationEvent {
-  id         String         @id @default(uuid())
-  student_id String
-  school_id  String
-  token_id   String?
-  latitude   Float
-  longitude  Float
-  accuracy   Float?
-  altitude   Float?
-  source     LocationSource @default(SCAN_TRIGGER)
-  created_at DateTime       @default(now())
-  student    Student        @relation(fields: [student_id], references: [id], onDelete: Cascade)
-  school     School         @relation(fields: [school_id], references: [id], onDelete: Cascade)
-  token      Token?         @relation(fields: [token_id], references: [id])
-
-  @@index([student_id, created_at])
-  @@index([school_id, created_at])
-}
-
-model RegistrationNonce {
-  id          String    @id @default(uuid())
-  nonce       String    @unique
-  token_id    String
-  phone_index String?
-  expires_at  DateTime
-  used        Boolean   @default(false)
-  used_at     DateTime?
-  created_at  DateTime  @default(now())
-  token       Token     @relation(fields: [token_id], references: [id], onDelete: Cascade)
-
-  @@index([token_id])
-  @@index([expires_at])
-}
-
-model TrustedScanZone {
-  id         String   @id @default(uuid())
-  school_id  String
-  label      String
-  ip_range   String?
-  latitude   Float?
-  longitude  Float?
-  radius_m   Int      @default(200)
-  is_active  Boolean  @default(true)
-  created_by String?
-  updated_by String?
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-  school     School   @relation(fields: [school_id], references: [id], onDelete: Cascade)
-
-  @@index([school_id, is_active])
-}
-
-// =============================================================================
-// EXTERNAL NOTIFICATIONS
-// =============================================================================
-
-model Notification {
-  id          String              @id @default(uuid())
-  school_id   String
-  student_id  String?
-  parent_id   String?
-  type        String
-  channel     NotificationChannel
-  status      NotificationStatus  @default(QUEUED)
-  recipient   String
-  subject     String?
-  content     String?
-  payload     Json?
-  retry_count Int                 @default(0)
-  sent_at     DateTime?
-  error       String?
-  created_at  DateTime            @default(now())
-  school      School              @relation(fields: [school_id], references: [id], onDelete: Cascade)
-  student     Student?            @relation(fields: [student_id], references: [id])
-  parent      ParentUser?         @relation(fields: [parent_id], references: [id])
-
-  @@index([school_id])
-  @@index([status, created_at])
-  @@index([channel, status])
-}
-
-// =============================================================================
-// AUDIT LOG
-// =============================================================================
-
-model AuditLog {
-  id         String    @id @default(uuid())
-  school_id  String?
-  actor_id   String
-  actor_type ActorType
-  action     String
-  entity     String
-  entity_id  String
-  old_value  Json?
-  new_value  Json?
-  metadata   Json?
-  ip_address String?
-  user_agent String?
-  created_at DateTime  @default(now())
-  school     School?   @relation(fields: [school_id], references: [id])
-
-  @@index([actor_id])
-  @@index([school_id])
-  @@index([entity, entity_id])
-  @@index([created_at])
-}
-
-// =============================================================================
-// API KEYS & WEBHOOKS
-// =============================================================================
-
-model ApiKey {
-  id           String    @id @default(uuid())
-  school_id    String
-  name         String
-  key_hash     String    @unique
-  key_prefix   String
-  scopes       String[]
-  last_used_at DateTime?
-  expires_at   DateTime?
-  revoked_at   DateTime?
-  created_at   DateTime  @default(now())
-  school       School    @relation(fields: [school_id], references: [id], onDelete: Cascade)
-
-  @@index([school_id])
-}
-
-model Webhook {
-  id          String            @id @default(uuid())
-  school_id   String
-  url         String
-  secret_hash String
-  events      String[]
-  is_active   Boolean           @default(true)
-  created_at  DateTime          @default(now())
-  deliveries  WebhookDelivery[]
-  school      School            @relation(fields: [school_id], references: [id], onDelete: Cascade)
-
-  @@index([school_id, is_active])
-}
-
-model WebhookDelivery {
-  id              String    @id @default(uuid())
-  webhook_id      String
-  idempotency_key String?   @unique
-  event_type      String
-  payload         Json
-  status_code     Int?
-  response        String?
-  attempt         Int       @default(1)
-  delivered_at    DateTime?
-  created_at      DateTime  @default(now())
-  webhook         Webhook   @relation(fields: [webhook_id], references: [id], onDelete: Cascade)
-
-  @@index([webhook_id, created_at])
-}
-
-model WebhookEvent {
-  id           String    @id @default(uuid())
-  provider     String
-  event_type   String
-  payload      Json
-  received_at  DateTime  @default(now())
-  processed    Boolean   @default(false)
-  processed_at DateTime?
-  error        String?
-
-  @@index([provider, event_type])
-  @@index([processed])
-}
-
-// =============================================================================
-// OPERATIONS & RESILIENCE
-// =============================================================================
-
-model DeadLetterQueue {
-  id            String    @id @default(uuid())
-  job_type      String
-  payload       Json
-  error_message String
-  retry_count   Int       @default(0)
-  last_attempt  DateTime  @default(now())
-  resolved      Boolean   @default(false)
-  resolved_at   DateTime?
-  created_at    DateTime  @default(now())
-
-  @@index([job_type, resolved])
-}
-
-model IdempotencyKey {
-  id            String   @id @default(uuid())
-  key           String   @unique
-  resource_type String
-  resource_id   String
-  status        String
-  response      Json?
-  expires_at    DateTime
-  created_at    DateTime @default(now())
-
-  @@index([expires_at])
-}
-
-model FeatureFlagOverride {
-  id          String    @id @default(uuid())
-  flag_key    String
-  target_type String
-  target_id   String
-  enabled     Boolean
-  percentage  Int?
-  expires_at  DateTime?
-  created_by  String
-  created_at  DateTime  @default(now())
-  updated_at  DateTime  @updatedAt
-
-  @@unique([flag_key, target_type, target_id])
-  @@index([flag_key])
-}
-
-// =============================================================================
-// SECURITY & ABUSE PREVENTION
-// =============================================================================
-
-model AuthAttempt {
-  id              String   @id @default(uuid())
-  identifier      String
-  identifier_type String
-  success         Boolean  @default(false)
-  failure_reason  String?
-  ip_address      String?
-  user_agent      String?
-  created_at      DateTime @default(now())
-
-  @@index([identifier, created_at])
-  @@index([ip_address, created_at])
-}
-
-model IpBlocklist {
-  id         String    @id @default(uuid())
-  ip_address String    @unique
-  reason     String
-  blocked_by String
-  blocked_at DateTime  @default(now())
-  expires_at DateTime?
-  is_active  Boolean   @default(true)
-
-  @@index([ip_address, is_active])
-  @@index([expires_at])
-}
-
-// =============================================================================
-// PIPELINE MODELS
-// =============================================================================
-
-model OrderPipeline {
-  id               String               @id @default(uuid())
-  order_id         String               @unique
-  current_step     PipelineStepName
-  overall_progress Int                  @default(0)
-  is_stalled       Boolean              @default(false)
-  stalled_at       DateTime?
-  stalled_reason   String?
-  started_at       DateTime             @default(now())
-  completed_at     DateTime?
-  updated_at       DateTime             @updatedAt
-  order            CardOrder            @relation(fields: [order_id], references: [id], onDelete: Cascade)
-  steps            OrderStepExecution[]
-
-  @@index([order_id])
-  @@index([current_step])
-  @@index([is_stalled])
-}
-
-model OrderStepExecution {
-  id              String           @id @default(uuid())
-  pipeline_id     String
-  order_id        String
-  step            PipelineStepName
-  attempt_number  Int              @default(1)
-  status          StepStatus       @default(PENDING)
-  started_at      DateTime?
-  completed_at    DateTime?
-  duration_ms     Int?
-  progress        Int              @default(0)
-  progress_detail Json?
-  result_summary  Json?
-  error_log       Json?
-  triggered_by    String
-  triggered_at    DateTime         @default(now())
-  pipeline        OrderPipeline    @relation(fields: [pipeline_id], references: [id], onDelete: Cascade)
-  jobs            JobExecution[]
-  logs            StepLog[]
-
-  @@unique([pipeline_id, step, attempt_number])
-  @@index([pipeline_id])
-  @@index([order_id])
-  @@index([step, status])
-}
-
-model JobExecution {
-  id                String             @id @default(uuid())
-  step_execution_id String
-  order_id          String
-  queue_name        String
-  bullmq_job_id     String?
-  job_name          String
-  status            JobStatus          @default(QUEUED)
-  payload           Json
-  queued_at         DateTime           @default(now())
-  started_at        DateTime?
-  completed_at      DateTime?
-  duration_ms       Int?
-  progress          Int                @default(0)
-  attempt_number    Int                @default(1)
-  max_attempts      Int                @default(3)
-  last_error        String?
-  error_log         Json?
-  result            Json?
-  stepExecution     OrderStepExecution @relation(fields: [step_execution_id], references: [id], onDelete: Cascade)
-
-  @@index([step_execution_id])
-  @@index([order_id])
-  @@index([queue_name, status])
-}
-
-model StepLog {
-  id                String             @id @default(uuid())
-  step_execution_id String
-  order_id          String
-  job_execution_id  String?
-  level             String
-  message           String
-  context           Json?
-  created_at        DateTime           @default(now())
-  stepExecution     OrderStepExecution @relation(fields: [step_execution_id], references: [id], onDelete: Cascade)
-
-  @@index([step_execution_id])
-  @@index([order_id, created_at])
-  @@index([level, created_at])
-}
-
-// =============================================================================
-// FEATURE FLAGS & TEMPLATES
-// =============================================================================
-
-model FeatureFlag {
-  id          String   @id @default(uuid())
-  key         String   @unique
-  enabled     Boolean  @default(false)
-  description String?
-  metadata    Json?
-  updated_at  DateTime @updatedAt
-}
-
-model SchoolFeatureFlag {
-  id         String   @id @default(uuid())
-  school_id  String
-  key        String
-  enabled    Boolean
-  updated_at DateTime @updatedAt
-  school     School   @relation(fields: [school_id], references: [id], onDelete: Cascade)
-
-  @@unique([school_id, key])
-  @@index([school_id])
-}
-
-model CardTemplate {
-  id                 String   @id @default(uuid())
-  school_id          String   @unique
-  logo_url           String?
-  background_color   String   @default("#FFFFFF")
-  primary_color      String   @default("#000000")
-  text_color         String   @default("#000000")
-  qr_dark_color      String   @default("#000000")
-  qr_light_color     String   @default("#FFFFFF")
-  cover_accent_color String   @default("#E8342A")
-  cover_tagline      String?
-  cards_per_sheet    Int      @default(8)
-  card_width         Int      @default(640)
-  card_height        Int      @default(400)
-  show_student_name  Boolean  @default(true)
-  show_class         Boolean  @default(true)
-  show_school_name   Boolean  @default(true)
-  show_photo         Boolean  @default(true)
-  is_locked          Boolean  @default(true)
-  updated_by         String?
-  created_at         DateTime @default(now())
-  updated_at         DateTime @updatedAt
-  school             School   @relation(fields: [school_id], references: [id], onDelete: Cascade)
-}
-
-// =============================================================================
-// SESSIONS
-// =============================================================================
-
-model Session {
-  id                 String               @id @default(uuid())
-  parent_user_id     String?
-  school_user_id     String?
-  admin_user_id      String?
-  refresh_token_hash String               @unique
-  device_id          String?
-  device_info        String?
-  user_agent         String?
-  ip_address         String?
-  is_active          Boolean              @default(true)
-  revoked_at         DateTime?
-  revoke_reason      SessionRevokeReason?
-  last_active_at     DateTime?
-  expires_at         DateTime
-  created_at         DateTime             @default(now())
-  parentUser         ParentUser?          @relation(fields: [parent_user_id], references: [id], onDelete: Cascade)
-  schoolUser         SchoolUser?          @relation(fields: [school_user_id], references: [id], onDelete: Cascade)
-  superAdmin         SuperAdmin?          @relation(fields: [admin_user_id], references: [id], onDelete: Cascade)
-
-  @@index([parent_user_id, is_active])
-  @@index([school_user_id, is_active])
-  @@index([admin_user_id])
-  @@index([expires_at])
-}
-
-model BlacklistToken {
-  token_hash String   @id
-  expires_at DateTime
-  created_at DateTime @default(now())
-
-  @@index([expires_at])
-}
-
-model DeviceLoginLog {
-  id            String         @id @default(uuid())
-  parent_id     String
-  device_name   String?
-  device_model  String?
-  platform      DevicePlatform
-  os_version    String?
-  app_version   String?
-  ip_address    String?
-  ip_city       String?
-  ip_country    String?
-  login_at      DateTime       @default(now())
-  email_sent    Boolean        @default(false)
-  email_sent_at DateTime?
-  was_forced    Boolean        @default(false)
-  parent        ParentUser     @relation(fields: [parent_id], references: [id], onDelete: Cascade)
-
-  @@index([parent_id, login_at])
 }

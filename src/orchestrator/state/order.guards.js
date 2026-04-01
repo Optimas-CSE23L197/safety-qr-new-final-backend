@@ -6,9 +6,9 @@
 import { prisma } from '#config/prisma.js';
 import { redis } from '#config/redis.js';
 import { logger } from '#config/logger.js';
-import { REDIS_KEYS } from './orchestrator.constants.js';
-import { validateTransition } from './state/order.transitions.js';
-import { ORDER_STATUS } from './state/order.states.js';
+import { REDIS_KEYS } from '../orchestrator.constants.js';
+import { TRANSITIONS } from './order.transitions.js';
+import { ORDER_STATUS } from '../state/order.states.js';
 
 const STATE_CACHE_TTL = 300; // 5 min
 
@@ -23,6 +23,13 @@ function cacheDel(key) {
     logger.warn({ msg: 'Redis cache delete failed — non-fatal', key, err: err.message });
   });
 }
+
+export const validateTransition = (from, to) => {
+  const allowed = TRANSITIONS.get(from);
+  if (!allowed) return { valid: false, reason: `Unknown state: ${from}` };
+  if (allowed.has(to)) return { valid: true, reason: null };
+  return { valid: false, reason: `${from} → ${to} not allowed` };
+};
 
 export async function getOrderState(orderId) {
   const cacheKey = REDIS_KEYS.STATE(orderId);
@@ -80,6 +87,30 @@ export async function markStalled(orderId, reason) {
   });
   logger.warn({ msg: 'Pipeline marked stalled', orderId, reason });
 }
+
+export const applyTransition = async ({
+  orderId,
+  from,
+  to,
+  actorId,
+  actorType,
+  schoolId,
+  meta,
+  eventPayload,
+}) => {
+  const { valid, reason } = validateTransition(from, to);
+  if (!valid) throw new Error(`Invalid transition: ${reason}`);
+
+  const newDbStatus = ORDER_STATUS[to];
+  if (!newDbStatus) throw new Error(`No DB status mapping for state: ${to}`);
+
+  await prisma.cardOrder.update({
+    where: { id: orderId },
+    data: { status: newDbStatus, updated_at: new Date() },
+  });
+
+  return { from, to };
+};
 
 // =============================================================================
 // Helpers

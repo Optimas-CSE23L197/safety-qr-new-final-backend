@@ -81,6 +81,8 @@ import { publishEvent, publishFailure } from '../events/event.publisher.js';
 import { EVENTS } from '../events/event.types.js';
 import { getStorage, StoragePath } from '#infrastructure/storage/storage.index.js';
 import { generateQrPng } from '#services/qr.service.js';
+import { applyTransition } from '../state/order.guards.js';
+import { ORDER_STATUS } from '../state/order.states.js';
 
 // Default card dimensions
 const CARD_WIDTH = 640;
@@ -525,6 +527,18 @@ async function generateOrderCards(
     },
   });
 
+  // ── Transition to CARD_DESIGN_READY ──────────────────────────────────────
+  await applyTransition({
+    orderId,
+    from: order.status,
+    to: ORDER_STATUS.CARD_DESIGN_READY,
+    actorId: actorId ?? 'SYSTEM',
+    actorType: 'WORKER',
+    schoolId,
+    meta: { pdfUrl, composed: cardBuffers.length, failed: failedCards.length },
+    eventPayload: { orderNumber: order.order_number, pdfUrl },
+  });
+
   logger.info({
     msg: 'Card design generation completed',
     orderId,
@@ -641,19 +655,17 @@ export function createDesignWorker() {
   logger.info({ msg: 'Creating design worker' });
 
   const worker = new Worker(
-    QUEUE_NAMES.JOBS_BACKGROUND,
+    QUEUE_NAMES.PIPELINE_JOBS,
     async job => {
       logger.info({ msg: 'Design worker received job', jobId: job.id, data: job.data });
       return processDesignJob(job);
     },
     {
       connection: workerRedis,
-      concurrency: 1, // Single concurrency for CPU-intensive design generation
-      settings: {
-        stalledInterval: 90000,
-        maxStalledCount: 3,
-        lockDuration: 600000, // 10 minutes for large batches
-      },
+      concurrency: 1,
+      stalledInterval: 90000,
+      maxStalledCount: 3,
+      lockDuration: 600000,
     }
   );
 
@@ -674,7 +686,7 @@ export function createDesignWorker() {
     logger.error({ msg: 'Design worker error', error: err.message });
   });
 
-  logger.info({ msg: 'Design worker created', queue: QUEUE_NAMES.JOBS_BACKGROUND, concurrency: 1 });
+  logger.info({ msg: 'Design worker created', queue: QUEUE_NAMES.PIPELINE_JOBS, concurrency: 1 });
   return worker;
 }
 

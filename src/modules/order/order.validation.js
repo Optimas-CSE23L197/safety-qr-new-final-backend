@@ -123,7 +123,7 @@ export const paymentSchema = z
       .number()
       .positive('Amount must be greater than 0')
       .max(100000000, 'Amount exceeds limit'), // Max ₹10,00,000
-    payment_mode: z.enum(['UPI', 'BANK_TRANSFER', 'CHEQUE', 'RAZORPAY', 'CASH']),
+    payment_mode: z.enum(['UPI', 'BANK_TRANSFER', 'CHEQUE', 'CASH']),
     payment_ref: z
       .string()
       .min(1, 'Payment reference required')

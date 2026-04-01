@@ -281,8 +281,9 @@ export const batchGenerateCardNumbers = (schoolSerial, count) => {
  * @returns {string}
  */
 export const generateBlankCardNumber = () => {
-  const suffix = crypto.randomBytes(3).toString('hex').toUpperCase();
-  return `RESQID-${suffix}`;
+  const serial = String(schoolSerial).padStart(4, '0');
+  const hex = crypto.randomBytes(4).toString('hex').toUpperCase();
+  return `RQ-${serial}-${hex}`;
 };
 
 // =============================================================================

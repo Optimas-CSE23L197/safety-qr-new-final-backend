@@ -1,7 +1,5 @@
 // =============================================================================
-// orchestrator/events/event.types.js — RESQID
-// ALL event names as frozen constants.
-// Adding a new event = add here + add case to dispatcher.js. Zero other changes.
+// orchestrator/events/event.types.js — RESQID (FIXED)
 // =============================================================================
 
 export const EVENTS = Object.freeze({
@@ -15,7 +13,9 @@ export const EVENTS = Object.freeze({
   ORDER_CREATED: 'ORDER_CREATED',
   ORDER_CONFIRMED: 'ORDER_CONFIRMED',
   ORDER_ADVANCE_INVOICE_ISSUED: 'ORDER_ADVANCE_INVOICE_ISSUED',
+  PARTIAL_INVOICE_GENERATED: 'PARTIAL_INVOICE_GENERATED', // ✅ ADDED for dispatcher
   ORDER_ADVANCE_PAYMENT_RECEIVED: 'ORDER_ADVANCE_PAYMENT_RECEIVED',
+  PARTIAL_PAYMENT_CONFIRMED: 'PARTIAL_PAYMENT_CONFIRMED', // ✅ ADDED for dispatcher
   ORDER_TOKEN_GENERATION_STARTED: 'ORDER_TOKEN_GENERATION_STARTED',
   ORDER_TOKEN_GENERATION_COMPLETE: 'ORDER_TOKEN_GENERATION_COMPLETE',
   ORDER_CARD_DESIGN_STARTED: 'ORDER_CARD_DESIGN_STARTED',
@@ -24,7 +24,7 @@ export const EVENTS = Object.freeze({
   ORDER_SENT_TO_VENDOR: 'ORDER_SENT_TO_VENDOR',
   ORDER_PRINTING_STARTED: 'ORDER_PRINTING_STARTED',
   ORDER_PRINTING_COMPLETE: 'ORDER_PRINTING_COMPLETE',
-  ORDER_READY_TO_SHIP: 'ORDER_READY_TO_SHIP',
+  ORDER_READY_TO_SHIP: 'ORDER_READY_TO_SHIP', // ✅ ADDED
   ORDER_SHIPPED: 'ORDER_SHIPPED',
   ORDER_OUT_FOR_DELIVERY: 'ORDER_OUT_FOR_DELIVERY',
   ORDER_DELIVERED: 'ORDER_DELIVERED',
@@ -34,6 +34,7 @@ export const EVENTS = Object.freeze({
   ORDER_CANCELLED: 'ORDER_CANCELLED',
   ORDER_REFUNDED: 'ORDER_REFUNDED',
   ORDER_ON_HOLD: 'ORDER_ON_HOLD',
+  DESIGN_APPROVED: 'DESIGN_APPROVED', // ✅ ADDED for dispatcher
 
   // ── Auth / User ───────────────────────────────────────────────────────────
   USER_OTP_REQUESTED: 'USER_OTP_REQUESTED',

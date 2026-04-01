@@ -24,12 +24,12 @@ exports.Prisma = Prisma
 exports.$Enums = {}
 
 /**
- * Prisma Client JS version: 7.5.0
- * Query Engine version: 280c870be64f457428992c43c1f6d557fab6e29e
+ * Prisma Client JS version: 7.6.0
+ * Query Engine version: 75cbdc1eb7150937890ad5465d861175c6624711
  */
 Prisma.prismaVersion = {
-  client: "7.5.0",
-  engine: "280c870be64f457428992c43c1f6d557fab6e29e"
+  client: "7.6.0",
+  engine: "75cbdc1eb7150937890ad5465d861175c6624711"
 }
 
 Prisma.PrismaClientKnownRequestError = () => {
@@ -203,7 +203,6 @@ exports.Prisma.ParentUserScalarFieldEnum = {
 exports.Prisma.ParentDeviceScalarFieldEnum = {
   id: 'id',
   parent_id: 'parent_id',
-  device_token: 'device_token',
   platform: 'platform',
   device_name: 'device_name',
   device_model: 'device_model',
@@ -213,7 +212,8 @@ exports.Prisma.ParentDeviceScalarFieldEnum = {
   last_seen_at: 'last_seen_at',
   logged_out_at: 'logged_out_at',
   logout_reason: 'logout_reason',
-  created_at: 'created_at'
+  created_at: 'created_at',
+  expo_push_token: 'expo_push_token'
 };
 
 exports.Prisma.ParentNotificationPrefScalarFieldEnum = {
@@ -251,7 +251,6 @@ exports.Prisma.SuperAdminScalarFieldEnum = {
 
 exports.Prisma.OtpAuditLogScalarFieldEnum = {
   id: 'id',
-  phone_index: 'phone_index',
   purpose: 'purpose',
   attempts: 'attempts',
   max_attempts: 'max_attempts',
@@ -261,7 +260,8 @@ exports.Prisma.OtpAuditLogScalarFieldEnum = {
   invalidated: 'invalidated',
   msg91_req_id: 'msg91_req_id',
   ip_address: 'ip_address',
-  created_at: 'created_at'
+  created_at: 'created_at',
+  phone_index: 'phone_index'
 };
 
 exports.Prisma.StudentScalarFieldEnum = {
@@ -282,18 +282,18 @@ exports.Prisma.StudentScalarFieldEnum = {
   created_at: 'created_at',
   updated_at: 'updated_at',
   deleted_at: 'deleted_at',
-  card_number: 'card_number',
-  token: 'token',
-  token_hash: 'token_hash',
-  scan_url: 'scan_url',
-  qr_code_url: 'qr_code_url',
   card_design_url: 'card_design_url',
-  pipeline_status: 'pipeline_status',
-  pipeline_started_at: 'pipeline_started_at',
-  pipeline_completed_at: 'pipeline_completed_at',
-  design_status: 'design_status',
+  card_number: 'card_number',
+  design_completed_at: 'design_completed_at',
   design_started_at: 'design_started_at',
-  design_completed_at: 'design_completed_at'
+  design_status: 'design_status',
+  pipeline_completed_at: 'pipeline_completed_at',
+  pipeline_started_at: 'pipeline_started_at',
+  pipeline_status: 'pipeline_status',
+  qr_code_url: 'qr_code_url',
+  scan_url: 'scan_url',
+  token: 'token',
+  token_hash: 'token_hash'
 };
 
 exports.Prisma.ParentStudentScalarFieldEnum = {
@@ -416,28 +416,23 @@ exports.Prisma.CardOrderScalarFieldEnum = {
   subscription_id: 'subscription_id',
   order_number: 'order_number',
   order_type: 'order_type',
-  student_count: 'student_count',
   status: 'status',
-  order_channel: 'order_channel',
-  unit_price: 'unit_price',
-  grand_total: 'grand_total',
-  advance_amount: 'advance_amount',
-  balance_amount: 'balance_amount',
   payment_status: 'payment_status',
+  advance_amount: 'advance_amount',
   advance_paid_at: 'advance_paid_at',
+  balance_amount: 'balance_amount',
   balance_paid_at: 'balance_paid_at',
-  pipeline_completed_count: 'pipeline_completed_count',
-  design_completed_count: 'design_completed_count',
-  pipeline_started_at: 'pipeline_started_at',
-  design_started_at: 'design_started_at',
-  partial_invoice_id: 'partial_invoice_id',
-  final_invoice_id: 'final_invoice_id',
   delivery_name: 'delivery_name',
   delivery_phone: 'delivery_phone',
   delivery_address: 'delivery_address',
   delivery_city: 'delivery_city',
   delivery_state: 'delivery_state',
   delivery_pincode: 'delivery_pincode',
+  caller_name: 'caller_name',
+  caller_phone: 'caller_phone',
+  call_notes: 'call_notes',
+  notes: 'notes',
+  admin_notes: 'admin_notes',
   confirmed_by: 'confirmed_by',
   confirmed_at: 'confirmed_at',
   tokens_generated_by: 'tokens_generated_by',
@@ -454,13 +449,18 @@ exports.Prisma.CardOrderScalarFieldEnum = {
   status_changed_by: 'status_changed_by',
   status_changed_at: 'status_changed_at',
   status_note: 'status_note',
-  notes: 'notes',
-  admin_notes: 'admin_notes',
-  caller_name: 'caller_name',
-  caller_phone: 'caller_phone',
-  call_notes: 'call_notes',
   created_at: 'created_at',
-  updated_at: 'updated_at'
+  updated_at: 'updated_at',
+  grand_total: 'grand_total',
+  unit_price: 'unit_price',
+  order_channel: 'order_channel',
+  design_completed_count: 'design_completed_count',
+  design_started_at: 'design_started_at',
+  final_invoice_id: 'final_invoice_id',
+  partial_invoice_id: 'partial_invoice_id',
+  pipeline_completed_count: 'pipeline_completed_count',
+  pipeline_started_at: 'pipeline_started_at',
+  student_count: 'student_count'
 };
 
 exports.Prisma.CardOrderItemScalarFieldEnum = {
@@ -474,13 +474,13 @@ exports.Prisma.CardOrderItemScalarFieldEnum = {
   roll_number: 'roll_number',
   photo_url: 'photo_url',
   status: 'status',
-  pipeline_status: 'pipeline_status',
   card_design_url: 'card_design_url',
   card_printed: 'card_printed',
   has_issue: 'has_issue',
   issue_note: 'issue_note',
   created_at: 'created_at',
-  updated_at: 'updated_at'
+  updated_at: 'updated_at',
+  pipeline_status: 'pipeline_status'
 };
 
 exports.Prisma.OrderStatusLogScalarFieldEnum = {
@@ -489,10 +489,10 @@ exports.Prisma.OrderStatusLogScalarFieldEnum = {
   from_status: 'from_status',
   to_status: 'to_status',
   changed_by: 'changed_by',
-  actor_type: 'actor_type',
   note: 'note',
   metadata: 'metadata',
-  created_at: 'created_at'
+  created_at: 'created_at',
+  actor_type: 'actor_type'
 };
 
 exports.Prisma.OrderShipmentScalarFieldEnum = {
@@ -592,10 +592,10 @@ exports.Prisma.SubscriptionScalarFieldEnum = {
   student_count: 'student_count',
   unit_price: 'unit_price',
   grand_total: 'grand_total',
+  fully_paid_at: 'fully_paid_at',
   current_period_start: 'current_period_start',
   current_period_end: 'current_period_end',
   trial_ends_at: 'trial_ends_at',
-  fully_paid_at: 'fully_paid_at',
   created_at: 'created_at',
   updated_at: 'updated_at'
 };
@@ -603,11 +603,6 @@ exports.Prisma.SubscriptionScalarFieldEnum = {
 exports.Prisma.InvoiceScalarFieldEnum = {
   id: 'id',
   school_id: 'school_id',
-  order_id: 'order_id',
-  subscription_id: 'subscription_id',
-  category: 'category',
-  order_invoice_type: 'order_invoice_type',
-  renewal_invoice_type: 'renewal_invoice_type',
   invoice_number: 'invoice_number',
   student_count: 'student_count',
   unit_price: 'unit_price',
@@ -619,7 +614,12 @@ exports.Prisma.InvoiceScalarFieldEnum = {
   due_at: 'due_at',
   paid_at: 'paid_at',
   pdf_url: 'pdf_url',
-  pdf_generated_at: 'pdf_generated_at'
+  order_id: 'order_id',
+  subscription_id: 'subscription_id',
+  category: 'category',
+  order_invoice_type: 'order_invoice_type',
+  pdf_generated_at: 'pdf_generated_at',
+  renewal_invoice_type: 'renewal_invoice_type'
 };
 
 exports.Prisma.PaymentScalarFieldEnum = {
@@ -627,13 +627,14 @@ exports.Prisma.PaymentScalarFieldEnum = {
   school_id: 'school_id',
   order_id: 'order_id',
   invoice_id: 'invoice_id',
-  subscription_id: 'subscription_id',
   amount: 'amount',
+  payment_ref: 'payment_ref',
   status: 'status',
   payment_mode: 'payment_mode',
   is_advance: 'is_advance',
   metadata: 'metadata',
-  created_at: 'created_at'
+  created_at: 'created_at',
+  subscription_id: 'subscription_id'
 };
 
 exports.Prisma.DashboardNotificationScalarFieldEnum = {
@@ -656,12 +657,8 @@ exports.Prisma.DashboardNotificationScalarFieldEnum = {
 exports.Prisma.ScanLogScalarFieldEnum = {
   id: 'id',
   token_id: 'token_id',
-  student_id: 'student_id',
   school_id: 'school_id',
   result: 'result',
-  scan_type: 'scan_type',
-  scanned_by: 'scanned_by',
-  scanned_at: 'scanned_at',
   ip_address: 'ip_address',
   ip_city: 'ip_city',
   ip_country: 'ip_country',
@@ -671,15 +668,19 @@ exports.Prisma.ScanLogScalarFieldEnum = {
   latitude: 'latitude',
   longitude: 'longitude',
   device_hash: 'device_hash',
-  device_info: 'device_info',
   user_agent: 'user_agent',
-  scan_purpose: 'scan_purpose',
   response_time_ms: 'response_time_ms',
-  emergency_dispatched: 'emergency_dispatched',
+  created_at: 'created_at',
+  device_info: 'device_info',
   dispatched_at: 'dispatched_at',
   dispatched_channels: 'dispatched_channels',
+  emergency_dispatched: 'emergency_dispatched',
   failed_channels: 'failed_channels',
-  created_at: 'created_at'
+  scan_type: 'scan_type',
+  scanned_at: 'scanned_at',
+  scanned_by: 'scanned_by',
+  student_id: 'student_id',
+  scan_purpose: 'scan_purpose'
 };
 
 exports.Prisma.ScanAnomalyScalarFieldEnum = {
@@ -762,17 +763,21 @@ exports.Prisma.NotificationScalarFieldEnum = {
   school_id: 'school_id',
   student_id: 'student_id',
   parent_id: 'parent_id',
-  type: 'type',
   channel: 'channel',
   status: 'status',
-  recipient: 'recipient',
-  subject: 'subject',
-  content: 'content',
   payload: 'payload',
   retry_count: 'retry_count',
   sent_at: 'sent_at',
   error: 'error',
-  created_at: 'created_at'
+  created_at: 'created_at',
+  content: 'content',
+  recipient: 'recipient',
+  subject: 'subject',
+  type: 'type',
+  order_id: 'order_id',
+  event_type: 'event_type',
+  latency_ms: 'latency_ms',
+  provider_ref: 'provider_ref'
 };
 
 exports.Prisma.AuditLogScalarFieldEnum = {
@@ -1150,14 +1155,14 @@ exports.Gender = exports.$Enums.Gender = {
   PREFER_NOT_TO_SAY: 'PREFER_NOT_TO_SAY'
 };
 
-exports.PipelineStatus = exports.$Enums.PipelineStatus = {
+exports.DesignStatus = exports.$Enums.DesignStatus = {
   PENDING: 'PENDING',
   IN_PROGRESS: 'IN_PROGRESS',
   COMPLETE: 'COMPLETE',
   FAILED: 'FAILED'
 };
 
-exports.DesignStatus = exports.$Enums.DesignStatus = {
+exports.PipelineStatus = exports.$Enums.PipelineStatus = {
   PENDING: 'PENDING',
   IN_PROGRESS: 'IN_PROGRESS',
   COMPLETE: 'COMPLETE',
@@ -1224,25 +1229,25 @@ exports.OrderType = exports.$Enums.OrderType = {
 
 exports.OrderStatus = exports.$Enums.OrderStatus = {
   PENDING: 'PENDING',
-  PARTIAL_PAYMENT_CONFIRMED: 'PARTIAL_PAYMENT_CONFIRMED',
-  PARTIAL_INVOICE_GENERATED: 'PARTIAL_INVOICE_GENERATED',
-  TOKEN_GENERATING: 'TOKEN_GENERATING',
-  TOKEN_COMPLETE: 'TOKEN_COMPLETE',
-  DESIGN_GENERATING: 'DESIGN_GENERATING',
-  DESIGN_COMPLETE: 'DESIGN_COMPLETE',
+  CONFIRMED: 'CONFIRMED',
+  PAYMENT_PENDING: 'PAYMENT_PENDING',
+  ADVANCE_RECEIVED: 'ADVANCE_RECEIVED',
+  TOKEN_GENERATED: 'TOKEN_GENERATED',
+  CARD_DESIGN: 'CARD_DESIGN',
+  CARD_DESIGN_REVISION: 'CARD_DESIGN_REVISION',
+  CARD_DESIGN_READY: 'CARD_DESIGN_READY',
   DESIGN_APPROVED: 'DESIGN_APPROVED',
-  VENDOR_SENT: 'VENDOR_SENT',
+  SENT_TO_VENDOR: 'SENT_TO_VENDOR',
   PRINTING: 'PRINTING',
+  PRINT_COMPLETE: 'PRINT_COMPLETE',
   SHIPPED: 'SHIPPED',
+  READY_TO_SHIP: 'READY_TO_SHIP',
+  OUT_FOR_DELIVERY: 'OUT_FOR_DELIVERY',
   DELIVERED: 'DELIVERED',
+  BALANCE_PENDING: 'BALANCE_PENDING',
   COMPLETED: 'COMPLETED',
   CANCELLED: 'CANCELLED',
   REFUNDED: 'REFUNDED'
-};
-
-exports.OrderChannel = exports.$Enums.OrderChannel = {
-  DASHBOARD: 'DASHBOARD',
-  CALL: 'CALL'
 };
 
 exports.OrderPaymentStatus = exports.$Enums.OrderPaymentStatus = {
@@ -1250,6 +1255,11 @@ exports.OrderPaymentStatus = exports.$Enums.OrderPaymentStatus = {
   PARTIALLY_PAID: 'PARTIALLY_PAID',
   FULLY_PAID: 'FULLY_PAID',
   REFUNDED: 'REFUNDED'
+};
+
+exports.OrderChannel = exports.$Enums.OrderChannel = {
+  DASHBOARD: 'DASHBOARD',
+  CALL: 'CALL'
 };
 
 exports.OrderItemStatus = exports.$Enums.OrderItemStatus = {
@@ -1320,6 +1330,13 @@ exports.SubscriptionStatus = exports.$Enums.SubscriptionStatus = {
   EXPIRED: 'EXPIRED'
 };
 
+exports.InvoiceStatus = exports.$Enums.InvoiceStatus = {
+  ISSUED: 'ISSUED',
+  PAID: 'PAID',
+  OVERDUE: 'OVERDUE',
+  CANCELLED: 'CANCELLED'
+};
+
 exports.InvoiceCategory = exports.$Enums.InvoiceCategory = {
   ORDER_INVOICE: 'ORDER_INVOICE',
   RENEWAL_INVOICE: 'RENEWAL_INVOICE'
@@ -1332,14 +1349,6 @@ exports.OrderInvoiceType = exports.$Enums.OrderInvoiceType = {
 
 exports.RenewalInvoiceType = exports.$Enums.RenewalInvoiceType = {
   RENEWAL: 'RENEWAL'
-};
-
-exports.InvoiceStatus = exports.$Enums.InvoiceStatus = {
-  DRAFT: 'DRAFT',
-  ISSUED: 'ISSUED',
-  PAID: 'PAID',
-  OVERDUE: 'OVERDUE',
-  CANCELLED: 'CANCELLED'
 };
 
 exports.PaymentStatus = exports.$Enums.PaymentStatus = {
@@ -1388,17 +1397,17 @@ exports.ScanResult = exports.$Enums.ScanResult = {
   ERROR: 'ERROR'
 };
 
+exports.IpCaptureBasis = exports.$Enums.IpCaptureBasis = {
+  LEGITIMATE_INTEREST: 'LEGITIMATE_INTEREST',
+  CONSENT: 'CONSENT',
+  LEGAL_OBLIGATION: 'LEGAL_OBLIGATION'
+};
+
 exports.ScanType = exports.$Enums.ScanType = {
   EMERGENCY: 'EMERGENCY',
   CHECK_IN: 'CHECK_IN',
   ATTENDANCE: 'ATTENDANCE',
   OTHER: 'OTHER'
-};
-
-exports.IpCaptureBasis = exports.$Enums.IpCaptureBasis = {
-  LEGITIMATE_INTEREST: 'LEGITIMATE_INTEREST',
-  CONSENT: 'CONSENT',
-  LEGAL_OBLIGATION: 'LEGAL_OBLIGATION'
 };
 
 exports.ScanPurpose = exports.$Enums.ScanPurpose = {

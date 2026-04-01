@@ -77,7 +77,7 @@ export const changePasswordValidation = z
 // ─── Refresh Token ────────────────────────────────────────────────────────────
 
 export const refreshTokenValidation = z.object({
-  refreshToken: z.string().min(20, 'Invalid refresh token'),
+  refreshToken: z.string().min(20, 'Invalid refresh token').optional(),
 });
 
 // ─── Logout ───────────────────────────────────────────────────────────────────

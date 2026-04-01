@@ -12,6 +12,7 @@ import {
   emergencyAlertsQueue,
   notificationsQueue,
   backgroundJobsQueue,
+  pipelineJobsQueue,
 } from '#orchestrator/queues/queue.config.js';
 import { authenticate } from '#middleware/auth/auth.middleware.js';
 import { requireSuperAdmin } from '#middleware/auth/rbac.middleware.js';
@@ -25,6 +26,7 @@ createBullBoard({
     new BullMQAdapter(emergencyAlertsQueue),
     new BullMQAdapter(notificationsQueue),
     new BullMQAdapter(backgroundJobsQueue),
+    new BullMQAdapter(pipelineJobsQueue),
   ],
   serverAdapter,
 });

@@ -13,8 +13,9 @@ export { consume, dispatch as dispatchEvent, hasHandlers } from './events/event.
 export { QUEUE_NAMES } from './queues/queue.names.js';
 export {
   emergencyAlertsQueue,
-  notificationsNormalQueue,
-  jobsBackgroundQueue,
+  notificationsQueue,
+  backgroundJobsQueue,
+  pipelineJobsQueue,
   closeAllQueues,
 } from './queues/queue.config.js';
 

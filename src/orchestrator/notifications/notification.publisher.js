@@ -297,7 +297,7 @@ export const publishNotification = {
       payload: {
         studentName: payload.studentName,
         location: payload.location ?? null,
-        parentFcmTokens: payload.parentFcmTokens ?? [],
+        parentExpoTokens: payload.parentExpoTokens ?? [],
         notifyEnabled: payload.notifyEnabled ?? true,
       },
       meta: { studentId: meta.studentId, ...meta },

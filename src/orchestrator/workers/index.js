@@ -126,7 +126,7 @@ const ALL_WORKERS = [
 const STANDALONE_WORKERS = [
   {
     name: 'PipelineWorker',
-    queue: 'BACKGROUND_JOBS',
+    queue: 'PIPELINE_JOBS',
     conc: 2,
     deploy: 'local',
     col: c.orange,

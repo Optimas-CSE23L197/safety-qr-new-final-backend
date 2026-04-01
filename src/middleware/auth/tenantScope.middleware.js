@@ -11,7 +11,30 @@ import { asyncHandler } from '#shared/response/asyncHandler.js';
 
 const SCHOOL_CACHE_TTL = 5 * 60; // 5 minutes
 
+// ─── PUBLIC PATHS (Same as auth.middleware.js) ────────────────────────────────
+const PUBLIC_PATHS = [
+  '/api/auth/super-admin',
+  '/api/auth/school',
+  '/api/auth/send-otp',
+  '/api/auth/verify-otp',
+  '/api/auth/register/init',
+  '/api/auth/register/verify',
+  '/api/auth/refresh',
+  '/health',
+  '/api/admin/queues',
+];
+
+// ─── Helper to check if path is public ────────────────────────────────────────
+const isPublicPath = path => {
+  return PUBLIC_PATHS.some(publicPath => path === publicPath || path.startsWith(publicPath + '/'));
+};
+
 export const tenantScope = asyncHandler(async (req, _res, next) => {
+  // ✅ SKIP PUBLIC PATHS — No tenant scope needed for login/register
+  if (isPublicPath(req.path)) {
+    return next();
+  }
+
   // Super admin — no tenant scope, can access all schools
   if (req.role === 'SUPER_ADMIN') {
     req.schoolId = null;

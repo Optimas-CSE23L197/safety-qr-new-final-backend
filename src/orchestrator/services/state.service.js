@@ -7,7 +7,7 @@ import { prisma } from '#config/prisma.js';
 import { redis } from '#config/redis.js';
 import { logger } from '#config/logger.js';
 import { REDIS_KEYS } from '../orchestrator.constants.js';
-import { validateTransition } from '../state/order.transitions.js';
+import { validateTransition } from '../state/order.guards.js';
 import { ORDER_STATUS } from '../state/order.states.js';
 
 const STATE_CACHE_TTL = 300; // 5 min

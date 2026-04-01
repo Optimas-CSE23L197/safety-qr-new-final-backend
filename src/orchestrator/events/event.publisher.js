@@ -8,8 +8,9 @@ import { randomUUID } from 'crypto';
 import { EVENTS } from './event.types.js';
 import {
   emergencyAlertsQueue,
-  notificationsQueue, // ✅ fixed name
-  backgroundJobsQueue, // ✅ fixed name
+  notificationsQueue,
+  backgroundJobsQueue,
+  pipelineJobsQueue,
 } from '../queues/queue.config.js';
 import { logger } from '#config/logger.js';
 
@@ -27,15 +28,15 @@ const BACKGROUND_EVENTS = new Set([
 
 const routeEvent = type => {
   if (EMERGENCY_EVENTS.has(type)) return emergencyAlertsQueue;
-  if (BACKGROUND_EVENTS.has(type)) return backgroundJobsQueue;
+  if (BACKGROUND_EVENTS.has(type)) return pipelineJobsQueue;
   return notificationsQueue;
 };
 
 // ── Per-queue BullMQ job options ──────────────────────────────────────────────
 
 const getJobOptions = (type, id) => {
-  const jobId = `${type}:${id}`;
-
+  const jobId = `${type}-${id}`;
+  
   if (EMERGENCY_EVENTS.has(type)) {
     return {
       jobId,

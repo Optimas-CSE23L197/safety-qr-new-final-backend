@@ -1,16 +1,16 @@
 // =============================================================================
-// order.routes.js — RESQID
+// order.routes.js — RESQID (FIXED ROUTE CONFLICTS)
 // =============================================================================
 
 import { Router } from 'express';
 import { authenticate } from '#middleware/auth/auth.middleware.js';
 import { validate } from '#middleware/validate.middleware.js';
 import { ownSchoolOnly } from '#middleware/restrictionOwnSchool.middleware.js';
-import { rbac } from '#middleware/rbac.middleware.js';
+import { rbac } from '#middleware/auth/rbac.middleware.js';
 
 import * as controller from './order.controller.js';
 import * as validation from './order.validation.js';
-import { getQueueHealth } from './order_orchestrator/queues/queue.manager.js';
+import { getQueueHealth } from '#orchestrator/queues/queue.manager.js';
 
 const router = Router();
 
@@ -20,6 +20,13 @@ router.use(authenticate);
 // Role shortcuts
 const superAdmin = rbac(['SUPER_ADMIN']);
 const schoolAdmin = rbac(['SCHOOL_ADMIN', 'SUPER_ADMIN']);
+
+// =============================================================================
+// INVOICE ROUTES - MUST BE BEFORE /:orderId routes to avoid conflict
+// =============================================================================
+
+// ✅ MOVED HERE to avoid conflict with /:orderId
+router.get('/invoices/:invoiceId', schoolAdmin, controller.getInvoiceById);
 
 // =============================================================================
 // ORDER CRUD
@@ -47,12 +54,10 @@ router.patch(
 router.post('/:orderId/invoice/advance', superAdmin, controller.generateAdvanceInvoice);
 
 // =============================================================================
-// INVOICE — DOWNLOAD
+// INVOICE — DOWNLOAD (after the specific invoice route)
 // =============================================================================
 
 router.get('/:orderId/invoice/:type', schoolAdmin, ownSchoolOnly, controller.downloadInvoice);
-
-router.get('/invoice/:invoiceId', schoolAdmin, controller.getInvoiceById);
 
 // =============================================================================
 // PAYMENT
@@ -150,7 +155,8 @@ router.post(
 // HEALTH
 // =============================================================================
 
-router.get('/orchestrator/health', async (req, res) => {
+// ✅ Added superAdmin guard
+router.get('/orchestrator/health', superAdmin, async (req, res) => {
   const health = await getQueueHealth();
   res.json({ success: true, data: health });
 });

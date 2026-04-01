@@ -262,7 +262,11 @@ export const rbac = allowedRoles => {
       throw ApiError.unauthorized('Not authenticated');
     }
 
-    if (!allowedRoles.includes(req.role)) {
+    // Map SCHOOL_USER + role ADMIN → SCHOOL_ADMIN for route checks
+    const effectiveRole =
+      req.role === 'SCHOOL_USER' && req.user?.role === 'ADMIN' ? 'SCHOOL_ADMIN' : req.role;
+
+    if (!allowedRoles.includes(effectiveRole)) {
       throw ApiError.forbidden(`Access denied. Required roles: ${allowedRoles.join(', ')}`);
     }
 

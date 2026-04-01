@@ -7,6 +7,7 @@
 import express from 'express';
 import { ENV } from '#config/env.js';
 import { logger } from '#config/logger.js';
+import cookieParser from 'cookie-parser'; // ✅ Already imported
 
 // ── Security Middleware (NO PARSING BEFORE THESE) ─────────────────────────────
 import { requestId } from '#middleware/requestId.middleware.js';
@@ -67,10 +68,11 @@ const MIDDLEWARE_ORDER = [
   { priority: 16, name: 'attackLogger', desc: 'Attack pattern detection' },
   { priority: 17, name: 'httpLogger', desc: 'HTTP access log' },
   { priority: 18, name: 'bodyParser', desc: 'Express JSON parser' },
-  { priority: 19, name: 'authenticate', desc: 'JWT verification' },
-  { priority: 20, name: 'tenantScope', desc: 'School ID injection' },
-  { priority: 21, name: 'deviceFingerprint', desc: 'Device validation' },
-  { priority: 22, name: 'auditLog', desc: 'Mutation audit trail' },
+  { priority: 19, name: 'cookieParser', desc: 'Cookie parsing' }, // ✅ Added
+  { priority: 20, name: 'authenticate', desc: 'JWT verification' },
+  { priority: 21, name: 'tenantScope', desc: 'School ID injection' },
+  { priority: 22, name: 'deviceFingerprint', desc: 'Device validation' },
+  { priority: 23, name: 'auditLog', desc: 'Mutation audit trail' },
 ];
 
 export function printMiddlewareTable() {
@@ -155,10 +157,11 @@ export function createApp() {
   app.use(attackLogger); // 16. Attack pattern detection
 
   // ════════════════════════════════════════════════════════════════════════════
-  // LAYER 8: BODY PARSING & HTTP LOGGING
+  // LAYER 8: BODY PARSING, COOKIE PARSING & HTTP LOGGING
   // ════════════════════════════════════════════════════════════════════════════
-  app.use(express.json({ limit: ENV.MAX_BODY_SIZE ?? '1mb' }));
-  app.use(express.urlencoded({ extended: true, limit: ENV.MAX_BODY_SIZE ?? '1mb' }));
+  app.use(express.json({ limit: ENV.MAX_BODY_SIZE ?? '1mb' })); // Parse JSON bodies
+  app.use(express.urlencoded({ extended: true, limit: ENV.MAX_BODY_SIZE ?? '1mb' })); // Parse URL-encoded bodies
+  app.use(cookieParser()); // ✅ ADD THIS — Parse cookies from Cookie header
   app.use(httpLogger); // 17. HTTP access log
 
   // ════════════════════════════════════════════════════════════════════════════
@@ -195,7 +198,7 @@ export function createApp() {
 export function startServer() {
   const app = createApp();
   const server = app.listen(ENV.PORT, () => {
-    printMiddlewareOrder();
+    printMiddlewareTable();
     logger.info(
       { port: ENV.PORT, env: ENV.NODE_ENV, pid: process.pid },
       `🚀 RESQID API server started`
