@@ -3,5 +3,8 @@ node_modules
 /node_modules
 logs/*.log*
 /src/generated/prisma
+
+
+
 .env
 .env.example
