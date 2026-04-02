@@ -1,0 +1,190 @@
+### =============================================================================
+### RESQID — Card Requests API Tests
+### File: src/request/cardRequests.http
+### =============================================================================
+
+@baseUrl   = http://localhost:3000/api/school-admin
+@token     = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3YmY2NTU1MS1mNGFmLTRmZDctYWFiNy1kMTY3YTM5MjE5MjEiLCJyb2xlIjoiU0NIT09MX1VTRVIiLCJzZXNzaW9uSWQiOiIzYmUwYThlMC01ZmIyLTRlMjktYmJiOC0yM2Y3NjM1NzhmYjIiLCJqdGkiOiJkMWVhMTYyNy1hMjQ2LTRkY2YtYWI1MC00N2JiMGJkN2FmMDMiLCJzY2hvb2xJZCI6ImNjZTQ4NzE1LTI5MjctNGZmZS05NGM4LWNjZDIwMjRkMWMzMiIsImlhdCI6MTc3NDE5MDA4OSwiZXhwIjoxNzc0MTkzNjg5LCJhdWQiOiJyZXNxaWQtYXBpIiwiaXNzIjoicmVzcWlkIn0.XvPaXrzyGG1R_8wRmOaBVM_j5XlHP_j6iSNVgP_nxqY
+@schoolId  = cce48715-2927-4ffe-94c8-ccd2024d1c32	
+@badUUID   = cce48715-2927-4ffe-94c8-ccd2024d1c33	
+
+### =============================================================================
+### ✅ GET — List Card Requests
+### =============================================================================
+
+### [1] All requests — default page 1, limit 10
+GET {{baseUrl}}/{{schoolId}}/card-requests
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [2] Filter by PENDING
+GET {{baseUrl}}/{{schoolId}}/card-requests?status=PENDING
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [3] Filter by APPROVED
+GET {{baseUrl}}/{{schoolId}}/card-requests?status=APPROVED
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [4] Filter by REJECTED (CANCELLED in DB)
+GET {{baseUrl}}/{{schoolId}}/card-requests?status=REJECTED
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [5] Search by order number
+GET {{baseUrl}}/{{schoolId}}/card-requests?search=ORD-2025
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [6] Paginated — page 2, limit 5
+GET {{baseUrl}}/{{schoolId}}/card-requests?page=2&limit=5
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### =============================================================================
+### ✅ POST — Submit New Card Request
+### =============================================================================
+
+### [7] Valid submission — BLANK order (no student details, school assigns later)
+POST {{baseUrl}}/{{schoolId}}/card-requests
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "card_count": 150,
+  "order_type": "BLANK",
+  "notes": "Annual re-issuance for new academic session 2025-26. All Class 9 and 10 students require fresh cards.",
+  "delivery_name": "Principal Office",
+  "delivery_phone": "9876543210",
+  "delivery_address": "12, Sector 12, Dwarka",
+  "delivery_line2": "Near Metro Station",
+  "delivery_city": "New Delhi",
+  "delivery_state": "Delhi",
+  "delivery_pincode": "110075"
+}
+
+###
+
+### [8] Valid submission — PRE_DETAILS order (names/photos on cards)
+POST {{baseUrl}}/{{schoolId}}/card-requests
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "card_count": 80,
+  "order_type": "PRE_DETAILS",
+  "notes": "Replacement cards for lost/damaged IDs reported in Term 1. Student list will be uploaded separately.",
+  "delivery_name": "Admin Block",
+  "delivery_phone": "9123456789",
+  "delivery_address": "Plot 7, Civil Lines",
+  "delivery_city": "Nagpur",
+  "delivery_state": "Maharashtra",
+  "delivery_pincode": "440001"
+}
+
+###
+
+### =============================================================================
+### ❌ VALIDATION ERRORS — rejected at middleware, never hits DB
+### =============================================================================
+
+### [9] Missing auth — expect 401
+GET {{baseUrl}}/{{schoolId}}/card-requests
+Accept: application/json
+
+###
+
+### [10] Wrong school (tenant mismatch) — expect 403
+GET {{baseUrl}}/00000000-0000-4000-a000-000000000000/card-requests
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [11] Invalid UUID format — expect 400
+GET {{baseUrl}}/{{badUUID}}/card-requests
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [12] card_count exceeds 300 — expect 400 VALIDATION_ERROR
+POST {{baseUrl}}/{{schoolId}}/card-requests
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "card_count": 500,
+  "order_type": "BLANK",
+  "notes": "This should be rejected — over the 300 card limit per request.",
+  "delivery_name": "Office",
+  "delivery_phone": "9876543210",
+  "delivery_address": "123 Main Street",
+  "delivery_city": "Mumbai",
+  "delivery_state": "Maharashtra",
+  "delivery_pincode": "400001"
+}
+
+###
+
+### [13] Invalid pincode (not 6 digits) — expect 400 VALIDATION_ERROR
+POST {{baseUrl}}/{{schoolId}}/card-requests
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "card_count": 50,
+  "order_type": "BLANK",
+  "notes": "Testing pincode validation with wrong format.",
+  "delivery_name": "Office",
+  "delivery_phone": "9876543210",
+  "delivery_address": "123 Main Street",
+  "delivery_city": "Mumbai",
+  "delivery_state": "Maharashtra",
+  "delivery_pincode": "1234"
+}
+
+###
+
+### [14] Notes too short — expect 400 VALIDATION_ERROR
+POST {{baseUrl}}/{{schoolId}}/card-requests
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "card_count": 50,
+  "order_type": "BLANK",
+  "notes": "short",
+  "delivery_name": "Office",
+  "delivery_phone": "9876543210",
+  "delivery_address": "123 Main Street",
+  "delivery_city": "Mumbai",
+  "delivery_state": "Maharashtra",
+  "delivery_pincode": "400001"
+}
+
+###
+
+### [15] Missing required fields — expect 400 VALIDATION_ERROR
+POST {{baseUrl}}/{{schoolId}}/card-requests
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "card_count": 50
+}
+
+###

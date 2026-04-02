@@ -1,0 +1,251 @@
+# =============================================================================
+# order.http — RESQID Order API (FIXED)
+# =============================================================================
+
+@baseUrl = http://localhost:3000/api
+@superAdminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI4ZTUzODU5Yi0xMjgxLTRmZjItOTQyZC04NTAyYTNkZjZhMjYiLCJyb2xlIjoiU1VQRVJfQURNSU4iLCJzZXNzaW9uSWQiOiIwZDc2NjlkZS0zYjY5LTQ1MmYtODMzZi02YmFkZThkZGFmODIiLCJqdGkiOiI3NzFjMDI4My03M2JlLTQ3ZDItYTdmZC00OTc5ZjM1NWQwYjkiLCJpYXQiOjE3NzUxMTE4MjUsImV4cCI6MTc3NTExMzYyNSwiYXVkIjoicmVzcWlkLWFwaSIsImlzcyI6InJlc3FpZCJ9.xrVsrQ59wlTggjMxxjkVRopN5vIbkXYMtn-dyNC1hcU
+@schoolAdminToken = Bearer YOUR_SCHOOL_ADMIN_TOKEN_HERE
+@orderId = 09bceb5c-586a-4988-94a2-29cba584ace1
+@invoiceId = 06b8389e-ef69-412d-a869-1395e875da9a
+@schoolId = ea17bb8c-d9f3-4111-90f1-ffb45b349fd9	
+
+
+# =============================================================================
+# ORDER CRUD
+# =============================================================================
+
+### Create Order (Super Admin)
+POST {{baseUrl}}/orders
+Authorization: {{superAdminToken}}
+Content-Type: application/json
+
+{
+  "school_id": "{{schoolId}}",
+  "order_type": "BLANK",
+  "card_count": 100,
+  "delivery_address": {
+    "name": "Rajesh Kumar",
+    "phone": "9876543210",
+    "address": "123 Main Street",
+    "city": "New Delhi",
+    "state": "Delhi",
+    "pincode": "110001"
+  },
+  "notes": "Test order"
+}
+
+###
+
+### List Orders
+GET {{baseUrl}}/orders?page=1&limit=10
+Authorization: {{superAdminToken}}
+
+###
+
+### Get Order Details
+GET {{baseUrl}}/orders/{{orderId}}
+Authorization: {{superAdminToken}}
+
+###
+
+### Get Order Status
+GET {{baseUrl}}/orders/{{orderId}}/status
+Authorization: {{superAdminToken}}
+
+
+# =============================================================================
+# CONFIRM & INVOICE
+# =============================================================================
+
+### Confirm Order (Super Admin)
+PATCH {{baseUrl}}/orders/{{orderId}}/confirm
+Authorization: {{superAdminToken}}
+Content-Type: application/json
+
+{
+  "note": "Confirmed after verification"
+}
+
+###
+
+### Generate Advance Invoice (Super Admin)
+POST {{baseUrl}}/orders/{{orderId}}/invoice/advance
+Authorization: {{superAdminToken}}
+Content-Type: application/json
+
+
+# =============================================================================
+# INVOICE — DOWNLOAD
+# =============================================================================
+
+### Download Advance Invoice
+GET {{baseUrl}}/orders/{{orderId}}/invoice/ADVANCE
+Authorization: {{superAdminToken}}
+
+### Download Balance Invoice
+GET {{baseUrl}}/orders/{{orderId}}/invoice/BALANCE
+Authorization: {{superAdminToken}}
+
+###
+### Get Invoice by ID
+GET {{baseUrl}}/orders/invoices/{{invoiceId}}
+Authorization: {{superAdminToken}}
+
+
+# =============================================================================
+# PAYMENT
+# =============================================================================
+
+### Record Advance Payment (Super Admin)
+PATCH {{baseUrl}}/orders/{{orderId}}/payment/advance
+Authorization: {{superAdminToken}}
+Content-Type: application/json
+
+{
+  "amount_received": 1174100,
+  "payment_mode": "BANK_TRANSFER",
+  "payment_ref": "TXN123456",
+  "note": "Advance payment received"
+}
+
+###
+
+### Record Balance Payment (Super Admin)
+PATCH {{baseUrl}}/orders/{{orderId}}/payment/balance
+Authorization: {{superAdminToken}}
+Content-Type: application/json
+
+{
+  "amount_received": 1500000,
+  "payment_mode": "BANK_TRANSFER",
+  "payment_ref": "TXN789012",
+  "note": "Balance payment received"
+}
+
+
+# =============================================================================
+# TOKEN GENERATION
+# =============================================================================
+
+### Generate Tokens (Super Admin)
+POST {{baseUrl}}/orders/{{orderId}}/tokens/generate
+Authorization: {{superAdminToken}}
+Content-Type: application/json
+
+
+# =============================================================================
+# CARD DESIGN
+# =============================================================================
+
+### Generate Card Designs (Super Admin)
+POST {{baseUrl}}/orders/{{orderId}}/design/generate
+Authorization: {{superAdminToken}}
+Content-Type: application/json
+
+
+# =============================================================================
+# VENDOR
+# =============================================================================
+
+### Assign Vendor (Super Admin)
+PATCH {{baseUrl}}/orders/{{orderId}}/vendor
+Authorization: {{superAdminToken}}
+Content-Type: application/json
+
+{
+  "vendor_id": "YOUR_VENDOR_ID_HERE",
+  "vendor_notes": "Send print-ready files by EOD",
+  "note": "Priority order"  // ✅ Optional
+}
+
+
+#
+=============================================================================
+# PRINTING
+# =============================================================================
+
+### Start Printing (Super Admin)
+PATCH {{baseUrl}}/orders/{{orderId}}/printing
+Authorization: {{superAdminToken}}
+Content-Type: application/json
+
+{
+  "status": "STARTED",
+  "note": "Printing started"
+}
+
+### Complete Printing (Super Admin)
+PATCH {{baseUrl}}/orders/{{orderId}}/printing
+Authorization: {{superAdminToken}}
+Content-Type: application/json
+
+{
+  "status": "COMPLETED",  // ✅ Valid value
+  "note": "Printing completed successfully"
+}
+
+
+# =============================================================================
+# SHIPMENT
+# =============================================================================
+
+### Create Shipment (Super Admin)
+POST {{baseUrl}}/orders/{{orderId}}/shipment
+Authorization: {{superAdminToken}}
+Content-Type: application/json
+
+{
+  "awb_code": "SR123456789",  // ✅ Fixed field name
+  "courier_name": "Shiprocket",  // ✅ Fixed field name
+  "tracking_url": "https://track.shiprocket.com/SR123456789",
+  "notes": "Handle with care"  // ✅ Optional
+}
+
+###
+
+### Mark Shipment Shipped (Super Admin)
+PATCH {{baseUrl}}/orders/{{orderId}}/shipment/shipped
+Authorization: {{superAdminToken}}
+Content-Type: application/json
+
+{
+  "note": "Dispatched from warehouse"  // ✅ Fixed field name
+}
+
+
+# =============================================================================
+# DELIVERY
+# =============================================================================
+
+### Confirm Delivery (Super Admin)
+PATCH {{baseUrl}}/orders/{{orderId}}/shipment/delivered
+Authorization: {{superAdminToken}}
+Content-Type: application/json
+
+{
+  "note": "Delivered to school reception"  // ✅ Fixed field name
+}
+
+
+# =============================================================================
+# CANCELLATION
+# =============================================================================
+
+### Cancel Order (Super Admin)
+POST {{baseUrl}}/orders/{{orderId}}/cancel
+Authorization: {{superAdminToken}}
+Content-Type: application/json
+
+{
+  "reason": "School requested cancellation",
+  "notes": "Full refund processed"  // ✅ Optional
+}
+
+
+# =============================================================================
+# HEALTH
+# =============================================================================
+
+### Orchestrator Health Check
+GET {{baseUrl}}/orders/orchestrator/health
+Authorization: {{superAdminToken}}

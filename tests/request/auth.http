@@ -1,0 +1,1004 @@
+# =============================================================================
+# RESQID — Auth Module HTTP Test Suite
+# Covers: Happy Path, Attack Vectors, Edge Cases, Session Security
+# Tool: REST Client (VS Code) or IntelliJ HTTP Client
+# =============================================================================
+
+@baseUrl = http://localhost:3000/api/auth
+@contentType = application/json
+
+# ─── Fill these after successful login ───────────────────────────────────────
+@accessToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI4ZTUzODU5Yi0xMjgxLTRmZjItOTQyZC04NTAyYTNkZjZhMjYiLCJyb2xlIjoiU1VQRVJfQURNSU4iLCJzZXNzaW9uSWQiOiJkY2VjNWIyZS1jMWE2LTRkZWYtOWI1OS1hZGRhMDY3MTQzOWEiLCJqdGkiOiIwNDBhZmIzMC05ZjlmLTRmYWUtYWM3Zi01N2I3YTcwNjhkZWUiLCJpYXQiOjE3NzUwNTYzNDMsImV4cCI6MTc3NTA1ODE0MywiYXVkIjoicmVzcWlkLWFwaSIsImlzcyI6InJlc3FpZCJ9.st3ogbLrJrgrwfJ86XyzFqZkjdBgRcse_WrUmupUlQk
+@refreshToken = 35785352de767bba30b9da4717afecce621e4289f9d7addbc8fb26434ce3ad2b
+@validPhone = +919876543210
+@validCard = RQ-0001-A1B2C3D4
+@validOtp = 123456
+@validNonce = PASTE_NONCE_HERE
+
+
+# =============================================================================
+# 1. SUPER ADMIN LOGIN
+# =============================================================================
+
+### [HAPPY] Super Admin — valid credentials
+POST {{baseUrl}}/super-admin
+Content-Type: {{contentType}}
+
+{
+  "email": "admin@corez.com",
+  "password": "Admin@123"
+}
+
+###
+
+### [ATTACK] SQL Injection in email
+POST {{baseUrl}}/super-admin
+Content-Type: {{contentType}}
+
+{
+  "email": "' OR '1'='1",
+  "password": "anything"
+}
+
+###
+
+### [ATTACK] SQL Injection in password
+POST {{baseUrl}}/super-admin
+Content-Type: {{contentType}}
+
+{
+  "email": "admin@resqid.in",
+  "password": "' OR '1'='1'--"
+}
+
+###
+
+### [ATTACK] NoSQL Injection
+POST {{baseUrl}}/super-admin
+Content-Type: {{contentType}}
+
+{
+  "email": { "$gt": "" },
+  "password": { "$gt": "" }
+}
+
+###
+
+### [ATTACK] XSS in email field
+POST {{baseUrl}}/super-admin
+Content-Type: {{contentType}}
+
+{
+  "email": "<script>alert('xss')</script>@evil.com",
+  "password": "Admin@1234"
+}
+
+###
+
+### [ATTACK] Wrong password — should return generic error not user-specific
+POST {{baseUrl}}/super-admin
+Content-Type: {{contentType}}
+
+{
+  "email": "admin@resqid.in",
+  "password": "WrongPass@999"
+}
+
+###
+
+### [ATTACK] Non-existent email — response time should match wrong password
+POST {{baseUrl}}/super-admin
+Content-Type: {{contentType}}
+
+{
+  "email": "ghost@resqid.in",
+  "password": "Admin@1234"
+}
+
+###
+
+### [ATTACK] Empty body
+POST {{baseUrl}}/super-admin
+Content-Type: {{contentType}}
+
+{}
+
+###
+
+### [ATTACK] Missing password
+POST {{baseUrl}}/super-admin
+Content-Type: {{contentType}}
+
+{
+  "email": "admin@resqid.in"
+}
+
+###
+
+### [ATTACK] Password too short (under 8 chars)
+POST {{baseUrl}}/super-admin
+Content-Type: {{contentType}}
+
+{
+  "email": "admin@resqid.in",
+  "password": "abc"
+}
+
+###
+
+### [ATTACK] Extremely long email (buffer overflow attempt)
+POST {{baseUrl}}/super-admin
+Content-Type: {{contentType}}
+
+{
+  "email": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@evil.com",
+  "password": "Admin@1234"
+}
+
+###
+
+### [ATTACK] Extremely long password
+POST {{baseUrl}}/super-admin
+Content-Type: {{contentType}}
+
+{
+  "email": "admin@resqid.in",
+  "password": "Admin@1234aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}
+
+###
+
+### [ATTACK] Unicode / emoji in fields
+POST {{baseUrl}}/super-admin
+Content-Type: {{contentType}}
+
+{
+  "email": "admin@resqid.in",
+  "password": "🔥💀🚀Admin@1234"
+}
+
+###
+
+### [ATTACK] Content-Type manipulation — send as text/plain
+POST {{baseUrl}}/super-admin
+Content-Type: text/plain
+
+{"email":"admin@resqid.in","password":"Admin@1234"}
+
+###
+
+### [ATTACK] Prototype pollution
+POST {{baseUrl}}/super-admin
+Content-Type: {{contentType}}
+
+{
+  "email": "admin@resqid.in",
+  "password": "Admin@1234",
+  "__proto__": { "isAdmin": true },
+  "constructor": { "prototype": { "isAdmin": true } }
+}
+
+###
+
+### [BRUTE FORCE] Rapid fire — run 6 times to trigger rate limiter
+# Run this block repeatedly to test rate limiting kicks in
+POST {{baseUrl}}/super-admin
+Content-Type: {{contentType}}
+
+{
+  "email": "admin@resqid.in",
+  "password": "WrongPass@1"
+}
+
+
+# =============================================================================
+# 2. SCHOOL USER LOGIN
+# =============================================================================
+
+### [HAPPY] School user — valid credentials
+POST {{baseUrl}}/school
+Content-Type: {{contentType}}
+
+{
+  "email": "principal@dpskolkata.in",
+  "password": "School@1234"
+}
+
+###
+
+### [ATTACK] School user — SQL injection
+POST {{baseUrl}}/school
+Content-Type: {{contentType}}
+
+{
+  "email": "'; DROP TABLE \"SchoolUser\";--",
+  "password": "anything"
+}
+
+###
+
+### [ATTACK] CRLF injection in email
+POST {{baseUrl}}/school
+Content-Type: {{contentType}}
+
+{
+  "email": "admin@resqid.in\r\nX-Injected-Header: evil",
+  "password": "Admin@1234"
+}
+
+###
+
+### [ATTACK] Null byte injection
+POST {{baseUrl}}/school
+Content-Type: {{contentType}}
+
+{
+  "email": "admin\u0000@resqid.in",
+  "password": "Admin@1234"
+}
+
+###
+
+### [ATTACK] Array instead of string (type confusion)
+POST {{baseUrl}}/school
+Content-Type: {{contentType}}
+
+{
+  "email": ["admin@resqid.in"],
+  "password": "Admin@1234"
+}
+
+###
+
+### [ATTACK] Object instead of string
+POST {{baseUrl}}/school
+Content-Type: {{contentType}}
+
+{
+  "email": { "toString": "admin@resqid.in" },
+  "password": "Admin@1234"
+}
+
+
+# =============================================================================
+# 3. PARENT LOGIN — SEND OTP
+# =============================================================================
+
+### [HAPPY] Send OTP — valid Indian phone
+POST {{baseUrl}}/send-otp
+Content-Type: {{contentType}}
+
+{
+  "phone": "+919876543210"
+}
+
+###
+
+### [ATTACK] Invalid phone format
+POST {{baseUrl}}/send-otp
+Content-Type: {{contentType}}
+
+{
+  "phone": "1234567890"
+}
+
+###
+
+### [ATTACK] International phone (non-Indian)
+POST {{baseUrl}}/send-otp
+Content-Type: {{contentType}}
+
+{
+  "phone": "+14155552671"
+}
+
+###
+
+### [ATTACK] Phone with SQL injection
+POST {{baseUrl}}/send-otp
+Content-Type: {{contentType}}
+
+{
+  "phone": "+91' OR '1'='1"
+}
+
+###
+
+### [ATTACK] Phone with script tag
+POST {{baseUrl}}/send-otp
+Content-Type: {{contentType}}
+
+{
+  "phone": "<script>alert(1)</script>"
+}
+
+###
+
+### [ATTACK] Empty phone
+POST {{baseUrl}}/send-otp
+Content-Type: {{contentType}}
+
+{
+  "phone": ""
+}
+
+###
+
+### [ATTACK] Null phone
+POST {{baseUrl}}/send-otp
+Content-Type: {{contentType}}
+
+{
+  "phone": null
+}
+
+###
+
+### [ATTACK] Phone as number not string
+POST {{baseUrl}}/send-otp
+Content-Type: {{contentType}}
+
+{
+  "phone": 919876543210
+}
+
+###
+
+### [ATTACK] OTP bombing — send to same number repeatedly (rate limit test)
+# Run 6+ times — should get 429 after 5
+POST {{baseUrl}}/send-otp
+Content-Type: {{contentType}}
+
+{
+  "phone": "+919876543210"
+}
+
+###
+
+### [ATTACK] x-device-id header injection
+POST {{baseUrl}}/send-otp
+Content-Type: {{contentType}}
+X-Device-Id: ../../../etc/passwd
+
+{
+  "phone": "+919876543210"
+}
+
+###
+
+### [ATTACK] x-device-id with XSS
+POST {{baseUrl}}/send-otp
+Content-Type: {{contentType}}
+X-Device-Id: <script>alert('xss')</script>
+
+{
+  "phone": "+919876543210"
+}
+
+
+# =============================================================================
+# 4. PARENT LOGIN — VERIFY OTP
+# =============================================================================
+
+### [HAPPY] Verify OTP — valid
+POST {{baseUrl}}/verify-otp
+Content-Type: {{contentType}}
+
+{
+  "phone": "+919876543210",
+  "otp": "{{validOtp}}"
+}
+
+###
+
+### [ATTACK] Wrong OTP
+POST {{baseUrl}}/verify-otp
+Content-Type: {{contentType}}
+
+{
+  "phone": "+919876543210",
+  "otp": "000000"
+}
+
+###
+
+### [ATTACK] OTP brute force — try all common patterns
+POST {{baseUrl}}/verify-otp
+Content-Type: {{contentType}}
+
+{
+  "phone": "+919876543210",
+  "otp": "123456"
+}
+
+###
+
+POST {{baseUrl}}/verify-otp
+Content-Type: {{contentType}}
+
+{
+  "phone": "+919876543210",
+  "otp": "111111"
+}
+
+###
+
+POST {{baseUrl}}/verify-otp
+Content-Type: {{contentType}}
+
+{
+  "phone": "+919876543210",
+  "otp": "000000"
+}
+
+###
+
+POST {{baseUrl}}/verify-otp
+Content-Type: {{contentType}}
+
+{
+  "phone": "+919876543210",
+  "otp": "999999"
+}
+
+###
+
+POST {{baseUrl}}/verify-otp
+Content-Type: {{contentType}}
+
+{
+  "phone": "+919876543210",
+  "otp": "654321"
+}
+
+###
+
+### [ATTACK] 6th attempt — should be rate limited
+POST {{baseUrl}}/verify-otp
+Content-Type: {{contentType}}
+
+{
+  "phone": "+919876543210",
+  "otp": "555555"
+}
+
+###
+
+### [ATTACK] OTP as integer not string
+POST {{baseUrl}}/verify-otp
+Content-Type: {{contentType}}
+
+{
+  "phone": "+919876543210",
+  "otp": 123456
+}
+
+###
+
+### [ATTACK] OTP too short
+POST {{baseUrl}}/verify-otp
+Content-Type: {{contentType}}
+
+{
+  "phone": "+919876543210",
+  "otp": "123"
+}
+
+###
+
+### [ATTACK] OTP with special chars
+POST {{baseUrl}}/verify-otp
+Content-Type: {{contentType}}
+
+{
+  "phone": "+919876543210",
+  "otp": "12;456"
+}
+
+###
+
+### [ATTACK] Phone mismatch — OTP issued for different phone
+POST {{baseUrl}}/verify-otp
+Content-Type: {{contentType}}
+
+{
+  "phone": "+919999999999",
+  "otp": "{{validOtp}}"
+}
+
+###
+
+### [ATTACK] Replay attack — reuse already verified OTP
+# First verify successfully, then try same OTP again
+POST {{baseUrl}}/verify-otp
+Content-Type: {{contentType}}
+
+{
+  "phone": "+919876543210",
+  "otp": "{{validOtp}}"
+}
+
+
+# =============================================================================
+# 5. PARENT REGISTRATION — STEP 1 (INIT)
+# =============================================================================
+
+### [HAPPY] Register init — valid card + phone
+POST {{baseUrl}}/register/init
+Content-Type: {{contentType}}
+
+{
+  "card_number": "{{validCard}}",
+  "phone": "+919876543210"
+}
+
+###
+
+### [ATTACK] Already registered card
+POST {{baseUrl}}/register/init
+Content-Type: {{contentType}}
+
+{
+  "card_number": "RQ-0001-ALREADY1",
+  "phone": "+919876543210"
+}
+
+###
+
+### [ATTACK] Fake card number
+POST {{baseUrl}}/register/init
+Content-Type: {{contentType}}
+
+{
+  "card_number": "FAKECARDNUMBER",
+  "phone": "+919876543210"
+}
+
+###
+
+### [ATTACK] Card number with SQL injection
+POST {{baseUrl}}/register/init
+Content-Type: {{contentType}}
+
+{
+  "card_number": "RQ-0001-' OR '1'='1",
+  "phone": "+919876543210"
+}
+
+###
+
+### [ATTACK] Card number with path traversal
+POST {{baseUrl}}/register/init
+Content-Type: {{contentType}}
+
+{
+  "card_number": "../../../etc/passwd",
+  "phone": "+919876543210"
+}
+
+###
+
+### [ATTACK] Card number too short
+POST {{baseUrl}}/register/init
+Content-Type: {{contentType}}
+
+{
+  "card_number": "RQ-001",
+  "phone": "+919876543210"
+}
+
+###
+
+### [ATTACK] Card number too long
+POST {{baseUrl}}/register/init
+Content-Type: {{contentType}}
+
+{
+  "card_number": "RQ-0001-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  "phone": "+919876543210"
+}
+
+###
+
+### [ATTACK] Register same card with different phone (card theft simulation)
+POST {{baseUrl}}/register/init
+Content-Type: {{contentType}}
+
+{
+  "card_number": "{{validCard}}",
+  "phone": "+919111111111"
+}
+
+###
+
+### [ATTACK] Null card number
+POST {{baseUrl}}/register/init
+Content-Type: {{contentType}}
+
+{
+  "card_number": null,
+  "phone": "+919876543210"
+}
+
+
+# =============================================================================
+# 6. PARENT REGISTRATION — STEP 2 (VERIFY)
+# =============================================================================
+
+### [HAPPY] Register verify — valid nonce + OTP
+POST {{baseUrl}}/register/verify
+Content-Type: {{contentType}}
+
+{
+  "nonce": "{{validNonce}}",
+  "otp": "{{validOtp}}",
+  "phone": "+919876543210"
+}
+
+###
+
+### [ATTACK] Invalid nonce
+POST {{baseUrl}}/register/verify
+Content-Type: {{contentType}}
+
+{
+  "nonce": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+  "otp": "{{validOtp}}",
+  "phone": "+919876543210"
+}
+
+###
+
+### [ATTACK] Nonce stolen — phone mismatch
+POST {{baseUrl}}/register/verify
+Content-Type: {{contentType}}
+
+{
+  "nonce": "{{validNonce}}",
+  "otp": "{{validOtp}}",
+  "phone": "+919999999999"
+}
+
+###
+
+### [ATTACK] Expired nonce (wait 10+ mins then try)
+POST {{baseUrl}}/register/verify
+Content-Type: {{contentType}}
+
+{
+  "nonce": "expirednonceexpirednonceexpirednonceexpirednonceexpirednonceexpir",
+  "otp": "{{validOtp}}",
+  "phone": "+919876543210"
+}
+
+###
+
+### [ATTACK] Nonce replay — use same nonce twice
+POST {{baseUrl}}/register/verify
+Content-Type: {{contentType}}
+
+{
+  "nonce": "{{validNonce}}",
+  "otp": "{{validOtp}}",
+  "phone": "+919876543210"
+}
+
+###
+
+### [ATTACK] Nonce with path traversal
+POST {{baseUrl}}/register/verify
+Content-Type: {{contentType}}
+
+{
+  "nonce": "../../../../redis/config",
+  "otp": "{{validOtp}}",
+  "phone": "+919876543210"
+}
+
+###
+
+### [ATTACK] Short nonce (below min length)
+POST {{baseUrl}}/register/verify
+Content-Type: {{contentType}}
+
+{
+  "nonce": "abc",
+  "otp": "{{validOtp}}",
+  "phone": "+919876543210"
+}
+
+
+# =============================================================================
+# 7. REFRESH TOKEN
+# =============================================================================
+
+### [HAPPY] Refresh — valid cookie (set cookie manually in client)
+POST {{baseUrl}}/refresh
+Content-Type: {{contentType}}
+Cookie: refreshToken={{refreshToken}}
+
+###
+
+### [ATTACK] No cookie at all
+POST {{baseUrl}}/refresh
+Content-Type: {{contentType}}
+
+###
+
+### [ATTACK] Forged refresh token
+POST {{baseUrl}}/refresh
+Content-Type: {{contentType}}
+Cookie: refreshToken=eyJhbGciOiJub25lIn0.eyJ1c2VySWQiOiJzdXBlcmFkbWluIn0.
+
+###
+
+### [ATTACK] JWT alg:none attack
+POST {{baseUrl}}/refresh
+Content-Type: {{contentType}}
+Cookie: refreshToken=eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJ1c2VySWQiOiIxMjMiLCJyb2xlIjoiU1VQRVJfQURNSU4ifQ.
+
+###
+
+### [ATTACK] Tampered JWT payload (role escalation)
+POST {{baseUrl}}/refresh
+Content-Type: {{contentType}}
+Cookie: refreshToken=eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJhdHRhY2tlciIsInJvbGUiOiJTVVBFUl9BRE1JTiIsInNlc3Npb25JZCI6ImZha2UifQ.invalidsignature
+
+###
+
+### [ATTACK] Expired refresh token (use an old one)
+POST {{baseUrl}}/refresh
+Content-Type: {{contentType}}
+Cookie: refreshToken=PASTE_OLD_EXPIRED_TOKEN_HERE
+
+###
+
+### [ATTACK] Refresh token reuse — after token rotation, reuse old token
+# Step 1: Refresh successfully → get new token
+# Step 2: Use the OLD token again → should trigger reuse detection + revoke all sessions
+POST {{baseUrl}}/refresh
+Content-Type: {{contentType}}
+Cookie: refreshToken=PASTE_OLD_ROTATED_TOKEN_HERE
+
+###
+
+### [ATTACK] Session fixation — inject session id in header
+POST {{baseUrl}}/refresh
+Content-Type: {{contentType}}
+Cookie: refreshToken={{refreshToken}}
+X-Session-Id: ../../admin-session-id
+
+###
+
+### [ATTACK] Cookie header injection
+POST {{baseUrl}}/refresh
+Content-Type: {{contentType}}
+Cookie: refreshToken={{refreshToken}}; sessionId=forged; role=SUPER_ADMIN
+
+
+# =============================================================================
+# 8. LOGOUT
+# =============================================================================
+
+### [HAPPY] Logout — valid token + cookie
+POST {{baseUrl}}/logout
+Content-Type: {{contentType}}
+Authorization: Bearer {{accessToken}}
+Cookie: refreshToken={{refreshToken}}
+
+###
+
+### [ATTACK] Logout without auth token
+POST {{baseUrl}}/logout
+Content-Type: {{contentType}}
+
+###
+
+### [ATTACK] Logout with forged JWT
+POST {{baseUrl}}/logout
+Content-Type: {{contentType}}
+Authorization: Bearer eyJhbGciOiJub25lIn0.eyJ1c2VySWQiOiJhdHRhY2tlciIsInJvbGUiOiJTVVBFUl9BRE1JTiJ9.
+
+###
+
+### [ATTACK] Logout with expired access token
+POST {{baseUrl}}/logout
+Content-Type: {{contentType}}
+Authorization: Bearer PASTE_EXPIRED_TOKEN_HERE
+Cookie: refreshToken={{refreshToken}}
+
+###
+
+### [ATTACK] Token reuse after logout — use access token after logout
+# Step 1: Logout successfully
+# Step 2: Try any authenticated endpoint with the same token → should be blacklisted
+POST {{baseUrl}}/logout
+Content-Type: {{contentType}}
+Authorization: Bearer {{accessToken}}
+Cookie: refreshToken={{refreshToken}}
+
+###
+
+### [ATTACK] Double logout — logout same session twice
+POST {{baseUrl}}/logout
+Content-Type: {{contentType}}
+Authorization: Bearer {{accessToken}}
+Cookie: refreshToken={{refreshToken}}
+
+
+# =============================================================================
+# 9. CHANGE PASSWORD
+# =============================================================================
+
+### [HAPPY] Change password — valid
+POST {{baseUrl}}/change-password
+Content-Type: {{contentType}}
+Authorization: Bearer {{accessToken}}
+
+{
+  "oldPassword": "Admin@1234",
+  "newPassword": "NewAdmin@5678"
+}
+
+###
+
+### [ATTACK] Wrong old password
+POST {{baseUrl}}/change-password
+Content-Type: {{contentType}}
+Authorization: Bearer {{accessToken}}
+
+{
+  "oldPassword": "WrongPass@000",
+  "newPassword": "NewAdmin@5678"
+}
+
+###
+
+### [ATTACK] New password same as old
+POST {{baseUrl}}/change-password
+Content-Type: {{contentType}}
+Authorization: Bearer {{accessToken}}
+
+{
+  "oldPassword": "Admin@1234",
+  "newPassword": "Admin@1234"
+}
+
+###
+
+### [ATTACK] Weak new password
+POST {{baseUrl}}/change-password
+Content-Type: {{contentType}}
+Authorization: Bearer {{accessToken}}
+
+{
+  "oldPassword": "Admin@1234",
+  "newPassword": "password"
+}
+
+###
+
+### [ATTACK] No uppercase in new password
+POST {{baseUrl}}/change-password
+Content-Type: {{contentType}}
+Authorization: Bearer {{accessToken}}
+
+{
+  "oldPassword": "Admin@1234",
+  "newPassword": "newpassword@1234"
+}
+
+###
+
+### [ATTACK] No special char in new password
+POST {{baseUrl}}/change-password
+Content-Type: {{contentType}}
+Authorization: Bearer {{accessToken}}
+
+{
+  "oldPassword": "Admin@1234",
+  "newPassword": "NewPassword1234"
+}
+
+###
+
+### [ATTACK] Change password without auth token
+POST {{baseUrl}}/change-password
+Content-Type: {{contentType}}
+
+{
+  "oldPassword": "Admin@1234",
+  "newPassword": "NewAdmin@5678"
+}
+
+###
+
+### [ATTACK] Change password with forged token
+POST {{baseUrl}}/change-password
+Content-Type: {{contentType}}
+Authorization: Bearer eyJhbGciOiJub25lIn0.eyJ1c2VySWQiOiJzdXBlcmFkbWluIiwicm9sZSI6IlNVUEVSX0FETUlOIn0.
+
+{
+  "oldPassword": "Admin@1234",
+  "newPassword": "NewAdmin@5678"
+}
+
+###
+
+### [ATTACK] CSRF simulation — no cookie, direct API call with stolen bearer
+POST {{baseUrl}}/change-password
+Content-Type: {{contentType}}
+Authorization: Bearer {{accessToken}}
+Origin: https://evil.com
+Referer: https://evil.com/csrf-attack
+
+{
+  "oldPassword": "Admin@1234",
+  "newPassword": "Hacked@9999"
+}
+
+###
+
+### [ATTACK] Brute force old password via change-password endpoint
+POST {{baseUrl}}/change-password
+Content-Type: {{contentType}}
+Authorization: Bearer {{accessToken}}
+
+{
+  "oldPassword": "Guess@0001",
+  "newPassword": "NewAdmin@5678"
+}
+
+
+# =============================================================================
+# 10. SECURITY HEADER & GENERIC ATTACK TESTS
+# =============================================================================
+
+### [ATTACK] HTTP verb tampering — GET on POST-only route
+GET {{baseUrl}}/super-admin
+Content-Type: {{contentType}}
+
+###
+
+### [ATTACK] HTTP verb tampering — PUT
+PUT {{baseUrl}}/super-admin
+Content-Type: {{contentType}}
+
+{
+  "email": "admin@resqid.in",
+  "password": "Admin@1234"
+}
+
+###
+
+### [ATTACK] Oversized JSON body (10KB+ payload)
+POST {{baseUrl}}/super-admin
+Content-Type: {{contentType}}
+
+{
+  "email": "admin@resqid.in",
+  "password": "Admin@1234",
+  "junk": "REPEAT_THIS_STRING_TO_REACH_10KB"
+}
+
+### Timing attack detection (response time should be consistent)
+POST {{baseUrl}}/super-admin
+Content-Type: {{contentType}}
+
+{
+  "email": "admin@resqid.in",
+  "password": "Admin@1234"
+}
+# Measure response time vs wrong password
+
+### Session fixation via URL parameter
+GET {{baseUrl}}/some-endpoint?sessionId=fixed_session_id
+
+### Concurrent session limit testing (login from 10+ devices)
+# Should limit or warn
+
+### JWT kid (key ID) path traversal
+Authorization: Bearer eyJhbGciOiJSUzI1NiIsImtpZCI6Ii4uLy4uLy4uL2V0Yy9wYXNzd2QifQ...
+
+### JWT injection via header parameter confusion
+Authorization: Bearer token1,token2

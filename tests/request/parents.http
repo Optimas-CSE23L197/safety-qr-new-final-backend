@@ -1,0 +1,299 @@
+### =============================================================================
+### RESQID — Parent App API Tests
+### File: src/request/parents.http
+### =============================================================================
+
+@baseUrl    = http://localhost:3000/api/v1/parents
+@token      = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1ZDY3YTFhYS03YzlmLTRiNGEtYWY2OC1lYWM0N2JjMTM2OTgiLCJyb2xlIjoiUEFSRU5UX1VTRVIiLCJzZXNzaW9uSWQiOiJhYThmODFkZS05YzdiLTQ3NTYtYjU2Mi1lODcxMzYwZDM0MzUiLCJqdGkiOiJmZTRjMTI2My1hOGVkLTRlMzQtYjliYS0xYjM1OTYyNjViNzEiLCJpYXQiOjE3NzQyNDE3MjQsImV4cCI6MTc3NDI0MjYyNCwiYXVkIjoicmVzcWlkLWFwaSIsImlzcyI6InJlc3FpZCJ9.ICZfjru0tyvuEUr7TcHFXcaeDar6BBHjrCA2pMPNhzw
+@studentId  =  66fad02f-aaa6-49e2-abbc-69b237b972d9	
+
+### =============================================================================
+### GET /me — Home screen (login + pull-to-refresh)
+### =============================================================================
+
+### [1] Fresh fetch — cache miss → 5 parallel DB queries
+###     Device should cache this for 30 days
+GET {{baseUrl}}/me
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [2] Second hit — Redis cache hit → zero DB queries
+GET {{baseUrl}}/me
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### =============================================================================
+### GET /me/scans — Scan history screen
+### =============================================================================
+
+### [3] First page — all scans
+GET {{baseUrl}}/me/scans?limit=20
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [4] Emergency scans only
+GET {{baseUrl}}/me/scans?filter=emergency&limit=20
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [5] Cursor pagination — paste nextCursor from [3] response
+GET {{baseUrl}}/me/scans?cursor=PASTE_NEXT_CURSOR_HERE&limit=20
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### [6] Flagged (non-success) scans
+GET {{baseUrl}}/me/scans?filter=flagged&limit=20
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### =============================================================================
+### PATCH /me/profile — Updates wizard (4-step, single batched call)
+### =============================================================================
+
+### [7] Full profile update (all 3 sections + contacts)
+###     Response: { cache_invalidated: true } → device clears 30-day cache
+PATCH {{baseUrl}}/me/profile
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "student_id": "{{studentId}}",
+  "student": {
+    "first_name": "Animesh",
+    "last_name": "Karan",
+    "class": "4th Year",
+    "section": "C"
+  },
+  "emergency": {
+    "blood_group": "O_POS",
+    "allergies": "None",
+    "conditions": "Mild asthma",
+    "medications": "None",
+    "doctor_name": "",
+    "doctor_phone": "",
+    "notes": "None"
+  },
+  "contacts": [
+    { "name": "Suresh Sharma", "phone": "+919876543210", "relationship": "Father", "priority": 1 },
+    { "name": "Meena Sharma",  "phone": "+919876543211", "relationship": "Mother", "priority": 2 }
+  ]
+}
+
+###
+
+### [8] Partial update — emergency only, no student/contacts
+PATCH {{baseUrl}}/me/profile
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "student_id": "{{studentId}}",
+  "emergency": {
+    "blood_group": "O_POS"
+  }
+}
+
+###
+
+### [9] Wrong phone format — expect 400 VALIDATION_ERROR
+PATCH {{baseUrl}}/me/profile
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "student_id": "{{studentId}}",
+  "contacts": [
+    { "name": "Test", "phone": "9876543210", "relationship": "Father", "priority": 1 }
+  ]
+}
+
+###
+
+### =============================================================================
+### PATCH /me/visibility — Emergency + Visibility screens
+### =============================================================================
+
+### [10] Set visibility to PUBLIC, no hidden fields
+PATCH {{baseUrl}}/me/visibility
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "student_id": "{{studentId}}",
+  "visibility": "PUBLIC",
+  "hidden_fields": []
+}
+
+###
+
+### [11] Set to MINIMAL
+PATCH {{baseUrl}}/me/visibility
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "student_id": "{{studentId}}",
+  "visibility": "MINIMAL",
+  "hidden_fields": []
+}
+
+###
+
+### [12] PUBLIC but hide specific fields
+PATCH {{baseUrl}}/me/visibility
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "student_id": "{{studentId}}",
+  "visibility": "PUBLIC",
+  "hidden_fields": ["medications", "notes"]
+}
+
+###
+
+### [13] Invalid visibility value — expect 400
+PATCH {{baseUrl}}/me/visibility
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "student_id": "{{studentId}}",
+  "visibility": "STEALTH",
+  "hidden_fields": []
+}
+
+###
+
+### =============================================================================
+### PATCH /me/notifications — Settings screen
+### =============================================================================
+
+### [14] Update notification preferences
+PATCH {{baseUrl}}/me/notifications
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "scan_notify_enabled": true,
+  "scan_notify_push": true,
+  "scan_notify_sms": false,
+  "anomaly_notify_push": true,
+  "quiet_hours_enabled": true,
+  "quiet_hours_start": "22:00",
+  "quiet_hours_end": "07:00"
+}
+
+###
+
+### =============================================================================
+### PATCH /me/location-consent — Settings screen
+### =============================================================================
+
+### [15] Enable location tracking
+PATCH {{baseUrl}}/me/location-consent
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "student_id": "{{studentId}}",
+  "enabled": true
+}
+
+###
+
+### [16] Disable location tracking
+PATCH {{baseUrl}}/me/location-consent
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "student_id": "{{studentId}}",
+  "enabled": false
+}
+
+###
+
+### =============================================================================
+### POST /me/lock-card — Settings → danger zone
+### =============================================================================
+
+### [17] Lock card — requires confirmation string "LOCK"
+POST {{baseUrl}}/me/lock-card
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "student_id": "{{studentId}}",
+  "confirmation": "LOCK"
+}
+
+###
+
+### [18] Wrong confirmation string — expect 400 VALIDATION_ERROR
+POST {{baseUrl}}/me/lock-card
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "student_id": "{{studentId}}",
+  "confirmation": "lock"
+}
+
+###
+
+### =============================================================================
+### POST /me/request-replace — Settings screen
+### =============================================================================
+
+### [19] Request card replacement
+POST {{baseUrl}}/me/request-replace
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "student_id": "{{studentId}}",
+  "reason": "Card was lost during school trip on 15 March 2026"
+}
+
+###
+
+### =============================================================================
+### DELETE /me — Settings → danger zone
+### =============================================================================
+
+### [20] Delete account (soft delete)
+DELETE {{baseUrl}}/me
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+
+### =============================================================================
+### ❌ AUTH ERRORS
+### =============================================================================
+
+### [21] No token — expect 401
+GET {{baseUrl}}/me
+Accept: application/json
+
+###
+
+### [22] School user token (wrong role) — expect 403
+GET {{baseUrl}}/me
+Authorization: Bearer PASTE_SCHOOL_USER_TOKEN_HERE
+Accept: application/json
+
+###
