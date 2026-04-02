@@ -1001,7 +1001,9 @@ exports.Prisma.CardTemplateScalarFieldEnum = {
   is_locked: 'is_locked',
   updated_by: 'updated_by',
   created_at: 'created_at',
-  updated_at: 'updated_at'
+  updated_at: 'updated_at',
+  front_template_url: 'front_template_url',
+  back_template_url: 'back_template_url'
 };
 
 exports.Prisma.SessionScalarFieldEnum = {

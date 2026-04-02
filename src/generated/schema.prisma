@@ -1203,6 +1203,10 @@ model CardTemplate {
   created_at         DateTime @default(now())
   updated_at         DateTime @updatedAt
   school             School   @relation(fields: [school_id], references: [id], onDelete: Cascade)
+
+  // ADD THESE TWO FIELDS
+  front_template_url String? // R2 URL for front side template image
+  back_template_url  String? // R2 URL for back side template image
 }
 
 model Session {

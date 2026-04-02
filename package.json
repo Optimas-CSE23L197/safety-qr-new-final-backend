@@ -11,7 +11,7 @@
     "worker:notification": "cross-env WORKER_ROLE=notification node --import tsx/esm src/orchestrator/workers/index.js",
     "worker:background": "cross-env WORKER_ROLE=background node --import tsx/esm src/orchestrator/workers/index.js",
     "worker:pipeline": "node --import tsx/esm src/orchestrator/workers/pipeline.worker.js",
-    "worker:design": "node --import tsx/esm src/orchestrator/workers/design.worker.js",
+    "worker:designer": "node --import tsx/esm src/orchestrator/workers/design.worker.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:reset": "prisma migrate reset",
