@@ -1,0 +1,201 @@
+### ============================================================================
+### SUPER ADMIN SCAN ANOMALIES API TESTS
+### Prerequisite: Login first and copy access_token
+### ============================================================================
+
+@baseUrl = http://localhost:3000
+@access_token = YOUR_ACCESS_TOKEN_HERE
+
+### ============================================================================
+### 1. SCAN ANOMALIES LIST (Paginated with Filters)
+### ============================================================================
+
+### 1.1 Get all anomalies (default page 1, limit 10)
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies
+Authorization: Bearer {{access_token}}
+
+### 1.2 Get anomalies with custom pagination
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies?page=2&limit=25
+Authorization: Bearer {{access_token}}
+
+### 1.3 Search by anomaly ID
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies?search=ANOM-9923
+Authorization: Bearer {{access_token}}
+
+### 1.4 Search by student name
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies?search=Vikram
+Authorization: Bearer {{access_token}}
+
+### 1.5 Search by school name
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies?search=Greenwood
+Authorization: Bearer {{access_token}}
+
+### 1.6 Search by reason
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies?search=LOCATION
+Authorization: Bearer {{access_token}}
+
+### 1.7 Filter by resolved UNRESOLVED
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies?resolved=UNRESOLVED
+Authorization: Bearer {{access_token}}
+
+### 1.8 Filter by resolved RESOLVED
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies?resolved=RESOLVED
+Authorization: Bearer {{access_token}}
+
+### 1.9 Filter by anomaly_type HIGH_FREQUENCY
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies?anomaly_type=HIGH_FREQUENCY
+Authorization: Bearer {{access_token}}
+
+### 1.10 Filter by anomaly_type LOCATION_INCONSISTENT
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies?anomaly_type=MULTIPLE_LOCATIONS
+Authorization: Bearer {{access_token}}
+
+### 1.11 Filter by anomaly_type SUSPICIOUS_IP
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies?anomaly_type=SUSPICIOUS_IP
+Authorization: Bearer {{access_token}}
+
+### 1.12 Filter by severity HIGH
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies?severity=HIGH
+Authorization: Bearer {{access_token}}
+
+### 1.13 Filter by severity CRITICAL
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies?severity=CRITICAL
+Authorization: Bearer {{access_token}}
+
+### 1.14 Filter by date range
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies?from_date=2026-03-01T00:00:00Z&to_date=2026-03-07T23:59:59Z
+Authorization: Bearer {{access_token}}
+
+### 1.15 Combined filters
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies?resolved=UNRESOLVED&severity=HIGH&anomaly_type=HIGH_FREQUENCY
+Authorization: Bearer {{access_token}}
+
+### 1.16 Sort by severity descending
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies?sort_field=severity&sort_dir=desc
+Authorization: Bearer {{access_token}}
+
+### 1.17 Sort by created_at ascending (oldest first)
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies?sort_field=created_at&sort_dir=asc
+Authorization: Bearer {{access_token}}
+
+### 1.18 Sort by anomaly_type
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies?sort_field=anomaly_type&sort_dir=asc
+Authorization: Bearer {{access_token}}
+
+### ============================================================================
+### 2. SCAN ANOMALIES STATS
+### ============================================================================
+
+### 2.1 Get anomaly statistics (total, resolved, unresolved, by_severity, by_type)
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies/stats
+Authorization: Bearer {{access_token}}
+
+### 2.2 Get anomaly statistics with date range
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies/stats?from_date=2026-03-01T00:00:00Z&to_date=2026-03-07T23:59:59Z
+Authorization: Bearer {{access_token}}
+
+### ============================================================================
+### 3. SCAN ANOMALY FILTERS (Dropdown Data)
+### ============================================================================
+
+### 3.1 Get all filter options (anomalyTypes, severities, resolvedStatuses)
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies/filters
+Authorization: Bearer {{access_token}}
+
+### ============================================================================
+### 4. SINGLE SCAN ANOMALY OPERATIONS
+### ============================================================================
+
+### 4.1 Get anomaly by ID (replace with actual UUID)
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies/550e8400-e29b-41d4-a716-446655440000
+Authorization: Bearer {{access_token}}
+
+### 4.2 Mark anomaly as resolved (auto-assign resolved_by as super_admin)
+PATCH {{baseUrl}}/api/v1/super-admin/scan-anomalies/550e8400-e29b-41d4-a716-446655440000/resolve
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{}
+
+### 4.3 Mark anomaly as resolved with custom resolved_by
+PATCH {{baseUrl}}/api/v1/super-admin/scan-anomalies/550e8400-e29b-41d4-a716-446655440000/resolve
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "resolved_by": "security_team@resqid.com"
+}
+
+### ============================================================================
+### 5. ERROR HANDLING TESTS
+### ============================================================================
+
+### 5.1 Unauthorized (No Token)
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies
+
+### 5.2 Invalid Token
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies
+Authorization: Bearer invalid_token_12345
+
+### 5.3 Invalid page number
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies?page=0
+Authorization: Bearer {{access_token}}
+
+### 5.4 Invalid limit (exceeds max)
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies?limit=200
+Authorization: Bearer {{access_token}}
+
+### 5.5 Invalid resolved filter
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies?resolved=INVALID
+Authorization: Bearer {{access_token}}
+
+### 5.6 Invalid anomaly_type filter
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies?anomaly_type=INVALID
+Authorization: Bearer {{access_token}}
+
+### 5.7 Invalid severity filter
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies?severity=INVALID
+Authorization: Bearer {{access_token}}
+
+### 5.8 Invalid sort_field
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies?sort_field=invalid_field
+Authorization: Bearer {{access_token}}
+
+### 5.9 Invalid date format
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies?from_date=invalid-date
+Authorization: Bearer {{access_token}}
+
+### 5.10 Anomaly not found (valid UUID but doesn't exist)
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies/00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{access_token}}
+
+### 5.11 Resolve already resolved anomaly (will return error)
+PATCH {{baseUrl}}/api/v1/super-admin/scan-anomalies/550e8400-e29b-41d4-a716-446655440000/resolve
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{}
+
+### 5.12 Resolve anomaly with invalid ID format
+PATCH {{baseUrl}}/api/v1/super-admin/scan-anomalies/not-a-uuid/resolve
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{}
+
+### ============================================================================
+### 6. PERFORMANCE TEST (Parallel Calls Simulation)
+### Run these calls simultaneously from frontend
+### ============================================================================
+
+### Call 1: Anomalies List
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies?page=1&limit=10
+Authorization: Bearer {{access_token}}
+
+### Call 2: Anomaly Stats
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies/stats
+Authorization: Bearer {{access_token}}
+
+### Call 3: Anomaly Filters
+GET {{baseUrl}}/api/v1/super-admin/scan-anomalies/filters
+Authorization: Bearer {{access_token}}

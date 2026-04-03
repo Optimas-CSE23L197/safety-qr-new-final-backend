@@ -1,0 +1,167 @@
+### ============================================================================
+### SUPER ADMIN SCAN LOGS API TESTS
+### Prerequisite: Login first and copy access_token
+### ============================================================================
+
+@baseUrl = http://localhost:3000
+@access_token = YOUR_ACCESS_TOKEN_HERE
+
+### ============================================================================
+### 1. SCAN LOGS LIST (Paginated with Filters)
+### ============================================================================
+
+### 1.1 Get all scan logs (default page 1, limit 10)
+GET {{baseUrl}}/api/v1/super-admin/scan-logs
+Authorization: Bearer {{access_token}}
+
+### 1.2 Get scan logs with custom pagination
+GET {{baseUrl}}/api/v1/super-admin/scan-logs?page=2&limit=25
+Authorization: Bearer {{access_token}}
+
+### 1.3 Search by student name
+GET {{baseUrl}}/api/v1/super-admin/scan-logs?search=Vikram
+Authorization: Bearer {{access_token}}
+
+### 1.4 Search by IP address
+GET {{baseUrl}}/api/v1/super-admin/scan-logs?search=192.168.19
+Authorization: Bearer {{access_token}}
+
+### 1.5 Search by school name
+GET {{baseUrl}}/api/v1/super-admin/scan-logs?search=Greenwood
+Authorization: Bearer {{access_token}}
+
+### 1.6 Filter by school_id
+GET {{baseUrl}}/api/v1/super-admin/scan-logs?school_id=550e8400-e29b-41d4-a716-446655440000
+Authorization: Bearer {{access_token}}
+
+### 1.7 Filter by result SUCCESS
+GET {{baseUrl}}/api/v1/super-admin/scan-logs?result=SUCCESS
+Authorization: Bearer {{access_token}}
+
+### 1.8 Filter by result RATE_LIMITED
+GET {{baseUrl}}/api/v1/super-admin/scan-logs?result=RATE_LIMITED
+Authorization: Bearer {{access_token}}
+
+### 1.9 Filter by result ERROR
+GET {{baseUrl}}/api/v1/super-admin/scan-logs?result=ERROR
+Authorization: Bearer {{access_token}}
+
+### 1.10 Filter by result REVOKED
+GET {{baseUrl}}/api/v1/super-admin/scan-logs?result=REVOKED
+Authorization: Bearer {{access_token}}
+
+### 1.11 Filter by scan_type EMERGENCY
+GET {{baseUrl}}/api/v1/super-admin/scan-logs?scan_type=EMERGENCY
+Authorization: Bearer {{access_token}}
+
+### 1.12 Filter by scan_type CHECK_IN
+GET {{baseUrl}}/api/v1/super-admin/scan-logs?scan_type=CHECK_IN
+Authorization: Bearer {{access_token}}
+
+### 1.13 Filter by scan_purpose QR_SCAN
+GET {{baseUrl}}/api/v1/super-admin/scan-logs?scan_purpose=QR_SCAN
+Authorization: Bearer {{access_token}}
+
+### 1.14 Filter by scan_purpose HONEYPOT
+GET {{baseUrl}}/api/v1/super-admin/scan-logs?scan_purpose=HONEYPOT
+Authorization: Bearer {{access_token}}
+
+### 1.15 Filter by date range
+GET {{baseUrl}}/api/v1/super-admin/scan-logs?from_date=2026-03-01T00:00:00Z&to_date=2026-03-07T23:59:59Z
+Authorization: Bearer {{access_token}}
+
+### 1.16 Combined filters
+GET {{baseUrl}}/api/v1/super-admin/scan-logs?result=SUCCESS&scan_type=QR_SCAN&school_id=550e8400-e29b-41d4-a716-446655440000
+Authorization: Bearer {{access_token}}
+
+### 1.17 Sort by response_time_ms ascending (fastest first)
+GET {{baseUrl}}/api/v1/super-admin/scan-logs?sort_field=response_time_ms&sort_dir=asc
+Authorization: Bearer {{access_token}}
+
+### 1.18 Sort by created_at ascending (oldest first)
+GET {{baseUrl}}/api/v1/super-admin/scan-logs?sort_field=created_at&sort_dir=asc
+Authorization: Bearer {{access_token}}
+
+### ============================================================================
+### 2. SCAN LOG STATS
+### ============================================================================
+
+### 2.1 Get scan log statistics (total, success, failed, anomaly, rateLimited, malicious, emergency, successRate, avgResponseTimeMs)
+GET {{baseUrl}}/api/v1/super-admin/scan-logs/stats
+Authorization: Bearer {{access_token}}
+
+### 2.2 Get scan log statistics with date range
+GET {{baseUrl}}/api/v1/super-admin/scan-logs/stats?from_date=2026-03-01T00:00:00Z&to_date=2026-03-07T23:59:59Z
+Authorization: Bearer {{access_token}}
+
+### ============================================================================
+### 3. SCAN LOG FILTERS (Dropdown Data)
+### ============================================================================
+
+### 3.1 Get all filter options (schools, scanResults, scanTypes, scanPurposes)
+GET {{baseUrl}}/api/v1/super-admin/scan-logs/filters
+Authorization: Bearer {{access_token}}
+
+### ============================================================================
+### 4. SINGLE SCAN LOG OPERATIONS
+### ============================================================================
+
+### 4.1 Get scan log by ID (replace with actual UUID)
+GET {{baseUrl}}/api/v1/super-admin/scan-logs/550e8400-e29b-41d4-a716-446655440000
+Authorization: Bearer {{access_token}}
+
+### ============================================================================
+### 5. ERROR HANDLING TESTS
+### ============================================================================
+
+### 5.1 Unauthorized (No Token)
+GET {{baseUrl}}/api/v1/super-admin/scan-logs
+
+### 5.2 Invalid Token
+GET {{baseUrl}}/api/v1/super-admin/scan-logs
+Authorization: Bearer invalid_token_12345
+
+### 5.3 Invalid page number
+GET {{baseUrl}}/api/v1/super-admin/scan-logs?page=0
+Authorization: Bearer {{access_token}}
+
+### 5.4 Invalid limit (exceeds max)
+GET {{baseUrl}}/api/v1/super-admin/scan-logs?limit=200
+Authorization: Bearer {{access_token}}
+
+### 5.5 Invalid result filter
+GET {{baseUrl}}/api/v1/super-admin/scan-logs?result=INVALID_RESULT
+Authorization: Bearer {{access_token}}
+
+### 5.6 Invalid scan_type filter
+GET {{baseUrl}}/api/v1/super-admin/scan-logs?scan_type=INVALID
+Authorization: Bearer {{access_token}}
+
+### 5.7 Invalid sort_field
+GET {{baseUrl}}/api/v1/super-admin/scan-logs?sort_field=invalid_field
+Authorization: Bearer {{access_token}}
+
+### 5.8 Invalid date format
+GET {{baseUrl}}/api/v1/super-admin/scan-logs?from_date=invalid-date
+Authorization: Bearer {{access_token}}
+
+### 5.9 Scan log not found (valid UUID but doesn't exist)
+GET {{baseUrl}}/api/v1/super-admin/scan-logs/00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{access_token}}
+
+### ============================================================================
+### 6. PERFORMANCE TEST (Parallel Calls Simulation)
+### Run these calls simultaneously from frontend
+### ============================================================================
+
+### Call 1: Scan Logs List
+GET {{baseUrl}}/api/v1/super-admin/scan-logs?page=1&limit=10
+Authorization: Bearer {{access_token}}
+
+### Call 2: Scan Log Stats
+GET {{baseUrl}}/api/v1/super-admin/scan-logs/stats
+Authorization: Bearer {{access_token}}
+
+### Call 3: Scan Log Filters
+GET {{baseUrl}}/api/v1/super-admin/scan-logs/filters
+Authorization: Bearer {{access_token}}
