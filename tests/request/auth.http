@@ -9,7 +9,7 @@
 
 # ─── Fill these after successful login ───────────────────────────────────────
 @accessToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI4ZTUzODU5Yi0xMjgxLTRmZjItOTQyZC04NTAyYTNkZjZhMjYiLCJyb2xlIjoiU1VQRVJfQURNSU4iLCJzZXNzaW9uSWQiOiJkY2VjNWIyZS1jMWE2LTRkZWYtOWI1OS1hZGRhMDY3MTQzOWEiLCJqdGkiOiIwNDBhZmIzMC05ZjlmLTRmYWUtYWM3Zi01N2I3YTcwNjhkZWUiLCJpYXQiOjE3NzUwNTYzNDMsImV4cCI6MTc3NTA1ODE0MywiYXVkIjoicmVzcWlkLWFwaSIsImlzcyI6InJlc3FpZCJ9.st3ogbLrJrgrwfJ86XyzFqZkjdBgRcse_WrUmupUlQk
-@refreshToken = 35785352de767bba30b9da4717afecce621e4289f9d7addbc8fb26434ce3ad2b
+@refreshToken = 2d0911dbad90b1c74292652b39897222b00312d3e1620e16d4ce3dfe592a6428
 @validPhone = +919876543210
 @validCard = RQ-0001-A1B2C3D4
 @validOtp = 123456

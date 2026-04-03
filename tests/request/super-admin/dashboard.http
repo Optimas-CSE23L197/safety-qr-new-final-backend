@@ -1,0 +1,147 @@
+### ============================================================================
+### SUPER ADMIN DASHBOARD apiTESTS
+### Prerequisite: Login first and copy access_token
+### ============================================================================
+
+@baseUrl = http://localhost:3000/api
+@access_token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI4ZTUzODU5Yi0xMjgxLTRmZjItOTQyZC04NTAyYTNkZjZhMjYiLCJyb2xlIjoiU1VQRVJfQURNSU4iLCJzZXNzaW9uSWQiOiI0YWYxNjIwMS05NzkzLTRlZjYtYjZlMy1jYjFjODg5OTQwNjIiLCJqdGkiOiIzNzEzNjM5Ni00ZWQ4LTQzYTEtYjY4NS1iYjA2OGE0MmIxNzMiLCJpYXQiOjE3NzUyMjYyNTYsImV4cCI6MTc3NTIyODA1NiwiYXVkIjoicmVzcWlkLWFwaSIsImlzcyI6InJlc3FpZCJ9.wcjyfbjrJ8Z8ZLHLE_Yhuf5P4QIAbezjqkQRTxvSWs0
+
+### ============================================================================
+### 1. COMPLETE DASHBOARD (Single apiCall - Recommended)
+### ============================================================================
+
+### 1.1 Get complete dashboard with default params
+GET {{baseUrl}}/super-admin/dashboard/complete
+Authorization: Bearer {{access_token}}
+
+### 1.2 Get complete dashboard with custom params
+GET {{baseUrl}}/super-admin/dashboard/complete?months=6&recentSchoolsLimit=5&auditLimit=10
+Authorization: Bearer {{access_token}}
+
+### 1.3 Get complete dashboard with date filters
+GET {{baseUrl}}/super-admin/dashboard/complete?from_date=2026-01-01&to_date=2026-03-31
+Authorization: Bearer {{access_token}}
+
+### 1.4 Get complete dashboard for specific school
+GET {{baseUrl}}/super-admin/dashboard/complete?school_id=550e8400-e29b-41d4-a716-446655440000
+Authorization: Bearer {{access_token}}
+
+### 1.5 Get complete dashboard with field selector
+GET {{baseUrl}}/super-admin/dashboard/complete?fields=stats,growth,recentSchools
+Authorization: Bearer {{access_token}}
+
+### ============================================================================
+### 2. INDIVIDUAL apiTESTS
+### ============================================================================
+
+### 2.1 Get Dashboard Stats (KPIs)
+GET {{baseUrl}}/super-admin/dashboard/stats
+Authorization: Bearer {{access_token}}
+
+### 2.2 Get Dashboard Stats with date filter
+GET {{baseUrl}}/super-admin/dashboard/stats?from_date=2026-01-01&to_date=2026-03-31
+Authorization: Bearer {{access_token}}
+
+### 2.3 Get Dashboard Stats for specific school
+GET {{baseUrl}}/super-admin/dashboard/stats?school_id=550e8400-e29b-41d4-a716-446655440000
+Authorization: Bearer {{access_token}}
+
+### 2.4 Get Growth Chart Data (default 12 months)
+GET {{baseUrl}}/super-admin/dashboard/growth
+Authorization: Bearer {{access_token}}
+
+### 2.5 Get Growth Chart Data (6 months)
+GET {{baseUrl}}/super-admin/dashboard/growth?months=6
+Authorization: Bearer {{access_token}}
+
+### 2.6 Get Growth Chart Data for specific school
+GET {{baseUrl}}/super-admin/dashboard/growth?months=12&school_id=550e8400-e29b-41d4-a716-446655440000
+Authorization: Bearer {{access_token}}
+
+### 2.7 Get Subscription Breakdown
+GET {{baseUrl}}/super-admin/dashboard/subscription-breakdown
+Authorization: Bearer {{access_token}}
+
+### 2.8 Get Subscription Breakdown for specific school
+GET {{baseUrl}}/super-admin/dashboard/subscription-breakdown?school_id=550e8400-e29b-41d4-a716-446655440000
+Authorization: Bearer {{access_token}}
+
+### 2.9 Get Recent Schools (default 10)
+GET {{baseUrl}}/super-admin/dashboard/recent-schools
+Authorization: Bearer {{access_token}}
+
+### 2.10 Get Recent Schools (limit 5)
+GET {{baseUrl}}/super-admin/dashboard/recent-schools?limit=5
+Authorization: Bearer {{access_token}}
+
+### 2.11 Get Recent Audit Logs (default 20)
+GET {{baseUrl}}/super-admin/dashboard/recent-audit
+Authorization: Bearer {{access_token}}
+
+### 2.12 Get Recent Audit Logs (limit 50, filter by SUPER_ADMIN)
+GET {{baseUrl}}/super-admin/dashboard/recent-audit?limit=50&actor_type=SUPER_ADMIN
+Authorization: Bearer {{access_token}}
+
+### 2.13 Get System Health
+GET {{baseUrl}}/super-admin/dashboard/system-health
+Authorization: Bearer {{access_token}}
+
+### ============================================================================
+### 3. ERROR HANDLING TESTS
+### ============================================================================
+
+### 3.1 Unauthorized (No Token)
+GET {{baseUrl}}/super-admin/dashboard/stats
+
+### 3.2 Invalid Token
+GET {{baseUrl}}/super-admin/dashboard/stats
+Authorization: Bearer invalid_token_12345
+
+### 3.3 Invalid months value (should fail validation)
+GET {{baseUrl}}/super-admin/dashboard/growth?months=100
+Authorization: Bearer {{access_token}}
+
+### 3.4 Invalid limit value (should fail validation)
+GET {{baseUrl}}/super-admin/dashboard/recent-schools?limit=200
+Authorization: Bearer {{access_token}}
+
+### 3.5 Invalid date format
+GET {{baseUrl}}/super-admin/dashboard/stats?from_date=invalid-date
+Authorization: Bearer {{access_token}}
+
+### 3.6 Invalid school_id format
+GET {{baseUrl}}/super-admin/dashboard/stats?school_id=not-a-uuid
+Authorization: Bearer {{access_token}}
+
+### 3.7 Invalid actor_type
+GET {{baseUrl}}/super-admin/dashboard/recent-audit?actor_type=INVALID
+Authorization: Bearer {{access_token}}
+
+### ============================================================================
+### 4. PERFORMANCE TEST (Parallel Calls Simulation)
+### Run these 6 calls simultaneously from frontend
+### ============================================================================
+
+### Call 1: Stats
+GET {{baseUrl}}/super-admin/dashboard/stats
+Authorization: Bearer {{access_token}}
+
+### Call 2: Growth
+GET {{baseUrl}}/super-admin/dashboard/growth
+Authorization: Bearer {{access_token}}
+
+### Call 3: Subscription Breakdown
+GET {{baseUrl}}/super-admin/dashboard/subscription-breakdown
+Authorization: Bearer {{access_token}}
+
+### Call 4: Recent Schools
+GET {{baseUrl}}/super-admin/dashboard/recent-schools
+Authorization: Bearer {{access_token}}
+
+### Call 5: Recent Audit
+GET {{baseUrl}}/super-admin/dashboard/recent-audit
+Authorization: Bearer {{access_token}}
+
+### Call 6: System Health
+GET {{baseUrl}}/super-admin/dashboard/system-health
+Authorization: Bearer {{access_token}}

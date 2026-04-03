@@ -1,0 +1,27 @@
+// =============================================================================
+// routes/superAdmin.routes.js — RESQID
+// All super admin module routes in one place.
+// Mounted at: /api/super-admin
+// =============================================================================
+import { Router } from 'express';
+import { authenticate } from '#middleware/auth/auth.middleware.js';
+import { requireSuperAdmin } from '#middleware/auth/rbac.middleware.js';
+import dashboardRoutes from '#modules/super_admin/overview/dashboard.routes.js';
+import schoolsRoutes from '#modules/super_admin/school/schools.routes.js';
+import adminRoutes from '#modules/super_admin/admin/admins.routes.js';
+import studentRoutes from '#modules/super_admin/students/students.routes.js';
+import parentRoutes from '#modules/super_admin/parents/parents.routes.js';
+import tokenRoutes from '#modules/super_admin/tokens/tokens.routes.js';
+const router = Router();
+
+router.use(authenticate);
+router.use(requireSuperAdmin);
+
+router.use('/dashboard', dashboardRoutes);
+router.use('/schools', schoolsRoutes);
+router.use('/admins', adminRoutes);
+router.use('students', studentRoutes);
+router.use('/parents', parentRoutes);
+router.use('/tokens', tokenRoutes);
+
+export default router;

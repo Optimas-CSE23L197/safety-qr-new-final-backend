@@ -1,0 +1,219 @@
+### ============================================================================
+### SUPER ADMIN PARENTS API TESTS
+### Prerequisite: Login first and copy access_token
+### ============================================================================
+
+@baseUrl = http://localhost:3000
+@access_token = YOUR_ACCESS_TOKEN_HERE
+
+### ============================================================================
+### 1. PARENTS LIST (Paginated with Filters)
+### ============================================================================
+
+### 1.1 Get all parents (default page 1, limit 20)
+GET {{baseUrl}}/api/super-admin/parents
+Authorization: Bearer {{access_token}}
+
+### 1.2 Get parents with custom pagination
+GET {{baseUrl}}/api/super-admin/parents?page=2&limit=10
+Authorization: Bearer {{access_token}}
+
+### 1.3 Search parents by name
+GET {{baseUrl}}/api/super-admin/parents?search=Rajesh
+Authorization: Bearer {{access_token}}
+
+### 1.4 Search parents by phone number
+GET {{baseUrl}}/api/super-admin/parents?search=+919000000000
+Authorization: Bearer {{access_token}}
+
+### 1.5 Search parents by email
+GET {{baseUrl}}/api/super-admin/parents?search=gmail.com
+Authorization: Bearer {{access_token}}
+
+### 1.6 Search parents by parent ID
+GET {{baseUrl}}/api/super-admin/parents?search=par-00123
+Authorization: Bearer {{access_token}}
+
+### 1.7 Filter by status ACTIVE
+GET {{baseUrl}}/api/super-admin/parents?status=ACTIVE
+Authorization: Bearer {{access_token}}
+
+### 1.8 Filter by status SUSPENDED
+GET {{baseUrl}}/api/super-admin/parents?status=SUSPENDED
+Authorization: Bearer {{access_token}}
+
+### 1.9 Filter by status DELETED
+GET {{baseUrl}}/api/super-admin/parents?status=DELETED
+Authorization: Bearer {{access_token}}
+
+### 1.10 Filter by phone verified YES
+GET {{baseUrl}}/api/super-admin/parents?phone_verified=YES
+Authorization: Bearer {{access_token}}
+
+### 1.11 Filter by phone verified NO
+GET {{baseUrl}}/api/super-admin/parents?phone_verified=NO
+Authorization: Bearer {{access_token}}
+
+### 1.12 Filter by email verified YES
+GET {{baseUrl}}/api/super-admin/parents?email_verified=YES
+Authorization: Bearer {{access_token}}
+
+### 1.13 Filter by email verified NO
+GET {{baseUrl}}/api/super-admin/parents?email_verified=NO
+Authorization: Bearer {{access_token}}
+
+### 1.14 Filter by platform IOS
+GET {{baseUrl}}/api/super-admin/parents?platform=IOS
+Authorization: Bearer {{access_token}}
+
+### 1.15 Filter by platform ANDROID
+GET {{baseUrl}}/api/super-admin/parents?platform=ANDROID
+Authorization: Bearer {{access_token}}
+
+### 1.16 Filter by platform WEB
+GET {{baseUrl}}/api/super-admin/parents?platform=WEB
+Authorization: Bearer {{access_token}}
+
+### 1.17 Combined filters
+GET {{baseUrl}}/api/super-admin/parents?status=ACTIVE&phone_verified=YES&platform=ANDROID
+Authorization: Bearer {{access_token}}
+
+### 1.18 Sort by name ascending
+GET {{baseUrl}}/api/super-admin/parents?sort_field=name&sort_dir=asc
+Authorization: Bearer {{access_token}}
+
+### 1.19 Sort by created_at ascending (oldest first)
+GET {{baseUrl}}/api/super-admin/parents?sort_field=created_at&sort_dir=asc
+Authorization: Bearer {{access_token}}
+
+### 1.20 Sort by last_login_at descending
+GET {{baseUrl}}/api/super-admin/parents?sort_field=last_login_at&sort_dir=desc
+Authorization: Bearer {{access_token}}
+
+### ============================================================================
+### 2. PARENTS STATS
+### ============================================================================
+
+### 2.1 Get parents statistics (total, active, suspended, deleted, phoneVerified, emailVerified, activeDevices)
+GET {{baseUrl}}/api/super-admin/parents/stats
+Authorization: Bearer {{access_token}}
+
+### ============================================================================
+### 3. PARENT FILTERS (Dropdown Data)
+### ============================================================================
+
+### 3.1 Get all filter options (platforms, statuses)
+GET {{baseUrl}}/api/super-admin/parents/filters
+Authorization: Bearer {{access_token}}
+
+### ============================================================================
+### 4. SINGLE PARENT OPERATIONS
+### ============================================================================
+
+### 4.1 Get parent by ID (replace with actual UUID)
+GET {{baseUrl}}/api/super-admin/parents/550e8400-e29b-41d4-a716-446655440000
+Authorization: Bearer {{access_token}}
+
+### 4.2 Suspend parent
+PATCH {{baseUrl}}/api/super-admin/parents/550e8400-e29b-41d4-a716-446655440000/toggle-status
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "status": "SUSPENDED"
+}
+
+### 4.3 Reactivate parent
+PATCH {{baseUrl}}/api/super-admin/parents/550e8400-e29b-41d4-a716-446655440000/toggle-status
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "status": "ACTIVE"
+}
+
+### 4.4 Revoke all devices (force logout from all devices)
+POST {{baseUrl}}/api/super-admin/parents/550e8400-e29b-41d4-a716-446655440000/revoke-devices
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "revoke_all": true
+}
+
+### ============================================================================
+### 5. ERROR HANDLING TESTS
+### ============================================================================
+
+### 5.1 Unauthorized (No Token)
+GET {{baseUrl}}/api/super-admin/parents
+
+### 5.2 Invalid Token
+GET {{baseUrl}}/api/super-admin/parents
+Authorization: Bearer invalid_token_12345
+
+### 5.3 Invalid page number
+GET {{baseUrl}}/api/super-admin/parents?page=0
+Authorization: Bearer {{access_token}}
+
+### 5.4 Invalid limit (exceeds max)
+GET {{baseUrl}}/api/super-admin/parents?limit=200
+Authorization: Bearer {{access_token}}
+
+### 5.5 Invalid status filter
+GET {{baseUrl}}/api/super-admin/parents?status=INVALID
+Authorization: Bearer {{access_token}}
+
+### 5.6 Invalid phone_verified filter
+GET {{baseUrl}}/api/super-admin/parents?phone_verified=INVALID
+Authorization: Bearer {{access_token}}
+
+### 5.7 Invalid platform filter
+GET {{baseUrl}}/api/super-admin/parents?platform=WINDOWS
+Authorization: Bearer {{access_token}}
+
+### 5.8 Parent not found (valid UUID but doesn't exist)
+GET {{baseUrl}}/api/super-admin/parents/00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{access_token}}
+
+### 5.9 Toggle status with invalid body
+PATCH {{baseUrl}}/api/super-admin/parents/550e8400-e29b-41d4-a716-446655440000/toggle-status
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "status": "INVALID"
+}
+
+### 5.10 Toggle status with missing body field
+PATCH {{baseUrl}}/api/super-admin/parents/550e8400-e29b-41d4-a716-446655440000/toggle-status
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{}
+
+### 5.11 Revoke devices on parent with no active devices (will return error)
+POST {{baseUrl}}/api/super-admin/parents/550e8400-e29b-41d4-a716-446655440000/revoke-devices
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "revoke_all": true
+}
+
+### ============================================================================
+### 6. PERFORMANCE TEST (Parallel Calls Simulation)
+### Run these calls simultaneously from frontend
+### ============================================================================
+
+### Call 1: Parents List
+GET {{baseUrl}}/api/super-admin/parents?page=1&limit=20
+Authorization: Bearer {{access_token}}
+
+### Call 2: Parents Stats
+GET {{baseUrl}}/api/super-admin/parents/stats
+Authorization: Bearer {{access_token}}
+
+### Call 3: Parent Filters
+GET {{baseUrl}}/api/super-admin/parents/filters
+Authorization: Bearer {{access_token}}

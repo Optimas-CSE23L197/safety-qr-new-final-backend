@@ -1,0 +1,236 @@
+### ============================================================================
+### SUPER ADMIN ADMINS API TESTS
+### Prerequisite: Login first and copy access_token
+### ============================================================================
+
+@baseUrl = http://localhost:3000
+@access_token = YOUR_ACCESS_TOKEN_HERE
+
+### ============================================================================
+### 1. ADMINS LIST (Paginated with Filters)
+### ============================================================================
+
+### 1.1 Get all admins (default page 1, limit 10)
+GET {{baseUrl}}/api/super-admin/admins
+Authorization: Bearer {{access_token}}
+
+### 1.2 Get admins with custom pagination
+GET {{baseUrl}}/api/super-admin/admins?page=2&limit=20
+Authorization: Bearer {{access_token}}
+
+### 1.3 Search admins by name
+GET {{baseUrl}}/api/super-admin/admins?search=Rajesh
+Authorization: Bearer {{access_token}}
+
+### 1.4 Search admins by email
+GET {{baseUrl}}/api/super-admin/admins?search=admin@school
+Authorization: Bearer {{access_token}}
+
+### 1.5 Search admins by school name
+GET {{baseUrl}}/api/super-admin/admins?search=Delhi Public
+Authorization: Bearer {{access_token}}
+
+### 1.6 Filter by role SUPER_ADMIN
+GET {{baseUrl}}/api/super-admin/admins?role=SUPER_ADMIN
+Authorization: Bearer {{access_token}}
+
+### 1.7 Filter by role ADMIN
+GET {{baseUrl}}/api/super-admin/admins?role=ADMIN
+Authorization: Bearer {{access_token}}
+
+### 1.8 Filter by active status
+GET {{baseUrl}}/api/super-admin/admins?status=active
+Authorization: Bearer {{access_token}}
+
+### 1.9 Filter by inactive status
+GET {{baseUrl}}/api/super-admin/admins?status=inactive
+Authorization: Bearer {{access_token}}
+
+### 1.10 Sort by name ascending
+GET {{baseUrl}}/api/super-admin/admins?sort_field=name&sort_dir=asc
+Authorization: Bearer {{access_token}}
+
+### 1.11 Sort by last_login_at descending
+GET {{baseUrl}}/api/super-admin/admins?sort_field=last_login_at&sort_dir=desc
+Authorization: Bearer {{access_token}}
+
+### 1.12 Sort by created_at ascending (oldest first)
+GET {{baseUrl}}/api/super-admin/admins?sort_field=created_at&sort_dir=asc
+Authorization: Bearer {{access_token}}
+
+### 1.13 Combined filters: search + role + status
+GET {{baseUrl}}/api/super-admin/admins?search=Kumar&role=ADMIN&status=active
+Authorization: Bearer {{access_token}}
+
+### ============================================================================
+### 2. ADMINS STATS
+### ============================================================================
+
+### 2.1 Get admins statistics (total, active, inactive, breakdown by role)
+GET {{baseUrl}}/api/super-admin/admins/stats
+Authorization: Bearer {{access_token}}
+
+### ============================================================================
+### 3. SINGLE ADMIN OPERATIONS
+### ============================================================================
+
+### 3.1 Get SUPER_ADMIN by ID (replace with actual UUID)
+GET {{baseUrl}}/api/super-admin/admins/550e8400-e29b-41d4-a716-446655440000?role=SUPER_ADMIN
+Authorization: Bearer {{access_token}}
+
+### 3.2 Get ADMIN by ID (replace with actual UUID)
+GET {{baseUrl}}/api/super-admin/admins/550e8400-e29b-41d4-a716-446655440000?role=ADMIN
+Authorization: Bearer {{access_token}}
+
+### 3.3 Activate SUPER_ADMIN
+PATCH {{baseUrl}}/api/super-admin/admins/550e8400-e29b-41d4-a716-446655440000/toggle-status?role=SUPER_ADMIN
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "is_active": true
+}
+
+### 3.4 Deactivate SUPER_ADMIN
+PATCH {{baseUrl}}/api/super-admin/admins/550e8400-e29b-41d4-a716-446655440000/toggle-status?role=SUPER_ADMIN
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "is_active": false
+}
+
+### 3.5 Activate ADMIN
+PATCH {{baseUrl}}/api/super-admin/admins/550e8400-e29b-41d4-a716-446655440000/toggle-status?role=ADMIN
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "is_active": true
+}
+
+### 3.6 Deactivate ADMIN
+PATCH {{baseUrl}}/api/super-admin/admins/550e8400-e29b-41d4-a716-446655440000/toggle-status?role=ADMIN
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "is_active": false
+}
+
+### ============================================================================
+### 4. PASSWORD RESET
+### ============================================================================
+
+### 4.1 Send password reset email (SUPER_ADMIN)
+POST {{baseUrl}}/api/super-admin/admins/reset-password
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "email": "superadmin@resqid.com"
+}
+
+### 4.2 Send password reset email (ADMIN)
+POST {{baseUrl}}/api/super-admin/admins/reset-password
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "email": "admin@school.edu.in"
+}
+
+### 4.3 Send password reset email (non-existent email - still returns success for security)
+POST {{baseUrl}}/api/super-admin/admins/reset-password
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "email": "nonexistent@example.com"
+}
+
+### ============================================================================
+### 5. ERROR HANDLING TESTS
+### ============================================================================
+
+### 5.1 Unauthorized (No Token)
+GET {{baseUrl}}/api/super-admin/admins
+
+### 5.2 Invalid Token
+GET {{baseUrl}}/api/super-admin/admins
+Authorization: Bearer invalid_token_12345
+
+### 5.3 Invalid page number
+GET {{baseUrl}}/api/super-admin/admins?page=0
+Authorization: Bearer {{access_token}}
+
+### 5.4 Invalid limit (exceeds max)
+GET {{baseUrl}}/api/super-admin/admins?limit=200
+Authorization: Bearer {{access_token}}
+
+### 5.5 Invalid role filter
+GET {{baseUrl}}/api/super-admin/admins?role=INVALID
+Authorization: Bearer {{access_token}}
+
+### 5.6 Invalid sort_field
+GET {{baseUrl}}/api/super-admin/admins?sort_field=invalid_field
+Authorization: Bearer {{access_token}}
+
+### 5.7 Get admin without role query param
+GET {{baseUrl}}/api/super-admin/admins/550e8400-e29b-41d4-a716-446655440000
+Authorization: Bearer {{access_token}}
+
+### 5.8 Get admin with invalid role query param
+GET {{baseUrl}}/api/super-admin/admins/550e8400-e29b-41d4-a716-446655440000?role=INVALID
+Authorization: Bearer {{access_token}}
+
+### 5.9 Admin not found (valid UUID but doesn't exist)
+GET {{baseUrl}}/api/super-admin/admins/00000000-0000-0000-0000-000000000000?role=SUPER_ADMIN
+Authorization: Bearer {{access_token}}
+
+### 5.10 Toggle status without role query param
+PATCH {{baseUrl}}/api/super-admin/admins/550e8400-e29b-41d4-a716-446655440000/toggle-status
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "is_active": true
+}
+
+### 5.11 Toggle status with invalid body
+PATCH {{baseUrl}}/api/super-admin/admins/550e8400-e29b-41d4-a716-446655440000/toggle-status?role=ADMIN
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "is_active": "not-a-boolean"
+}
+
+### 5.12 Reset password without email
+POST {{baseUrl}}/api/super-admin/admins/reset-password
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{}
+
+### 5.13 Reset password with invalid email format
+POST {{baseUrl}}/api/super-admin/admins/reset-password
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "email": "not-an-email"
+}
+
+### ============================================================================
+### 6. PERFORMANCE TEST (Parallel Calls Simulation)
+### Run these calls simultaneously from frontend
+### ============================================================================
+
+### Call 1: Admins List
+GET {{baseUrl}}/api/super-admin/admins?page=1&limit=10
+Authorization: Bearer {{access_token}}
+
+### Call 2: Admins Stats
+GET {{baseUrl}}/api/super-admin/admins/stats
+Authorization: Bearer {{access_token}}
