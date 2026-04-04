@@ -4,6 +4,8 @@
 // =============================================================================
 
 import { prisma } from '#config/prisma.js';
+import { generateSchoolCode } from '#shared/utils/schoolCodeGenerator.js';
+import bcrypt from 'bcrypt';
 
 export class SchoolsRepository {
   async getSchoolsList(filters, pagination, sorting) {
@@ -136,5 +138,102 @@ export class SchoolsRepository {
       orderBy: { city: 'asc' },
     });
     return cities.map(c => c.city).filter(Boolean);
+  }
+
+  async createSchoolWithAdmin(data) {
+    return prisma.$transaction(async tx => {
+      const lastSchool = await tx.school.findFirst({
+        orderBy: { serial_number: 'desc' },
+        select: { serial_number: true },
+      });
+      const nextSerial = (lastSchool?.serial_number || 0) + 1;
+
+      const schoolCode = generateSchoolCode(data.school.name, data.school.city, nextSerial);
+
+      const school = await tx.school.create({
+        data: {
+          ...data.school,
+          code: schoolCode,
+          serial_number: nextSerial,
+          setup_status: 'PENDING_SETUP',
+        },
+      });
+
+      const pricing =
+        data.subscription.plan !== 'CUSTOM'
+          ? await tx.pricingConfig.findUnique({ where: { plan: data.subscription.plan } })
+          : null;
+
+      const unitPrice =
+        data.subscription.plan === 'CUSTOM'
+          ? data.subscription.custom_unit_price
+          : pricing.unit_price;
+
+      const renewalPrice =
+        data.subscription.plan === 'CUSTOM'
+          ? data.subscription.custom_renewal_price
+          : pricing.renewal_price;
+
+      const subscription = await tx.subscription.create({
+        data: {
+          school_id: school.id,
+          plan: data.subscription.plan,
+          unit_price_snapshot: unitPrice,
+          renewal_price_snapshot: renewalPrice,
+          advance_percent: pricing?.advance_percent || 50,
+          is_custom_pricing: data.subscription.plan === 'CUSTOM',
+          custom_price_note: data.subscription.plan === 'CUSTOM' ? 'Manual custom pricing' : null,
+          custom_approved_by: data.admin.created_by,
+          is_pilot: data.subscription.is_pilot,
+          pilot_expires_at: data.subscription.pilot_expires_at,
+          student_count: data.subscription.student_count,
+          grand_total: unitPrice * data.subscription.student_count,
+          status: 'TRIALING',
+          current_period_start: new Date(),
+          current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        },
+      });
+
+      const hashedPassword = await bcrypt.hash(data.admin.password, 10);
+
+      const schoolUser = await tx.schoolUser.create({
+        data: {
+          school_id: school.id,
+          email: data.admin.email,
+          password_hash: hashedPassword,
+          name: data.admin.name,
+          role: 'ADMIN',
+          is_primary: true,
+          must_change_password: true,
+          invited_by: data.admin.created_by,
+          invite_sent_at: new Date(),
+        },
+      });
+
+      await tx.schoolAgreement.create({
+        data: {
+          school_id: school.id,
+          subscription_id: subscription.id,
+          agreed_by: data.admin.created_by,
+          agreed_via: data.agreement.agreed_via,
+          ip_address: data.agreement.ip_address,
+        },
+      });
+
+      return { school, subscription, schoolUser };
+    });
+  }
+
+  async findSchoolByEmail(email) {
+    if (!email) return null;
+    return prisma.school.findFirst({
+      where: { email: email },
+    });
+  }
+
+  async findUserByEmail(email) {
+    return prisma.schoolUser.findUnique({
+      where: { email },
+    });
   }
 }

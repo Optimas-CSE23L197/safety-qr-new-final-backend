@@ -15,6 +15,7 @@ import tokenRoutes from '#modules/super_admin/tokens/tokens.routes.js';
 import scanRoutes from '#modules/super_admin/scan/scan-logs.routes.js';
 import scanAnomaliesRoutes from '#modules/super_admin/scan-anomalies/scan-anomalies.routes.js';
 import sessionRoutes from '#modules/super_admin/sessions/sessions.routes.js';
+import locationRoutes from '#modules/super_admin/location/location.routes.js';
 const router = Router();
 
 router.use(authenticate);
@@ -29,5 +30,6 @@ router.use('/tokens', tokenRoutes);
 router.use('/scan-logs', scanRoutes);
 router.use('/scan-anomalies', scanAnomaliesRoutes);
 router.use('/sessions', sessionRoutes);
+router.use('/locations', locationRoutes);
 
 export default router;

@@ -4,7 +4,7 @@
 // =============================================================================
 
 import { SchoolsRepository } from './schools.repository.js';
-import { ApiError } from '../../../shared/response/ApiError.js';
+import { ApiError } from '#shared/response/ApiError.js';
 
 export class SchoolsService {
   constructor() {
@@ -68,5 +68,20 @@ export class SchoolsService {
 
   async getCities() {
     return this.repository.getUniqueCities();
+  }
+
+  async registerSchool(payload, superAdminId) {
+    const existingSchool = await this.repository.findSchoolByEmail(payload.school.email);
+    if (existingSchool) throw ApiError.conflict('School with this email already exists');
+
+    const existingAdmin = await this.repository.findUserByEmail(payload.admin.email);
+    if (existingAdmin) throw ApiError.conflict('Admin email already registered');
+
+    return this.repository.createSchoolWithAdmin({
+      school: payload.school,
+      admin: { ...payload.admin, created_by: superAdminId },
+      subscription: payload.subscription,
+      agreement: payload.agreement,
+    });
   }
 }

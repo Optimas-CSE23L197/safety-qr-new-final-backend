@@ -183,7 +183,7 @@ export function createApp() {
   // LAYER 11: APPLICATION ROUTES
   // ════════════════════════════════════════════════════════════════════════════
   app.use('/s', scanRoutes);
-  app.use(routes);
+  app.use('/api', routes);
 
   // ════════════════════════════════════════════════════════════════════════════
   // LAYER 12: 404 & ERROR HANDLING (MUST BE LAST)

@@ -33,3 +33,36 @@ export const toggleSchoolStatusBodySchema = z
   .strict();
 
 export const getSchoolStatsQuerySchema = z.object({}).strict();
+
+export const registerSchoolSchema = z
+  .object({
+    school: z.object({
+      name: z.string().min(1).max(100),
+      address: z.string().optional(),
+      city: z.string().optional(),
+      state: z.string().optional(),
+      pincode: z.string().optional(),
+      email: z.string().email().optional(),
+      phone: z.string().optional(),
+      timezone: z.string().default('Asia/Kolkata'),
+      school_type: z.enum(['GOVERNMENT', 'PRIVATE', 'INTERNATIONAL', 'NGO']).default('PRIVATE'),
+    }),
+    admin: z.object({
+      name: z.string().min(1),
+      email: z.string().email(),
+      password: z.string().min(8),
+    }),
+    subscription: z.object({
+      plan: z.enum(['BASIC', 'PREMIUM', 'CUSTOM']),
+      student_count: z.number().int().min(1).default(0),
+      custom_unit_price: z.number().int().optional(),
+      custom_renewal_price: z.number().int().optional(),
+      is_pilot: z.boolean().default(false),
+      pilot_expires_at: z.string().datetime().optional(),
+    }),
+    agreement: z.object({
+      agreed_via: z.enum(['DASHBOARD', 'PHYSICAL', 'EMAIL']).default('DASHBOARD'),
+      ip_address: z.string().optional(),
+    }),
+  })
+  .strict();

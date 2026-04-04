@@ -3,14 +3,15 @@
 // HTTP handlers for school management endpoints
 // =============================================================================
 
-import { asyncHandler } from '../../../shared/response/asyncHandler.js';
-import { ApiResponse } from '../../../shared/response/ApiResponse.js';
+import { asyncHandler } from '#shared/response/asyncHandler.js';
+import { ApiResponse } from '#shared/response/ApiResponse.js';
 import { SchoolsService } from './schools.service.js';
 import {
   listSchoolsQuerySchema,
   schoolIdParamSchema,
   toggleSchoolStatusBodySchema,
   getSchoolStatsQuerySchema,
+  registerSchoolSchema,
 } from './schools.validation.js';
 
 const schoolsService = new SchoolsService();
@@ -44,4 +45,10 @@ export const getSchoolsStats = asyncHandler(async (req, res) => {
 export const getCities = asyncHandler(async (req, res) => {
   const cities = await schoolsService.getCities();
   return ApiResponse.ok(res, { cities }, 'Cities fetched successfully');
+});
+
+export const registerSchool = asyncHandler(async (req, res) => {
+  const payload = registerSchoolSchema.parse(req.body);
+  const result = await schoolsService.registerSchool(payload, req.user.id);
+  return ApiResponse.created(res, result, 'School registered successfully');
 });
