@@ -42,6 +42,7 @@ import { auditLog } from '#middleware/logging/auditLog.middleware.js';
 import routes from './routes/index.js';
 import bullBoardRouter from './routes/bullMQ.routes.js';
 import { healthRouter } from '#monitoring/health.js';
+import scanRoutes from '#modules/scan/scan.routes.js';
 
 // ── Error Handling (MUST BE LAST) ────────────────────────────────────────────
 import { globalErrorHandler, notFoundHandler } from '#middleware/error.middleware.js';
@@ -181,7 +182,8 @@ export function createApp() {
   // ════════════════════════════════════════════════════════════════════════════
   // LAYER 11: APPLICATION ROUTES
   // ════════════════════════════════════════════════════════════════════════════
-  app.use('/api', routes);
+  app.use('/s', scanRoutes);
+  app.use(routes);
 
   // ════════════════════════════════════════════════════════════════════════════
   // LAYER 12: 404 & ERROR HANDLING (MUST BE LAST)

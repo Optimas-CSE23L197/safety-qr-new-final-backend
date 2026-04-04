@@ -102,6 +102,7 @@
     "puppeteer": "^24.37.5",
     "qrcode": "^1.5.4",
     "rate-limit-redis": "^4.3.1",
+    "rate-limiter-flexible": "^11.0.0",
     "razorpay": "^2.9.6",
     "redis": "^5.11.0",
     "resend": "^6.9.4",

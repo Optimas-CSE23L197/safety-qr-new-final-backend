@@ -3,25 +3,6 @@
 //
 // Anomaly detection for the scan endpoint.
 // NEVER runs on the hot path — always fire-and-forget from service layer.
-//
-// ARCHITECTURE:
-//   resolveScan() → respond to user immediately
-//                 → setImmediate(() => evaluateAnomaly(...))
-//
-//   evaluateAnomaly() reads Redis counters, decides severity, writes
-//   ScanAnomaly to DB if threshold exceeded, blocks IP in Redis if CRITICAL.
-//
-// THRESHOLDS:
-//   Token > 15 scans/hr   → HIGH anomaly
-//   Token > 30 scans/hr   → CRITICAL + IP block
-//   IP > 5 distinct tokens in 10 min → BULK_SCRAPING + IP block
-//   Honeypot hit          → CRITICAL + instant IP block
-//
-// WHY setImmediate NOT Promise:
-//   setImmediate runs after the current event loop tick completes.
-//   This guarantees the response has been sent before anomaly work starts.
-//   A Promise.resolve().then() would run in the microtask queue — before
-//   the response flush in some Node.js versions. setImmediate is safer.
 // =============================================================================
 
 import { prisma } from '#config/prisma.js';
@@ -33,36 +14,31 @@ import {
   blockIpInRedis,
 } from '../cache/scan.cache.js';
 
-// ── Thresholds ────────────────────────────────────────────────────────────────
-
 const THRESHOLDS = {
-  TOKEN_HIGH: 15, // > 15 scans/hr on same token → HIGH
-  TOKEN_CRITICAL: 30, // > 30 scans/hr on same token → CRITICAL + block IP
-  IP_DISTINCT_TOKENS: 5, // > 5 different tokens from same IP in 10 min → BULK_SCRAPING
+  TOKEN_HIGH: 15,
+  TOKEN_CRITICAL: 30,
+  IP_DISTINCT_TOKENS: 5,
+  INVALID_ATTEMPTS: 10,
 };
 
-// ── Main evaluator ────────────────────────────────────────────────────────────
+const DEDUP_WINDOW_MINUTES = 60;
 
-/**
- * Evaluate anomaly signals for a completed scan.
- * Called via setImmediate — never blocks the response.
- *
- * @param {object} params
- * @param {string} params.tokenId
- * @param {string} params.schoolId
- * @param {string} params.ip
- * @param {string} params.scanResult — ScanResult enum value
- * @param {boolean} [params.isHoneypot] — true if this was a honeypot token
- */
-export const evaluateAnomaly = async ({ tokenId, schoolId, ip, scanResult, isHoneypot }) => {
+export const evaluateAnomaly = async ({
+  tokenId,
+  schoolId,
+  ip,
+  scanResult,
+  isHoneypot,
+  scanCount,
+}) => {
   try {
-    // ── Honeypot: instant CRITICAL, no further checks needed ─────────────────
     if (isHoneypot) {
       logger.warn({ tokenId, ip }, '[anomaly] HONEYPOT HIT — instant block');
-      await Promise.all([
-        blockIpInRedis(ip, 'HONEYPOT_TRIGGERED', 60 * 60 * 24 * 7), // 7 day block
+      await Promise.allSettled([
+        blockIpInRedis(ip, 'HONEYPOT_TRIGGERED', 60 * 60 * 24 * 7),
         writeScanAnomaly({
           tokenId,
+          schoolId,
           type: 'HONEYPOT_TRIGGERED',
           severity: 'CRITICAL',
           reason: `Honeypot token scanned from IP ${ip}`,
@@ -72,24 +48,23 @@ export const evaluateAnomaly = async ({ tokenId, schoolId, ip, scanResult, isHon
       return;
     }
 
-    // ── Counter increments (all parallel, all fire-and-forget) ───────────────
     const [tokenCount, , distinctTokenCount] = await Promise.all([
       incrTokenScanCount(tokenId),
       incrIpScanCount(ip),
       trackIpTokenScan(ip, tokenId),
     ]);
 
-    // ── Token frequency anomaly ───────────────────────────────────────────────
     if (tokenCount > THRESHOLDS.TOKEN_CRITICAL) {
       logger.warn({ tokenId, ip, tokenCount }, '[anomaly] CRITICAL token scan frequency');
-      await Promise.all([
-        blockIpInRedis(ip, 'HIGH_FREQUENCY', 60 * 60 * 24), // 24h block
+      await Promise.allSettled([
+        blockIpInRedis(ip, 'HIGH_FREQUENCY', 60 * 60 * 24),
         writeScanAnomaly({
           tokenId,
+          schoolId,
           type: 'HIGH_FREQUENCY',
           severity: 'CRITICAL',
           reason: `Token scanned ${tokenCount} times in the last hour`,
-          metadata: { tokenCount, ip, scanResult },
+          metadata: { tokenCount, ip, scanResult, scanCount },
         }),
       ]);
       return;
@@ -99,21 +74,22 @@ export const evaluateAnomaly = async ({ tokenId, schoolId, ip, scanResult, isHon
       logger.info({ tokenId, ip, tokenCount }, '[anomaly] HIGH token scan frequency');
       await writeScanAnomaly({
         tokenId,
+        schoolId,
         type: 'HIGH_FREQUENCY',
         severity: 'HIGH',
         reason: `Token scanned ${tokenCount} times in the last hour`,
-        metadata: { tokenCount, ip, scanResult },
+        metadata: { tokenCount, ip, scanResult, scanCount },
       });
       return;
     }
 
-    // ── Bulk scraping: IP hitting multiple tokens ─────────────────────────────
     if (distinctTokenCount > THRESHOLDS.IP_DISTINCT_TOKENS) {
       logger.warn({ ip, distinctTokenCount }, '[anomaly] BULK_SCRAPING detected');
-      await Promise.all([
+      await Promise.allSettled([
         blockIpInRedis(ip, 'BULK_SCRAPING', 60 * 60 * 24),
         writeScanAnomaly({
           tokenId,
+          schoolId,
           type: 'BULK_SCRAPING',
           severity: 'HIGH',
           reason: `IP scanned ${distinctTokenCount} distinct tokens in 10 minutes`,
@@ -122,16 +98,16 @@ export const evaluateAnomaly = async ({ tokenId, schoolId, ip, scanResult, isHon
       ]);
     }
 
-    // REPEATED_FAILURE: IP keeps hitting INVALID codes
-    // This catches token enumeration attempts
     if (scanResult === 'INVALID') {
-      const ipCount = await incrIpScanCount(`${ip}:invalid`);
-      if (ipCount > 10) {
+      const invalidKey = `scan:count:ip:${ip}:invalid`;
+      const ipCount = await incrIpScanCountWithKey(invalidKey, 3600);
+      if (ipCount > THRESHOLDS.INVALID_ATTEMPTS) {
         logger.warn({ ip, ipCount }, '[anomaly] Repeated INVALID scans from IP');
-        await Promise.all([
-          blockIpInRedis(ip, 'REPEATED_FAILURE', 60 * 60 * 6), // 6h block
+        await Promise.allSettled([
+          blockIpInRedis(ip, 'REPEATED_FAILURE', 60 * 60 * 6),
           writeScanAnomaly({
             tokenId,
+            schoolId,
             type: 'REPEATED_FAILURE',
             severity: 'MEDIUM',
             reason: `IP produced ${ipCount} INVALID scan results in 1 hour`,
@@ -141,32 +117,35 @@ export const evaluateAnomaly = async ({ tokenId, schoolId, ip, scanResult, isHon
       }
     }
   } catch (err) {
-    // Anomaly evaluation failure must never propagate
     logger.error({ err: err.message, tokenId }, '[anomaly] evaluateAnomaly threw — swallowed');
   }
 };
 
-// ── DB write ──────────────────────────────────────────────────────────────────
-
-/**
- * Write a ScanAnomaly record.
- * Deduplicates: skips write if same tokenId + type has an unresolved record
- * created in the last 10 minutes (prevents anomaly table flood).
- */
-const writeScanAnomaly = async ({ tokenId, type, severity, reason, metadata }) => {
+const incrIpScanCountWithKey = async (key, ttlSeconds = 3600) => {
   try {
-    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+    const { redis } = await import('#config/redis.js');
+    const count = await redis.incr(key);
+    if (count === 1) await redis.expire(key, ttlSeconds);
+    return count;
+  } catch {
+    return 0;
+  }
+};
+
+const writeScanAnomaly = async ({ tokenId, schoolId, type, severity, reason, metadata }) => {
+  try {
+    const cutoffTime = new Date(Date.now() - DEDUP_WINDOW_MINUTES * 60 * 1000);
     const existing = await prisma.scanAnomaly.findFirst({
       where: {
         token_id: tokenId,
         anomaly_type: type,
         resolved: false,
-        created_at: { gte: tenMinutesAgo },
+        created_at: { gte: cutoffTime },
       },
       select: { id: true },
     });
 
-    if (existing) return; // deduplicated
+    if (existing) return;
 
     await prisma.scanAnomaly.create({
       data: {
