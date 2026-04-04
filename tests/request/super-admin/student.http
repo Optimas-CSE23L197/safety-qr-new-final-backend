@@ -1,0 +1,202 @@
+### ============================================================================
+### SUPER ADMIN STUDENTS API TESTS
+### Prerequisite: Login first and copy access_token
+### ============================================================================
+
+@baseUrl = http://localhost:3000
+@access_token = YOUR_ACCESS_TOKEN_HERE
+
+### ============================================================================
+### 1. STUDENTS LIST (Paginated with Filters)
+### ============================================================================
+
+### 1.1 Get all students (default page 1, limit 20)
+GET {{baseUrl}}/api/super-admin/students
+Authorization: Bearer {{access_token}}
+
+### 1.2 Get students with custom pagination
+GET {{baseUrl}}/api/super-admin/students?page=2&limit=10
+Authorization: Bearer {{access_token}}
+
+### 1.3 Search students by name
+GET {{baseUrl}}/api/super-admin/students?search=Aarav
+Authorization: Bearer {{access_token}}
+
+### 1.4 Search students by student ID
+GET {{baseUrl}}/api/super-admin/students?search=stu-00123
+Authorization: Bearer {{access_token}}
+
+### 1.5 Search students by card number
+GET {{baseUrl}}/api/super-admin/students?search=CRD-001234
+Authorization: Bearer {{access_token}}
+
+### 1.6 Search students by school name
+GET {{baseUrl}}/api/super-admin/students?search=Greenwood
+Authorization: Bearer {{access_token}}
+
+### 1.7 Filter by school
+GET {{baseUrl}}/api/super-admin/students?school_id=550e8400-e29b-41d4-a716-446655440000
+Authorization: Bearer {{access_token}}
+
+### 1.8 Filter by status ACTIVE
+GET {{baseUrl}}/api/super-admin/students?status=ACTIVE
+Authorization: Bearer {{access_token}}
+
+### 1.9 Filter by status INACTIVE
+GET {{baseUrl}}/api/super-admin/students?status=INACTIVE
+Authorization: Bearer {{access_token}}
+
+### 1.10 Filter by token_status ACTIVE
+GET {{baseUrl}}/api/super-admin/students?token_status=ACTIVE
+Authorization: Bearer {{access_token}}
+
+### 1.11 Filter by token_status REVOKED
+GET {{baseUrl}}/api/super-admin/students?token_status=REVOKED
+Authorization: Bearer {{access_token}}
+
+### 1.12 Filter by print_status PRINTED
+GET {{baseUrl}}/api/super-admin/students?print_status=PRINTED
+Authorization: Bearer {{access_token}}
+
+### 1.13 Filter by print_status PENDING
+GET {{baseUrl}}/api/super-admin/students?print_status=PENDING
+Authorization: Bearer {{access_token}}
+
+### 1.14 Filter by class
+GET {{baseUrl}}/api/super-admin/students?class=5
+Authorization: Bearer {{access_token}}
+
+### 1.15 Combined filters
+GET {{baseUrl}}/api/super-admin/students?status=ACTIVE&token_status=ACTIVE&print_status=PRINTED&class=10
+Authorization: Bearer {{access_token}}
+
+### 1.16 Sort by first_name ascending
+GET {{baseUrl}}/api/super-admin/students?sort_field=first_name&sort_dir=asc
+Authorization: Bearer {{access_token}}
+
+### 1.17 Sort by created_at ascending (oldest first)
+GET {{baseUrl}}/api/super-admin/students?sort_field=created_at&sort_dir=asc
+Authorization: Bearer {{access_token}}
+
+### ============================================================================
+### 2. STUDENTS STATS
+### ============================================================================
+
+### 2.1 Get students statistics (total, active, inactive, tokenActive, tokenRevoked, cardPrinted)
+GET {{baseUrl}}/api/super-admin/students/stats
+Authorization: Bearer {{access_token}}
+
+### ============================================================================
+### 3. STUDENT FILTERS (Dropdown Data)
+### ============================================================================
+
+### 3.1 Get all filter options (schools, classes, tokenStatuses, printStatuses)
+GET {{baseUrl}}/api/super-admin/students/filters
+Authorization: Bearer {{access_token}}
+
+### ============================================================================
+### 4. SINGLE STUDENT OPERATIONS
+### ============================================================================
+
+### 4.1 Get student by ID (replace with actual UUID)
+GET {{baseUrl}}/api/super-admin/students/550e8400-e29b-41d4-a716-446655440000
+Authorization: Bearer {{access_token}}
+
+### 4.2 Activate student
+PATCH {{baseUrl}}/api/super-admin/students/550e8400-e29b-41d4-a716-446655440000/toggle-status
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "is_active": true
+}
+
+### 4.3 Deactivate student
+PATCH {{baseUrl}}/api/super-admin/students/550e8400-e29b-41d4-a716-446655440000/toggle-status
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "is_active": false
+}
+
+### 4.4 Revoke student token
+PATCH {{baseUrl}}/api/super-admin/students/550e8400-e29b-41d4-a716-446655440000/token/revoke
+Authorization: Bearer {{access_token}}
+
+### 4.5 Reset student token (to UNASSIGNED)
+PATCH {{baseUrl}}/api/super-admin/students/550e8400-e29b-41d4-a716-446655440000/token/reset
+Authorization: Bearer {{access_token}}
+
+### 4.6 Mark card for reprint
+PATCH {{baseUrl}}/api/super-admin/students/550e8400-e29b-41d4-a716-446655440000/card/reprint
+Authorization: Bearer {{access_token}}
+
+### ============================================================================
+### 5. ERROR HANDLING TESTS
+### ============================================================================
+
+### 5.1 Unauthorized (No Token)
+GET {{baseUrl}}/api/super-admin/students
+
+### 5.2 Invalid Token
+GET {{baseUrl}}/api/super-admin/students
+Authorization: Bearer invalid_token_12345
+
+### 5.3 Invalid page number
+GET {{baseUrl}}/api/super-admin/students?page=0
+Authorization: Bearer {{access_token}}
+
+### 5.4 Invalid limit (exceeds max)
+GET {{baseUrl}}/api/super-admin/students?limit=200
+Authorization: Bearer {{access_token}}
+
+### 5.5 Invalid token_status filter
+GET {{baseUrl}}/api/super-admin/students?token_status=INVALID
+Authorization: Bearer {{access_token}}
+
+### 5.6 Invalid print_status filter
+GET {{baseUrl}}/api/super-admin/students?print_status=INVALID
+Authorization: Bearer {{access_token}}
+
+### 5.7 Invalid sort_field
+GET {{baseUrl}}/api/super-admin/students?sort_field=invalid_field
+Authorization: Bearer {{access_token}}
+
+### 5.8 Student not found (valid UUID but doesn't exist)
+GET {{baseUrl}}/api/super-admin/students/00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{access_token}}
+
+### 5.9 Toggle status with invalid body
+PATCH {{baseUrl}}/api/super-admin/students/550e8400-e29b-41d4-a716-446655440000/toggle-status
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "is_active": "not-a-boolean"
+}
+
+### 5.10 Revoke token on already revoked token (will return error)
+PATCH {{baseUrl}}/api/super-admin/students/550e8400-e29b-41d4-a716-446655440000/token/revoke
+Authorization: Bearer {{access_token}}
+
+### 5.11 Revoke token on unassigned token (will return error)
+PATCH {{baseUrl}}/api/super-admin/students/550e8400-e29b-41d4-a716-446655440000/token/revoke
+Authorization: Bearer {{access_token}}
+
+### ============================================================================
+### 6. PERFORMANCE TEST (Parallel Calls Simulation)
+### Run these calls simultaneously from frontend
+### ============================================================================
+
+### Call 1: Students List
+GET {{baseUrl}}/api/super-admin/students?page=1&limit=20
+Authorization: Bearer {{access_token}}
+
+### Call 2: Students Stats
+GET {{baseUrl}}/api/super-admin/students/stats
+Authorization: Bearer {{access_token}}
+
+### Call 3: Student Filters
+GET {{baseUrl}}/api/super-admin/students/filters
+Authorization: Bearer {{access_token}}

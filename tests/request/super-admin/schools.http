@@ -1,0 +1,177 @@
+### ============================================================================
+### SUPER ADMIN SCHOOLS API TESTS
+### Prerequisite: Login first and copy access_token
+### ============================================================================
+
+@baseUrl = http://localhost:3000
+@access_token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI4ZTUzODU5Yi0xMjgxLTRmZjItOTQyZC04NTAyYTNkZjZhMjYiLCJyb2xlIjoiU1VQRVJfQURNSU4iLCJzZXNzaW9uSWQiOiI0YWYxNjIwMS05NzkzLTRlZjYtYjZlMy1jYjFjODg5OTQwNjIiLCJqdGkiOiJhYWY0ZTFmZS1hNzM5LTQ1ZjktODE4Yi04NDIwZDk0ZmQxMjEiLCJpYXQiOjE3NzUyMjkwMDMsImV4cCI6MTc3NTIzMDgwMywiYXVkIjoicmVzcWlkLWFwaSIsImlzcyI6InJlc3FpZCJ9.37qvuSDBzMDVeo-UyghdR56BIlNOXq3W3avK7tnn2Gw
+
+### ============================================================================
+### 1. SCHOOLS LIST (Paginated with Filters)
+### ============================================================================
+
+### 1.1 Get all schools (default page 1, limit 10)
+GET {{baseUrl}}/api/super-admin/schools
+# Authorization: Bearer {{access_token}}
+
+### 1.2 Get schools with custom pagination
+GET {{baseUrl}}/api/super-admin/schools?page=2&limit=20
+Authorization: Bearer {{access_token}}
+
+### 1.3 Search schools by name
+GET {{baseUrl}}/api/super-admin/schools?search=Delhi
+Authorization: Bearer {{access_token}}
+
+### 1.4 Search schools by code
+GET {{baseUrl}}/api/super-admin/schools?search=SCH001
+Authorization: Bearer {{access_token}}
+
+### 1.5 Filter by city
+GET {{baseUrl}}/api/super-admin/schools?city=Mumbai
+Authorization: Bearer {{access_token}}
+
+### 1.6 Filter by subscription status
+GET {{baseUrl}}/api/super-admin/schools?subscription_status=ACTIVE
+Authorization: Bearer {{access_token}}
+
+### 1.7 Filter by subscription status PAST_DUE
+GET {{baseUrl}}/api/super-admin/schools?subscription_status=PAST_DUE
+Authorization: Bearer {{access_token}}
+
+### 1.8 Filter by active status
+GET {{baseUrl}}/api/super-admin/schools?status=active
+Authorization: Bearer {{access_token}}
+
+### 1.9 Filter by inactive status
+GET {{baseUrl}}/api/super-admin/schools?status=inactive
+Authorization: Bearer {{access_token}}
+
+### 1.10 Sort by name ascending
+GET {{baseUrl}}/api/super-admin/schools?sort_field=name&sort_dir=asc
+Authorization: Bearer {{access_token}}
+
+### 1.11 Sort by students count descending
+GET {{baseUrl}}/api/super-admin/schools?sort_field=students&sort_dir=desc
+Authorization: Bearer {{access_token}}
+
+### 1.12 Sort by created_at ascending (oldest first)
+GET {{baseUrl}}/api/super-admin/schools?sort_field=created_at&sort_dir=asc
+Authorization: Bearer {{access_token}}
+
+### 1.13 Combined filters: search + city + subscription + status
+GET {{baseUrl}}/api/super-admin/schools?search=Public&city=Pune&subscription_status=ACTIVE&status=active
+Authorization: Bearer {{access_token}}
+
+### 1.14 Large limit
+GET {{baseUrl}}/api/super-admin/schools?limit=50
+Authorization: Bearer {{access_token}}
+
+### ============================================================================
+### 2. SCHOOLS STATS
+### ============================================================================
+
+### 2.1 Get schools statistics (total, active, inactive)
+GET {{baseUrl}}/api/super-admin/schools/stats
+Authorization: Bearer {{access_token}}
+
+### ============================================================================
+### 3. CITIES LIST
+### ============================================================================
+
+### 3.1 Get all unique cities for filter dropdown
+GET {{baseUrl}}/api/super-admin/schools/cities
+Authorization: Bearer {{access_token}}
+
+### ============================================================================
+### 4. SINGLE SCHOOL OPERATIONS
+### ============================================================================
+
+### 4.1 Get school by ID (replace with actual UUID)
+GET {{baseUrl}}/api/super-admin/schools/550e8400-e29b-41d4-a716-446655440000
+Authorization: Bearer {{access_token}}
+
+### 4.2 Activate school
+PATCH {{baseUrl}}/api/super-admin/schools/550e8400-e29b-41d4-a716-446655440000/toggle-status
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "is_active": true
+}
+
+### 4.3 Deactivate school
+PATCH {{baseUrl}}/api/super-admin/schools/550e8400-e29b-41d4-a716-446655440000/toggle-status
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "is_active": false
+}
+
+### ============================================================================
+### 5. ERROR HANDLING TESTS
+### ============================================================================
+
+### 5.1 Unauthorized (No Token)
+GET {{baseUrl}}/api/super-admin/schools
+
+### 5.2 Invalid Token
+GET {{baseUrl}}/api/super-admin/schools
+Authorization: Bearer invalid_token_12345
+
+### 5.3 Invalid page number
+GET {{baseUrl}}/api/super-admin/schools?page=0
+Authorization: Bearer {{access_token}}
+
+### 5.4 Invalid limit (exceeds max)
+GET {{baseUrl}}/api/super-admin/schools?limit=200
+Authorization: Bearer {{access_token}}
+
+### 5.5 Invalid sort_field
+GET {{baseUrl}}/api/super-admin/schools?sort_field=invalid_field
+Authorization: Bearer {{access_token}}
+
+### 5.6 Invalid subscription_status
+GET {{baseUrl}}/api/super-admin/schools?subscription_status=INVALID
+Authorization: Bearer {{access_token}}
+
+### 5.7 Invalid school ID format (not UUID)
+GET {{baseUrl}}/api/super-admin/schools/not-a-uuid
+Authorization: Bearer {{access_token}}
+
+### 5.8 School not found (valid UUID but doesn't exist)
+GET {{baseUrl}}/api/super-admin/schools/00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{access_token}}
+
+### 5.9 Toggle status with invalid body
+PATCH {{baseUrl}}/api/super-admin/schools/550e8400-e29b-41d4-a716-446655440000/toggle-status
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "is_active": "not-a-boolean"
+}
+
+### 5.10 Toggle status with missing body field
+PATCH {{baseUrl}}/api/super-admin/schools/550e8400-e29b-41d4-a716-446655440000/toggle-status
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{}
+
+### ============================================================================
+### 6. PERFORMANCE TEST (Parallel Calls Simulation)
+### Run these calls simultaneously from frontend
+### ============================================================================
+
+### Call 1: Schools List
+GET {{baseUrl}}/api/super-admin/schools?page=1&limit=10
+Authorization: Bearer {{access_token}}
+
+### Call 2: Schools Stats
+GET {{baseUrl}}/api/super-admin/schools/stats
+Authorization: Bearer {{access_token}}
+
+### Call 3: Cities List
+GET {{baseUrl}}/api/super-admin/schools/cities
+Authorization: Bearer {{access_token}}
