@@ -135,7 +135,6 @@ exports.Prisma.SchoolScalarFieldEnum = {
   logo_url: 'logo_url',
   timezone: 'timezone',
   school_type: 'school_type',
-  pricing_tier: 'pricing_tier',
   udise_code: 'udise_code',
   affiliation_num: 'affiliation_num',
   affiliated_board: 'affiliated_board',
@@ -143,6 +142,8 @@ exports.Prisma.SchoolScalarFieldEnum = {
   contract_expires_at: 'contract_expires_at',
   onboarded_by: 'onboarded_by',
   onboarded_at: 'onboarded_at',
+  setup_status: 'setup_status',
+  activated_at: 'activated_at',
   is_active: 'is_active',
   created_at: 'created_at',
   updated_at: 'updated_at'
@@ -175,7 +176,12 @@ exports.Prisma.SchoolUserScalarFieldEnum = {
   password_hash: 'password_hash',
   name: 'name',
   role: 'role',
+  is_primary: 'is_primary',
   is_active: 'is_active',
+  must_change_password: 'must_change_password',
+  invited_by: 'invited_by',
+  invite_sent_at: 'invite_sent_at',
+  invite_accepted_at: 'invite_accepted_at',
   last_login_at: 'last_login_at',
   created_at: 'created_at',
   updated_at: 'updated_at'
@@ -571,16 +577,33 @@ exports.Prisma.CardRenewalScalarFieldEnum = {
   card_id: 'card_id',
   student_id: 'student_id',
   school_id: 'school_id',
+  subscription_id: 'subscription_id',
   renewed_by: 'renewed_by',
   renewer_type: 'renewer_type',
   old_expiry: 'old_expiry',
   new_expiry: 'new_expiry',
+  unit_price_snapshot: 'unit_price_snapshot',
   amount_paid: 'amount_paid',
   tax_amount: 'tax_amount',
+  total_paid: 'total_paid',
+  invoice_id: 'invoice_id',
   payment_id: 'payment_id',
-  school_type: 'school_type',
-  pricing_tier: 'pricing_tier',
   created_at: 'created_at'
+};
+
+exports.Prisma.PricingConfigScalarFieldEnum = {
+  id: 'id',
+  plan: 'plan',
+  label: 'label',
+  unit_price: 'unit_price',
+  renewal_price: 'renewal_price',
+  advance_percent: 'advance_percent',
+  is_active: 'is_active',
+  effective_from: 'effective_from',
+  notes: 'notes',
+  created_by: 'created_by',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
 };
 
 exports.Prisma.SubscriptionScalarFieldEnum = {
@@ -588,14 +611,26 @@ exports.Prisma.SubscriptionScalarFieldEnum = {
   school_id: 'school_id',
   plan: 'plan',
   status: 'status',
-  pricing_tier: 'pricing_tier',
+  unit_price_snapshot: 'unit_price_snapshot',
+  renewal_price_snapshot: 'renewal_price_snapshot',
+  advance_percent: 'advance_percent',
+  is_custom_pricing: 'is_custom_pricing',
+  custom_price_note: 'custom_price_note',
+  custom_approved_by: 'custom_approved_by',
+  custom_approved_at: 'custom_approved_at',
+  is_pilot: 'is_pilot',
+  pilot_expires_at: 'pilot_expires_at',
+  pilot_converted_at: 'pilot_converted_at',
   student_count: 'student_count',
-  unit_price: 'unit_price',
+  active_card_count: 'active_card_count',
   grand_total: 'grand_total',
-  fully_paid_at: 'fully_paid_at',
+  total_invoiced: 'total_invoiced',
+  total_received: 'total_received',
+  balance_due: 'balance_due',
   current_period_start: 'current_period_start',
   current_period_end: 'current_period_end',
   trial_ends_at: 'trial_ends_at',
+  fully_paid_at: 'fully_paid_at',
   created_at: 'created_at',
   updated_at: 'updated_at'
 };
@@ -603,10 +638,15 @@ exports.Prisma.SubscriptionScalarFieldEnum = {
 exports.Prisma.InvoiceScalarFieldEnum = {
   id: 'id',
   school_id: 'school_id',
+  subscription_id: 'subscription_id',
+  order_id: 'order_id',
   invoice_number: 'invoice_number',
+  invoice_type: 'invoice_type',
   student_count: 'student_count',
+  card_count: 'card_count',
   unit_price: 'unit_price',
   amount: 'amount',
+  tax_percent: 'tax_percent',
   tax_amount: 'tax_amount',
   total_amount: 'total_amount',
   status: 'status',
@@ -614,27 +654,41 @@ exports.Prisma.InvoiceScalarFieldEnum = {
   due_at: 'due_at',
   paid_at: 'paid_at',
   pdf_url: 'pdf_url',
-  order_id: 'order_id',
-  subscription_id: 'subscription_id',
-  category: 'category',
-  order_invoice_type: 'order_invoice_type',
   pdf_generated_at: 'pdf_generated_at',
-  renewal_invoice_type: 'renewal_invoice_type'
+  notes: 'notes',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
 };
 
 exports.Prisma.PaymentScalarFieldEnum = {
   id: 'id',
   school_id: 'school_id',
-  order_id: 'order_id',
   invoice_id: 'invoice_id',
+  order_id: 'order_id',
+  subscription_id: 'subscription_id',
   amount: 'amount',
   payment_ref: 'payment_ref',
   status: 'status',
   payment_mode: 'payment_mode',
-  is_advance: 'is_advance',
+  recorded_by: 'recorded_by',
+  notes: 'notes',
   metadata: 'metadata',
   created_at: 'created_at',
-  subscription_id: 'subscription_id'
+  updated_at: 'updated_at'
+};
+
+exports.Prisma.SchoolAgreementScalarFieldEnum = {
+  id: 'id',
+  school_id: 'school_id',
+  subscription_id: 'subscription_id',
+  agreed_at: 'agreed_at',
+  agreed_by: 'agreed_by',
+  agreed_via: 'agreed_via',
+  document_url: 'document_url',
+  ip_address: 'ip_address',
+  notes: 'notes',
+  is_active: 'is_active',
+  created_at: 'created_at'
 };
 
 exports.Prisma.DashboardNotificationScalarFieldEnum = {
@@ -1000,10 +1054,10 @@ exports.Prisma.CardTemplateScalarFieldEnum = {
   show_photo: 'show_photo',
   is_locked: 'is_locked',
   updated_by: 'updated_by',
-  created_at: 'created_at',
-  updated_at: 'updated_at',
   front_template_url: 'front_template_url',
-  back_template_url: 'back_template_url'
+  back_template_url: 'back_template_url',
+  created_at: 'created_at',
+  updated_at: 'updated_at'
 };
 
 exports.Prisma.SessionScalarFieldEnum = {
@@ -1083,11 +1137,11 @@ exports.SchoolType = exports.$Enums.SchoolType = {
   NGO: 'NGO'
 };
 
-exports.PricingTier = exports.$Enums.PricingTier = {
-  GOVT_STANDARD: 'GOVT_STANDARD',
-  PRIVATE_STANDARD: 'PRIVATE_STANDARD',
-  ENTERPRISE: 'ENTERPRISE',
-  FREE_PILOT: 'FREE_PILOT'
+exports.SchoolSetupStatus = exports.$Enums.SchoolSetupStatus = {
+  PENDING_SETUP: 'PENDING_SETUP',
+  ACTIVE: 'ACTIVE',
+  SUSPENDED: 'SUSPENDED',
+  TERMINATED: 'TERMINATED'
 };
 
 exports.ProfileVisibility = exports.$Enums.ProfileVisibility = {
@@ -1318,10 +1372,9 @@ exports.PrintStatus = exports.$Enums.PrintStatus = {
 };
 
 exports.PlanType = exports.$Enums.PlanType = {
-  FREE_PILOT: 'FREE_PILOT',
-  GOVT_STANDARD: 'GOVT_STANDARD',
-  PRIVATE_STANDARD: 'PRIVATE_STANDARD',
-  ENTERPRISE: 'ENTERPRISE'
+  BASIC: 'BASIC',
+  PREMIUM: 'PREMIUM',
+  CUSTOM: 'CUSTOM'
 };
 
 exports.SubscriptionStatus = exports.$Enums.SubscriptionStatus = {
@@ -1332,25 +1385,18 @@ exports.SubscriptionStatus = exports.$Enums.SubscriptionStatus = {
   EXPIRED: 'EXPIRED'
 };
 
+exports.InvoiceType = exports.$Enums.InvoiceType = {
+  ORDER_ADVANCE: 'ORDER_ADVANCE',
+  ORDER_FINAL: 'ORDER_FINAL',
+  RENEWAL: 'RENEWAL',
+  CUSTOM: 'CUSTOM'
+};
+
 exports.InvoiceStatus = exports.$Enums.InvoiceStatus = {
   ISSUED: 'ISSUED',
   PAID: 'PAID',
   OVERDUE: 'OVERDUE',
   CANCELLED: 'CANCELLED'
-};
-
-exports.InvoiceCategory = exports.$Enums.InvoiceCategory = {
-  ORDER_INVOICE: 'ORDER_INVOICE',
-  RENEWAL_INVOICE: 'RENEWAL_INVOICE'
-};
-
-exports.OrderInvoiceType = exports.$Enums.OrderInvoiceType = {
-  PARTIAL: 'PARTIAL',
-  FINAL: 'FINAL'
-};
-
-exports.RenewalInvoiceType = exports.$Enums.RenewalInvoiceType = {
-  RENEWAL: 'RENEWAL'
 };
 
 exports.PaymentStatus = exports.$Enums.PaymentStatus = {
@@ -1365,6 +1411,12 @@ exports.PaymentMode = exports.$Enums.PaymentMode = {
   UPI: 'UPI',
   CHEQUE: 'CHEQUE',
   CASH: 'CASH'
+};
+
+exports.AgreementChannel = exports.$Enums.AgreementChannel = {
+  DASHBOARD: 'DASHBOARD',
+  PHYSICAL: 'PHYSICAL',
+  EMAIL: 'EMAIL'
 };
 
 exports.DashboardUserType = exports.$Enums.DashboardUserType = {
@@ -1384,7 +1436,10 @@ exports.DashboardNotificationType = exports.$Enums.DashboardNotificationType = {
   INVOICE_GENERATED: 'INVOICE_GENERATED',
   PIPELINE_STALLED: 'PIPELINE_STALLED',
   DLQ_NEW_ENTRY: 'DLQ_NEW_ENTRY',
-  EMERGENCY_FIRED: 'EMERGENCY_FIRED'
+  EMERGENCY_FIRED: 'EMERGENCY_FIRED',
+  RENEWAL_DUE: 'RENEWAL_DUE',
+  PAYMENT_RECEIVED: 'PAYMENT_RECEIVED',
+  SUBSCRIPTION_ACTIVATED: 'SUBSCRIPTION_ACTIVATED'
 };
 
 exports.ScanResult = exports.$Enums.ScanResult = {
@@ -1532,9 +1587,11 @@ exports.Prisma.ModelName = {
   VendorProfile: 'VendorProfile',
   Card: 'Card',
   CardRenewal: 'CardRenewal',
+  PricingConfig: 'PricingConfig',
   Subscription: 'Subscription',
   Invoice: 'Invoice',
   Payment: 'Payment',
+  SchoolAgreement: 'SchoolAgreement',
   DashboardNotification: 'DashboardNotification',
   ScanLog: 'ScanLog',
   ScanAnomaly: 'ScanAnomaly',

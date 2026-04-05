@@ -22,6 +22,7 @@ const PUBLIC_PATHS = [
   '/api/auth/refresh',
   '/health',
   '/api/admin/queues',
+  '/s',
 ];
 
 // ─── Helper to check if path is public ────────────────────────────────────────

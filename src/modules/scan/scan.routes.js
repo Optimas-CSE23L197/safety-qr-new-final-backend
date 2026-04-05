@@ -29,12 +29,12 @@
 
 import { Router } from 'express';
 import { scanQr } from './scan.controller.js';
-import { validate } from '#middleware/validate.middleware.js';
+import { validateAll } from '#middleware/validate.middleware.js';
 import {
   checkIpBlockedRedis,
   publicScanLimiter,
   perTokenScanLimit,
-} from '#middleware/security/scan.security.js';
+} from '#middleware/security/scan.middleware.js';
 import { scanCodeSchema } from './scan.validation.js';
 
 const router = Router();
@@ -43,7 +43,7 @@ router.get(
   '/:code',
   checkIpBlockedRedis, // 1. Redis O(1) IP block — kills known-bad IPs immediately
   publicScanLimiter, // 2. Redis 30 req/min per IP
-  validate(scanCodeSchema, 'params'), // 3. Zod: rejects bad format
+  validateAll({ params: scanCodeSchema }),
   perTokenScanLimit, // 4. Redis 20 scans/hr per token
   scanQr // 5. crypto → cache → DB → respond
 );

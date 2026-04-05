@@ -17,6 +17,7 @@ const router = Router();
 
 router.use('/auth', authRoute);
 router.use('/orders', orderRoute);
+
 // router.use("/orders", orderRoutes);
 // router.use("/school-admin", schoolAdminRouter);
 // router.use("/parents", parentRoutes);

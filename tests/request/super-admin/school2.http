@@ -1,0 +1,152 @@
+@baseUrl = http://localhost:3000/api
+@super-adminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3YTZiNjdhNi0zZTA5LTQ2M2MtOTc3NC01MTdjNDdjOTdmNGEiLCJyb2xlIjoiU1VQRVJfQURNSU4iLCJzZXNzaW9uSWQiOiJlNzdlYzg1MS1hOTdiLTRmZDktODMyMy1jMjZkM2JkNzc1MzkiLCJqdGkiOiIxOWUzZDgxZS1lYjBhLTQzZWYtYjZhMi04OTc1OWI3OTM0NGUiLCJpYXQiOjE3NzUzMTM2NjAsImV4cCI6MTc3NTMxNTQ2MCwiYXVkIjoicmVzcWlkLWFwaSIsImlzcyI6InJlc3FpZCJ9.yxdIVgTGL_PEhEaxNpWoNfbQiQViiu4XiKnkrBD7LkU
+@schoolId = 310ceec7-cfb4-428f-a788-69b6bd2e0cdf
+# @schoolId = 13d489cb-5929-41bc-b753-b598efa703c4
+# @schoolID = cb5c504c-08cf-4ed6-ab9b-72254d1cf838
+
+### Register School - BASIC plan
+POST {{baseUrl}}/super-admin/schools
+Content-Type: application/json
+Authorization: Bearer {{super-adminToken}}
+
+{
+  "school": {
+    "name": "Delhi Public School",
+    "address": "Sector 18, Rohini",
+    "city": "Delhi",
+    "state": "Delhi",
+    "pincode": "110085",
+    "email": "contact@dpsrohini.edu.in",
+    "phone": "+911127890123",
+    "timezone": "Asia/Kolkata",
+    "school_type": "PRIVATE"
+  },
+  "admin": {
+    "name": "Rajesh Kumar",
+    "email": "admin@dpsrohini.edu.in",
+    "password": "TempPass@123"
+  },
+  "subscription": {
+    "plan": "BASIC",
+    "student_count": 500,
+    "is_pilot": false
+  },
+  "agreement": {
+    "agreed_via": "DASHBOARD",
+    "ip_address": "103.58.92.10"
+  }
+}
+
+### Register School - PREMIUM plan
+POST {{baseUrl}}/super-admin/schools
+Content-Type: application/json
+Authorization: Bearer {{super-adminToken}}
+
+{
+  "school": {
+    "name": "Ryan International School",
+    "city": "Mumbai",
+    "state": "Maharashtra",
+    "email": "info@ryanmumbai.edu.in",
+    "school_type": "PRIVATE"
+  },
+  "admin": {
+    "name": "Priya Sharma",
+    "email": "principal@ryanmumbai.edu.in",
+    "password": "Admin@456"
+  },
+  "subscription": {
+    "plan": "PREMIUM",
+    "student_count": 1200,
+    "is_pilot": false
+  },
+  "agreement": {
+    "agreed_via": "DASHBOARD"
+  }
+}
+
+### Register School - CUSTOM plan with manual pricing
+POST {{baseUrl}}/super-admin/schools
+Content-Type: application/json
+Authorization: Bearer {{super-adminToken}}
+
+{
+  "school": {
+    "name": "International School Bangalore",
+    "city": "Bangalore",
+    "state": "Karnataka",
+    "email": "admin@isb.edu.in",
+    "school_type": "INTERNATIONAL"
+  },
+  "admin": {
+    "name": "John Doe",
+    "email": "john.doe@isb.edu.in",
+    "password": "Custom@789"
+  },
+  "subscription": {
+    "plan": "CUSTOM",
+    "student_count": 2000,
+    "custom_unit_price": 17500,
+    "custom_renewal_price": 16500,
+    "is_pilot": true,
+    "pilot_expires_at": "2026-06-30T18:30:00Z"
+  },
+  "agreement": {
+    "agreed_via": "PHYSICAL"
+  }
+}
+
+### Register School - With pilot
+POST {{baseUrl}}/super-admin/schools
+Content-Type: application/json
+Authorization: Bearer {{super-adminToken}}
+
+{
+  "school": {
+    "name": "Test Pilot School",
+    "city": "Pune",
+    "email": "test@pilot.edu.in"
+  },
+  "admin": {
+    "name": "Test Admin",
+    "email": "admin@testpilot.edu.in",
+    "password": "Test@1234"
+  },
+  "subscription": {
+    "plan": "BASIC",
+    "student_count": 100,
+    "is_pilot": true
+  },
+  "agreement": {
+    "agreed_via": "EMAIL"
+  }
+}
+
+### List all schools
+GET {{baseUrl}}/super-admin/schools?page=1&limit=10&sort_field=created_at&sort_dir=desc
+Authorization: Bearer {{super-adminToken}}
+
+### List schools with filters
+GET {{baseUrl}}/super-admin/schools?search=DPS&city=Delhi&status=active&subscription_status=ACTIVE
+Authorization: Bearer {{super-adminToken}}
+
+### Get school by ID
+GET {{baseUrl}}/super-admin/schools/{{schoolId}}
+Authorization: Bearer {{super-adminToken}}
+
+### Toggle school status (activate/deactivate)
+PATCH {{baseUrl}}/super-admin/schools/{{schoolId}}/toggle-status
+Content-Type: application/json
+Authorization: Bearer {{super-adminToken}}
+
+{
+  "is_active": false
+}
+
+### Get schools stats
+GET {{baseUrl}}/super-admin/schools/stats
+Authorization: Bearer {{super-adminToken}}
+
+### Get unique cities
+GET {{baseUrl}}/super-admin/schools/cities
+Authorization: Bearer {{super-adminToken}}

@@ -21,7 +21,7 @@
 # Run: node tests/seed.scan.js
 # Then copy the printed block here and save the file.
 
-@VALID_CODE           = paBzheHwIcvnUzqYUkMG9HbuUcL5CRrADNp47BtckaY
+@VALID_CODE           = IvMVixxZuUnlPXlckMHK83EjOv54x8OPgHFaQZVj54L
 @MINIMAL_VIS_CODE     = MHMeLMjzMyNZUnQXQxEd79CHnpwMGNllBaE8HEYw4P7
 @HIDDEN_VIS_CODE      = TsGuidlLKqsIfLWgj4OdEmfcsomIbx929Wi96MEczXa
 @UNASSIGNED_CODE      = paBzheHwIcvnUzqYUkMG9HbuUcL5CRrADNp47BtckaY

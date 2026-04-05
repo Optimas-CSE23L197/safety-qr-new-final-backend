@@ -1,0 +1,212 @@
+### ============================================================================
+### SUPER ADMIN SESSIONS API TESTS
+### Prerequisite: Login first and copy access_token
+### ============================================================================
+
+@baseUrl = http://localhost:3000
+@access_token = YOUR_ACCESS_TOKEN_HERE
+
+### ============================================================================
+### 1. SESSIONS LIST (Paginated with Filters)
+### ============================================================================
+
+### 1.1 Get all sessions (default page 1, limit 7)
+GET {{baseUrl}}/api/v1/super-admin/sessions
+Authorization: Bearer {{access_token}}
+
+### 1.2 Get sessions with custom pagination
+GET {{baseUrl}}/api/v1/super-admin/sessions?page=2&limit=20
+Authorization: Bearer {{access_token}}
+
+### 1.3 Search by user name
+GET {{baseUrl}}/api/v1/super-admin/sessions?search=Jane
+Authorization: Bearer {{access_token}}
+
+### 1.4 Search by email
+GET {{baseUrl}}/api/v1/super-admin/sessions?search=jane.doe@example.com
+Authorization: Bearer {{access_token}}
+
+### 1.5 Search by IP address
+GET {{baseUrl}}/api/v1/super-admin/sessions?search=103.212
+Authorization: Bearer {{access_token}}
+
+### 1.6 Filter by user_type PARENT
+GET {{baseUrl}}/api/v1/super-admin/sessions?user_type=PARENT
+Authorization: Bearer {{access_token}}
+
+### 1.7 Filter by user_type SCHOOL
+GET {{baseUrl}}/api/v1/super-admin/sessions?user_type=SCHOOL
+Authorization: Bearer {{access_token}}
+
+### 1.8 Filter by user_type SUPER_ADMIN
+GET {{baseUrl}}/api/v1/super-admin/sessions?user_type=SUPER_ADMIN
+Authorization: Bearer {{access_token}}
+
+### 1.9 Filter by platform IOS
+GET {{baseUrl}}/api/v1/super-admin/sessions?platform=IOS
+Authorization: Bearer {{access_token}}
+
+### 1.10 Filter by platform ANDROID
+GET {{baseUrl}}/api/v1/super-admin/sessions?platform=ANDROID
+Authorization: Bearer {{access_token}}
+
+### 1.11 Filter by platform WEB
+GET {{baseUrl}}/api/v1/super-admin/sessions?platform=WEB
+Authorization: Bearer {{access_token}}
+
+### 1.12 Filter by last_active 1h
+GET {{baseUrl}}/api/v1/super-admin/sessions?last_active=1h
+Authorization: Bearer {{access_token}}
+
+### 1.13 Filter by last_active 24h
+GET {{baseUrl}}/api/v1/super-admin/sessions?last_active=24h
+Authorization: Bearer {{access_token}}
+
+### 1.14 Filter by last_active 7d
+GET {{baseUrl}}/api/v1/super-admin/sessions?last_active=7d
+Authorization: Bearer {{access_token}}
+
+### 1.15 Filter by status ACTIVE
+GET {{baseUrl}}/api/v1/super-admin/sessions?status=ACTIVE
+Authorization: Bearer {{access_token}}
+
+### 1.16 Filter by status EXPIRED
+GET {{baseUrl}}/api/v1/super-admin/sessions?status=EXPIRED
+Authorization: Bearer {{access_token}}
+
+### 1.17 Filter by status REVOKED
+GET {{baseUrl}}/api/v1/super-admin/sessions?status=REVOKED
+Authorization: Bearer {{access_token}}
+
+### 1.18 Combined filters
+GET {{baseUrl}}/api/v1/super-admin/sessions?user_type=PARENT&platform=IOS&status=ACTIVE
+Authorization: Bearer {{access_token}}
+
+### 1.19 Sort by last_active_at ascending
+GET {{baseUrl}}/api/v1/super-admin/sessions?sort_field=last_active_at&sort_dir=asc
+Authorization: Bearer {{access_token}}
+
+### 1.20 Sort by expires_at ascending (soonest first)
+GET {{baseUrl}}/api/v1/super-admin/sessions?sort_field=expires_at&sort_dir=asc
+Authorization: Bearer {{access_token}}
+
+### ============================================================================
+### 2. SESSION STATS
+### ============================================================================
+
+### 2.1 Get session statistics (total_active, expiring_soon_24h, most_active_platform)
+GET {{baseUrl}}/api/v1/super-admin/sessions/stats
+Authorization: Bearer {{access_token}}
+
+### ============================================================================
+### 3. SINGLE SESSION OPERATIONS
+### ============================================================================
+
+### 3.1 Revoke session by ID (replace with actual UUID)
+DELETE {{baseUrl}}/api/v1/super-admin/sessions/550e8400-e29b-41d4-a716-446655440000/revoke
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{}
+
+### 3.2 Revoke session with reason
+DELETE {{baseUrl}}/api/v1/super-admin/sessions/550e8400-e29b-41d4-a716-446655440000/revoke
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "reason": "Suspicious activity detected"
+}
+
+### ============================================================================
+### 4. REVOKE ALL SESSIONS
+### ============================================================================
+
+### 4.1 Revoke all active sessions (force logout all users)
+POST {{baseUrl}}/api/v1/super-admin/sessions/revoke-all
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{}
+
+### 4.2 Revoke all active sessions with reason
+POST {{baseUrl}}/api/v1/super-admin/sessions/revoke-all
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "reason": "Security maintenance - platform wide reset"
+}
+
+### ============================================================================
+### 5. ERROR HANDLING TESTS
+### ============================================================================
+
+### 5.1 Unauthorized (No Token)
+GET {{baseUrl}}/api/v1/super-admin/sessions
+
+### 5.2 Invalid Token
+GET {{baseUrl}}/api/v1/super-admin/sessions
+Authorization: Bearer invalid_token_12345
+
+### 5.3 Invalid page number
+GET {{baseUrl}}/api/v1/super-admin/sessions?page=0
+Authorization: Bearer {{access_token}}
+
+### 5.4 Invalid limit (exceeds max)
+GET {{baseUrl}}/api/v1/super-admin/sessions?limit=200
+Authorization: Bearer {{access_token}}
+
+### 5.5 Invalid user_type filter
+GET {{baseUrl}}/api/v1/super-admin/sessions?user_type=INVALID
+Authorization: Bearer {{access_token}}
+
+### 5.6 Invalid platform filter
+GET {{baseUrl}}/api/v1/super-admin/sessions?platform=WINDOWS
+Authorization: Bearer {{access_token}}
+
+### 5.7 Invalid last_active filter
+GET {{baseUrl}}/api/v1/super-admin/sessions?last_active=10d
+Authorization: Bearer {{access_token}}
+
+### 5.8 Invalid status filter
+GET {{baseUrl}}/api/v1/super-admin/sessions?status=INVALID
+Authorization: Bearer {{access_token}}
+
+### 5.9 Invalid sort_field
+GET {{baseUrl}}/api/v1/super-admin/sessions?sort_field=invalid_field
+Authorization: Bearer {{access_token}}
+
+### 5.10 Session not found (valid UUID but doesn't exist)
+DELETE {{baseUrl}}/api/v1/super-admin/sessions/00000000-0000-0000-0000-000000000000/revoke
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{}
+
+### 5.11 Revoke already revoked session (will return error)
+DELETE {{baseUrl}}/api/v1/super-admin/sessions/550e8400-e29b-41d4-a716-446655440000/revoke
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{}
+
+### 5.12 Revoke session with invalid ID format
+DELETE {{baseUrl}}/api/v1/super-admin/sessions/not-a-uuid/revoke
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{}
+
+### ============================================================================
+### 6. PERFORMANCE TEST (Parallel Calls Simulation)
+### Run these calls simultaneously from frontend
+### ============================================================================
+
+### Call 1: Sessions List
+GET {{baseUrl}}/api/v1/super-admin/sessions?page=1&limit=10
+Authorization: Bearer {{access_token}}
+
+### Call 2: Session Stats
+GET {{baseUrl}}/api/v1/super-admin/sessions/stats
+Authorization: Bearer {{access_token}}

@@ -7,32 +7,41 @@ datasource db {
   provider = "postgresql"
 }
 
+// ─────────────────────────────────────────────────────────────
+// SCHOOL
+// Changes:
+//   - Removed: pricing_tier (belongs to Subscription, not School)
+//   - Added:   setup_status, activated_at
+//   - Added:   agreements relation
+// ─────────────────────────────────────────────────────────────
 model School {
-  id                     String                  @id @default(uuid())
+  id                     String              @id @default(uuid())
   name                   String
   address                String?
   city                   String?
   state                  String?
   pincode                String?
-  country                String                  @default("IN")
-  code                   String                  @unique
-  serial_number          Int                     @unique @default(autoincrement())
+  country                String              @default("IN")
+  code                   String              @unique           // auto-generated: DPS-DL-2025-4872
+  serial_number          Int                 @unique @default(autoincrement())
   email                  String?
   phone                  String?
   logo_url               String?
-  timezone               String                  @default("Asia/Kolkata")
-  school_type            SchoolType              @default(PRIVATE)
-  pricing_tier           PricingTier             @default(PRIVATE_STANDARD)
-  udise_code             String?                 @unique
+  timezone               String              @default("Asia/Kolkata")
+  school_type            SchoolType          @default(PRIVATE)  // classification, never changes
+  udise_code             String?             @unique
   affiliation_num        String?
   affiliated_board       String?
   contract_signed_at     DateTime?
   contract_expires_at    DateTime?
-  onboarded_by           String?
+  onboarded_by           String?                               // superadmin ID
   onboarded_at           DateTime?
-  is_active              Boolean                 @default(true)
-  created_at             DateTime                @default(now())
-  updated_at             DateTime                @updatedAt
+  setup_status           SchoolSetupStatus   @default(PENDING_SETUP) // NEW
+  activated_at           DateTime?                             // NEW: when first admin accepted invite
+  is_active              Boolean             @default(true)
+  created_at             DateTime            @default(now())
+  updated_at             DateTime            @updatedAt
+
   apiKeys                ApiKey[]
   auditLogs              AuditLog[]
   cards                  Card[]
@@ -52,6 +61,7 @@ model School {
   users                  SchoolUser[]
   students               Student[]
   subscriptions          Subscription[]
+  agreements             SchoolAgreement[]   // NEW
   tokens                 Token[]
   tokenBatches           TokenBatch[]
   trustedScanZones       TrustedScanZone[]
@@ -60,8 +70,13 @@ model School {
   @@index([code])
   @@index([is_active])
   @@index([serial_number])
+  @@index([setup_status])  // NEW
+  @@index([school_type])   // NEW: useful for reports
 }
 
+// ─────────────────────────────────────────────────────────────
+// SCHOOL SETTINGS — no changes
+// ─────────────────────────────────────────────────────────────
 model SchoolSettings {
   id                         String            @id @default(uuid())
   school_id                  String            @unique
@@ -85,14 +100,26 @@ model SchoolSettings {
   @@index([allow_location])
 }
 
+// ─────────────────────────────────────────────────────────────
+// SCHOOL USER
+// Changes:
+//   - Added: is_primary, invited_by, invite_sent_at,
+//            invite_accepted_at, must_change_password
+//   - Removed nothing (password_hash stays — superadmin sets it directly)
+// ─────────────────────────────────────────────────────────────
 model SchoolUser {
   id                     String                  @id @default(uuid())
   school_id              String
   email                  String                  @unique
-  password_hash          String
+  password_hash          String                  // superadmin sets this; user changes via dashboard
   name                   String?
   role                   SchoolRole              @default(ADMIN)
+  is_primary             Boolean                 @default(false)  // NEW: primary contact person
   is_active              Boolean                 @default(true)
+  must_change_password   Boolean                 @default(true)   // NEW: forced on first login
+  invited_by             String?                                  // NEW: superadmin ID who created
+  invite_sent_at         DateTime?                                // NEW: when credentials email was sent
+  invite_accepted_at     DateTime?                                // NEW: when they first logged in
   last_login_at          DateTime?
   created_at             DateTime                @default(now())
   updated_at             DateTime                @updatedAt
@@ -101,8 +128,12 @@ model SchoolUser {
   sessions               Session[]
 
   @@index([school_id])
+  @@index([is_primary])   // NEW
 }
 
+// ─────────────────────────────────────────────────────────────
+// PARENT USER — no changes
+// ─────────────────────────────────────────────────────────────
 model ParentUser {
   id                 String                  @id @default(uuid())
   email              String?                 @unique
@@ -131,6 +162,9 @@ model ParentUser {
   @@index([phone_index])
 }
 
+// ─────────────────────────────────────────────────────────────
+// PARENT DEVICE — no changes
+// ─────────────────────────────────────────────────────────────
 model ParentDevice {
   id              String              @id @default(uuid())
   parent_id       String
@@ -150,6 +184,9 @@ model ParentDevice {
   @@index([parent_id, is_active])
 }
 
+// ─────────────────────────────────────────────────────────────
+// PARENT NOTIFICATION PREF — no changes
+// ─────────────────────────────────────────────────────────────
 model ParentNotificationPref {
   id                        String     @id @default(uuid())
   parent_id                 String     @unique
@@ -173,6 +210,9 @@ model ParentNotificationPref {
   parent                    ParentUser @relation(fields: [parent_id], references: [id], onDelete: Cascade)
 }
 
+// ─────────────────────────────────────────────────────────────
+// SUPER ADMIN — no changes
+// ─────────────────────────────────────────────────────────────
 model SuperAdmin {
   id                     String                  @id @default(uuid())
   name                   String
@@ -188,6 +228,9 @@ model SuperAdmin {
   @@index([email])
 }
 
+// ─────────────────────────────────────────────────────────────
+// OTP AUDIT LOG — no changes
+// ─────────────────────────────────────────────────────────────
 model OtpAuditLog {
   id           String     @id @default(uuid())
   purpose      OtpPurpose
@@ -206,6 +249,9 @@ model OtpAuditLog {
   @@index([expires_at])
 }
 
+// ─────────────────────────────────────────────────────────────
+// STUDENT — no changes
+// ─────────────────────────────────────────────────────────────
 model Student {
   id                    String            @id @default(uuid())
   school_id             String?
@@ -257,6 +303,9 @@ model Student {
   @@index([token_hash])
 }
 
+// ─────────────────────────────────────────────────────────────
+// PARENT STUDENT — no changes
+// ─────────────────────────────────────────────────────────────
 model ParentStudent {
   id           String     @id @default(uuid())
   parent_id    String
@@ -270,6 +319,9 @@ model ParentStudent {
   @@unique([parent_id, student_id])
 }
 
+// ─────────────────────────────────────────────────────────────
+// EMERGENCY PROFILE — no changes
+// ─────────────────────────────────────────────────────────────
 model EmergencyProfile {
   id                     String             @id @default(uuid())
   student_id             String             @unique
@@ -288,6 +340,9 @@ model EmergencyProfile {
   student                Student            @relation(fields: [student_id], references: [id], onDelete: Cascade)
 }
 
+// ─────────────────────────────────────────────────────────────
+// EMERGENCY CONTACT — no changes
+// ─────────────────────────────────────────────────────────────
 model EmergencyContact {
   id               String           @id @default(uuid())
   profile_id       String
@@ -307,6 +362,9 @@ model EmergencyContact {
   @@index([profile_id])
 }
 
+// ─────────────────────────────────────────────────────────────
+// CARD VISIBILITY — no changes
+// ─────────────────────────────────────────────────────────────
 model CardVisibility {
   id                String            @id @default(uuid())
   student_id        String            @unique
@@ -318,6 +376,9 @@ model CardVisibility {
   student           Student           @relation(fields: [student_id], references: [id], onDelete: Cascade)
 }
 
+// ─────────────────────────────────────────────────────────────
+// PARENT EDIT LOG — no changes
+// ─────────────────────────────────────────────────────────────
 model ParentEditLog {
   id          String         @id @default(uuid())
   school_id   String?
@@ -338,6 +399,9 @@ model ParentEditLog {
   @@index([created_at])
 }
 
+// ─────────────────────────────────────────────────────────────
+// TOKEN — no changes
+// ─────────────────────────────────────────────────────────────
 model Token {
   id             String              @id @default(uuid())
   school_id      String
@@ -375,6 +439,9 @@ model Token {
   @@index([student_id])
 }
 
+// ─────────────────────────────────────────────────────────────
+// TOKEN BATCH — no changes
+// ─────────────────────────────────────────────────────────────
 model TokenBatch {
   id              String           @id @default(uuid())
   school_id       String
@@ -397,6 +464,9 @@ model TokenBatch {
   @@index([status])
 }
 
+// ─────────────────────────────────────────────────────────────
+// QR ASSET — no changes
+// ─────────────────────────────────────────────────────────────
 model QrAsset {
   id           String     @id @default(uuid())
   token_id     String     @unique
@@ -420,6 +490,9 @@ model QrAsset {
   @@index([order_id])
 }
 
+// ─────────────────────────────────────────────────────────────
+// CARD ORDER — no changes
+// ─────────────────────────────────────────────────────────────
 model CardOrder {
   id                       String                  @id @default(uuid())
   school_id                String
@@ -470,7 +543,7 @@ model CardOrder {
   partial_invoice_id       String?                 @unique
   pipeline_completed_count Int                     @default(0)
   pipeline_started_at      DateTime?
-  student_count            Int                     // ✅ This is the correct field name
+  student_count            Int
   cards                    Card[]
   finalInvoice             Invoice?                @relation("FinalInvoiceForOrder", fields: [final_invoice_id], references: [id])
   partialInvoice           Invoice?                @relation("PartialInvoiceForOrder", fields: [partial_invoice_id], references: [id])
@@ -494,6 +567,9 @@ model CardOrder {
   @@index([created_at])
 }
 
+// ─────────────────────────────────────────────────────────────
+// CARD ORDER ITEM — no changes
+// ─────────────────────────────────────────────────────────────
 model CardOrderItem {
   id              String          @id @default(uuid())
   order_id        String
@@ -520,6 +596,9 @@ model CardOrderItem {
   @@index([student_id])
 }
 
+// ─────────────────────────────────────────────────────────────
+// ORDER STATUS LOG — no changes
+// ─────────────────────────────────────────────────────────────
 model OrderStatusLog {
   id          String       @id @default(uuid())
   order_id    String
@@ -535,6 +614,9 @@ model OrderStatusLog {
   @@index([order_id, created_at])
 }
 
+// ─────────────────────────────────────────────────────────────
+// ORDER SHIPMENT — no changes
+// ─────────────────────────────────────────────────────────────
 model OrderShipment {
   id                     String            @id @default(uuid())
   order_id               String            @unique
@@ -578,6 +660,9 @@ model OrderShipment {
   @@index([awb_code])
 }
 
+// ─────────────────────────────────────────────────────────────
+// VENDOR PROFILE — no changes
+// ─────────────────────────────────────────────────────────────
 model VendorProfile {
   id                  String       @id @default(uuid())
   name                String
@@ -600,6 +685,9 @@ model VendorProfile {
   @@index([status])
 }
 
+// ─────────────────────────────────────────────────────────────
+// CARD — no changes
+// ─────────────────────────────────────────────────────────────
 model Card {
   id           String        @id @default(uuid())
   school_id    String
@@ -623,110 +711,266 @@ model Card {
   @@index([card_number])
 }
 
+// ─────────────────────────────────────────────────────────────
+// CARD RENEWAL
+// Changes:
+//   - Added:   subscription_id, unit_price_snapshot, invoice_id
+//   - Removed: pricing_tier, school_type (redundant — derive from subscription)
+// ─────────────────────────────────────────────────────────────
 model CardRenewal {
-  id           String       @id @default(uuid())
-  card_id      String
-  student_id   String
-  school_id    String
-  renewed_by   String?
-  renewer_type ActorType    @default(PARENT_USER)
-  old_expiry   DateTime
-  new_expiry   DateTime
-  amount_paid  Int
-  tax_amount   Int          @default(0)
-  payment_id   String?
-  school_type  SchoolType?
-  pricing_tier PricingTier?
-  created_at   DateTime     @default(now())
-  card         Card         @relation(fields: [card_id], references: [id], onDelete: Cascade)
-  payment      Payment?     @relation("RenewalPayment", fields: [payment_id], references: [id])
-  school       School       @relation(fields: [school_id], references: [id], onDelete: Cascade)
-  student      Student      @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  id                   String       @id @default(uuid())
+  card_id              String
+  student_id           String
+  school_id            String
+  subscription_id      String?                    // NEW: which subscription period
+  renewed_by           String?
+  renewer_type         ActorType    @default(SYSTEM) // changed default to SYSTEM (auto-renewal)
+  old_expiry           DateTime
+  new_expiry           DateTime
+  unit_price_snapshot  Int                        // NEW: price locked at renewal time (paise)
+  amount_paid          Int                        // before tax
+  tax_amount           Int          @default(0)
+  total_paid           Int          @default(0)   // NEW: amount_paid + tax_amount
+  invoice_id           String?                    // NEW: which invoice triggered this renewal
+  payment_id           String?
+  created_at           DateTime     @default(now())
+  card                 Card         @relation(fields: [card_id], references: [id], onDelete: Cascade)
+  invoice              Invoice?     @relation(fields: [invoice_id], references: [id])   // NEW
+  payment              Payment?     @relation("RenewalPayment", fields: [payment_id], references: [id])
+  school               School       @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  student              Student      @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  subscription         Subscription? @relation(fields: [subscription_id], references: [id]) // NEW
 
   @@index([card_id])
   @@index([student_id])
+  @@index([subscription_id])  // NEW
+  @@index([invoice_id])        // NEW
 }
 
+// ─────────────────────────────────────────────────────────────
+// NEW: PRICING CONFIG
+// Single source of truth for all plan prices.
+// Only SuperAdmin manages this. Never read at runtime — only at
+// subscription creation. All runtime pricing uses snapshots.
+// ─────────────────────────────────────────────────────────────
+model PricingConfig {
+  id              String    @id @default(uuid())
+  plan            PlanType  @unique
+  label           String                          // "Basic Plan", "Premium Plan"
+  unit_price      Int                             // per card per year (paise)
+  renewal_price   Int                             // renewal per card per year (paise)
+  advance_percent Int       @default(50)          // % charged upfront on order
+  is_active       Boolean   @default(true)
+  effective_from  DateTime  @default(now())
+  notes           String?
+  created_by      String?                         // superadmin ID
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  @@index([plan])
+  @@index([is_active])
+}
+
+// ─────────────────────────────────────────────────────────────
+// SUBSCRIPTION
+// Changes:
+//   - Removed: pricing_tier, unit_price (raw with hardcoded default)
+//   - Added:   unit_price_snapshot, renewal_price_snapshot,
+//              advance_percent, is_custom_pricing, custom_price_note,
+//              custom_approved_by, custom_approved_at,
+//              is_pilot, pilot_expires_at, pilot_converted_at,
+//              active_card_count, total_invoiced, total_received,
+//              balance_due, renewals relation
+//   - Fixed:   plan default was GOVT_STANDARD — now no default,
+//              must be explicitly set at creation
+// ─────────────────────────────────────────────────────────────
 model Subscription {
-  id                   String             @id @default(uuid())
-  school_id            String
-  plan                 PlanType           @default(GOVT_STANDARD)
-  status               SubscriptionStatus @default(TRIALING)
-  pricing_tier         PricingTier        @default(PRIVATE_STANDARD)
-  student_count        Int                @default(0)
-  unit_price           Int                @default(19900)
-  grand_total          Int                @default(0)
-  fully_paid_at        DateTime?
-  current_period_start DateTime
-  current_period_end   DateTime
-  trial_ends_at        DateTime?
-  created_at           DateTime           @default(now())
-  updated_at           DateTime           @updatedAt
-  cardOrders           CardOrder[]
-  invoices             Invoice[]
-  school               School             @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  id                      String             @id @default(uuid())
+  school_id               String
+
+  // Plan — locked at registration, only SuperAdmin can change via reprice
+  plan                    PlanType
+  status                  SubscriptionStatus @default(TRIALING)
+
+  // Price snapshot — copied once at creation, NEVER changes after
+  // For CUSTOM: set manually by SuperAdmin
+  // For BASIC/PREMIUM: copied from PricingConfig
+  unit_price_snapshot     Int                             // paise
+  renewal_price_snapshot  Int                             // paise
+  advance_percent         Int                @default(50) // % charged upfront
+
+  // Custom pricing fields (only populated when plan = CUSTOM)
+  is_custom_pricing       Boolean            @default(false)
+  custom_price_note       String?            // "Bulk deal, 800 students"
+  custom_approved_by      String?            // superadmin ID
+  custom_approved_at      DateTime?
+
+  // Pilot flag — replaces FREE_PILOT plan entirely
+  is_pilot                Boolean            @default(false)
+  pilot_expires_at        DateTime?
+  pilot_converted_at      DateTime?          // when pilot → paid
+
+  // Billing totals — auto maintained by updateSubscriptionTotals()
+  student_count           Int                @default(0)  // confirmed on first order
+  active_card_count       Int                @default(0)  // used for renewal calculation
+  grand_total             Int                @default(0)  // unit_price_snapshot × student_count
+  total_invoiced          Int                @default(0)  // sum of all non-cancelled invoices
+  total_received          Int                @default(0)  // sum of SUCCESS payments
+  balance_due             Int                @default(0)  // total_invoiced - total_received
+
+  // Period
+  current_period_start    DateTime
+  current_period_end      DateTime
+  trial_ends_at           DateTime?
+  fully_paid_at           DateTime?
+
+  created_at              DateTime           @default(now())
+  updated_at              DateTime           @updatedAt
+
+  school                  School             @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  cardOrders              CardOrder[]
+  invoices                Invoice[]
+  renewals                CardRenewal[]      // NEW
+  agreements              SchoolAgreement[]  // NEW
+  payments                Payment[]          // NEW
 
   @@index([school_id])
   @@index([status])
+  @@index([current_period_end])  // NEW: for renewal cron queries
+  @@index([is_pilot])            // NEW: for pilot tracking
 }
 
+// ─────────────────────────────────────────────────────────────
+// INVOICE
+// Changes:
+//   - Removed: category, order_invoice_type, renewal_invoice_type
+//              (collapsed into single invoice_type field)
+//   - Added:   invoice_type, card_count, tax_percent,
+//              subscription_id made required not nullable
+//   - Fixed:   subscription_id was nullable with no relation properly
+//              defined — now properly typed
+// ─────────────────────────────────────────────────────────────
 model Invoice {
-  id                   String              @id @default(uuid())
-  school_id            String
-  invoice_number       String              @unique
-  student_count        Int
-  unit_price           Int
-  amount               Int
-  tax_amount           Int
-  total_amount         Int
-  status               InvoiceStatus       @default(ISSUED)  // ✅ No DRAFT status
-  issued_at            DateTime            @default(now())
-  due_at               DateTime?
-  paid_at              DateTime?
-  pdf_url              String?
-  order_id             String?
-  subscription_id      String?
-  category             InvoiceCategory
-  order_invoice_type   OrderInvoiceType?
-  pdf_generated_at     DateTime?
-  renewal_invoice_type RenewalInvoiceType?
-  finalOrder           CardOrder?          @relation("FinalInvoiceForOrder")
-  partialOrder         CardOrder?          @relation("PartialInvoiceForOrder")
-  order                CardOrder?          @relation(fields: [order_id], references: [id], onDelete: Cascade)
-  school               School              @relation(fields: [school_id], references: [id], onDelete: Cascade)
-  subscription         Subscription?       @relation(fields: [subscription_id], references: [id])
-  payments             Payment[]
+  id             String        @id @default(uuid())
+  school_id      String
+  subscription_id String                             // required — every invoice belongs to a subscription
+  order_id       String?                             // only for ORDER_ADVANCE and ORDER_FINAL types
+  invoice_number String        @unique
 
+  // Single clean type — replaces category + order_invoice_type + renewal_invoice_type
+  invoice_type   InvoiceType
+
+  // Calculation snapshot — all auto-filled by service, never manual
+  student_count  Int           @default(0)           // for order invoices
+  card_count     Int           @default(0)           // for renewal invoices
+  unit_price     Int                                 // snapshot at invoice time (paise)
+  amount         Int                                 // before tax (paise)
+  tax_percent    Int           @default(18)          // GST %
+  tax_amount     Int                                 // auto = amount × tax_percent / 100
+  total_amount   Int                                 // amount + tax_amount
+
+  status         InvoiceStatus @default(ISSUED)
+  issued_at      DateTime      @default(now())
+  due_at         DateTime?
+  paid_at        DateTime?
+  pdf_url        String?
+  pdf_generated_at DateTime?
+  notes          String?
+
+  created_at     DateTime      @default(now())
+  updated_at     DateTime      @updatedAt
+
+  // Back-relations for CardOrder partial/final invoice shortcuts (kept for compatibility)
+  finalOrder     CardOrder?    @relation("FinalInvoiceForOrder")
+  partialOrder   CardOrder?    @relation("PartialInvoiceForOrder")
+
+  order          CardOrder?    @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  school         School        @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  subscription   Subscription  @relation(fields: [subscription_id], references: [id])
+  payments       Payment[]
+  renewals       CardRenewal[]  // NEW: renewals triggered by this invoice
+
+  @@index([school_id])
+  @@index([subscription_id])   // NEW
   @@index([order_id])
-  @@index([category, order_invoice_type])
+  @@index([invoice_type])      // replaces @@index([category, order_invoice_type])
   @@index([status])
   @@index([invoice_number])
+  @@index([due_at])            // NEW: for overdue queries
 }
 
+// ─────────────────────────────────────────────────────────────
+// PAYMENT
+// Changes:
+//   - Fixed:   order_id was required (String) — now optional (String?)
+//              because renewal payments have no order
+//   - Added:   subscription_id relation properly, recorded_by,
+//              notes, updated_at
+//   - Removed: is_advance (invoice_type already tells us this)
+//   - Fixed:   invoice_id was nullable — kept nullable for legacy
+//              but all new payments must have invoice_id
+// ─────────────────────────────────────────────────────────────
 model Payment {
   id              String        @id @default(uuid())
   school_id       String
-  order_id        String
-  invoice_id      String?
-  amount          Int
-  payment_ref     String?       @unique  // ✅ ADDED for duplicate detection
-  status          PaymentStatus @default(PENDING)  // ✅ FIXED: PENDING default, not SUCCESS
-  payment_mode    PaymentMode   @default(BANK_TRANSFER)
-  is_advance      Boolean       @default(true)
-  metadata        Json?
-  created_at      DateTime      @default(now())
-  subscription_id String?
-  renewals        CardRenewal[] @relation("RenewalPayment")
-  invoice         Invoice?      @relation(fields: [invoice_id], references: [id])
-  order           CardOrder     @relation(fields: [order_id], references: [id], onDelete: Cascade)
-  school          School        @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  invoice_id      String                             // required — payment always against an invoice
+  order_id        String?                            // optional reference only (go through invoice)
+  subscription_id String?                            // for direct subscription payments
 
-  @@index([order_id])
+  amount          Int                                // paise — actual amount received
+  payment_ref     String?       @unique              // bank ref / UPI ID — duplicate detection
+  status          PaymentStatus @default(PENDING)
+  payment_mode    PaymentMode   @default(BANK_TRANSFER)
+  recorded_by     String                             // superadmin ID — all payments are manual
+  notes           String?                            // any context about this payment
+  metadata        Json?                              // extra data if needed
+
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
+
+  renewals        CardRenewal[] @relation("RenewalPayment")
+  invoice         Invoice       @relation(fields: [invoice_id], references: [id])
+  order           CardOrder?    @relation(fields: [order_id], references: [id])
+  school          School        @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  subscription    Subscription? @relation(fields: [subscription_id], references: [id])
+
+  @@index([school_id])
   @@index([invoice_id])
+  @@index([order_id])
+  @@index([subscription_id])  // NEW
+  @@index([status])           // NEW
   @@index([created_at])
-  @@index([payment_ref])  // ✅ ADDED index for payment_ref
+  @@index([payment_ref])
 }
 
+// ─────────────────────────────────────────────────────────────
+// NEW: SCHOOL AGREEMENT
+// Legal consent trail. Created at school registration and on
+// every plan change / reprice. Immutable once created.
+// ─────────────────────────────────────────────────────────────
+model SchoolAgreement {
+  id              String           @id @default(uuid())
+  school_id       String
+  subscription_id String
+  agreed_at       DateTime         @default(now())
+  agreed_by       String                            // superadmin ID
+  agreed_via      AgreementChannel
+  document_url    String?                           // signed agreement PDF in R2
+  ip_address      String?
+  notes           String?
+  is_active       Boolean          @default(true)
+  created_at      DateTime         @default(now())
+
+  school          School           @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  subscription    Subscription     @relation(fields: [subscription_id], references: [id])
+
+  @@index([school_id])
+  @@index([subscription_id])
+}
+
+// ─────────────────────────────────────────────────────────────
+// DASHBOARD NOTIFICATION — no changes
+// ─────────────────────────────────────────────────────────────
 model DashboardNotification {
   id             String                    @id @default(uuid())
   user_id        String
@@ -754,6 +998,9 @@ model DashboardNotification {
   @@index([school_id])
 }
 
+// ─────────────────────────────────────────────────────────────
+// SCAN LOG — no changes
+// ─────────────────────────────────────────────────────────────
 model ScanLog {
   id                   String         @id @default(uuid())
   token_id             String
@@ -793,6 +1040,9 @@ model ScanLog {
   @@index([emergency_dispatched, dispatched_at])
 }
 
+// ─────────────────────────────────────────────────────────────
+// SCAN ANOMALY — no changes
+// ─────────────────────────────────────────────────────────────
 model ScanAnomaly {
   id           String          @id @default(uuid())
   token_id     String
@@ -810,6 +1060,9 @@ model ScanAnomaly {
   @@index([anomaly_type])
 }
 
+// ─────────────────────────────────────────────────────────────
+// SCAN RATE LIMIT — no changes
+// ─────────────────────────────────────────────────────────────
 model ScanRateLimit {
   id              String                  @id @default(uuid())
   identifier      String
@@ -825,6 +1078,9 @@ model ScanRateLimit {
   @@index([blocked_until])
 }
 
+// ─────────────────────────────────────────────────────────────
+// LOCATION CONSENT — no changes
+// ─────────────────────────────────────────────────────────────
 model LocationConsent {
   id           String   @id @default(uuid())
   student_id   String   @unique
@@ -837,6 +1093,9 @@ model LocationConsent {
   student      Student  @relation(fields: [student_id], references: [id], onDelete: Cascade)
 }
 
+// ─────────────────────────────────────────────────────────────
+// LOCATION EVENT — no changes
+// ─────────────────────────────────────────────────────────────
 model LocationEvent {
   id         String         @id @default(uuid())
   student_id String
@@ -856,6 +1115,9 @@ model LocationEvent {
   @@index([school_id, created_at])
 }
 
+// ─────────────────────────────────────────────────────────────
+// REGISTRATION NONCE — no changes
+// ─────────────────────────────────────────────────────────────
 model RegistrationNonce {
   id          String    @id @default(uuid())
   nonce       String    @unique
@@ -871,6 +1133,9 @@ model RegistrationNonce {
   @@index([expires_at])
 }
 
+// ─────────────────────────────────────────────────────────────
+// TRUSTED SCAN ZONE — no changes
+// ─────────────────────────────────────────────────────────────
 model TrustedScanZone {
   id         String   @id @default(uuid())
   school_id  String
@@ -889,37 +1154,43 @@ model TrustedScanZone {
   @@index([school_id, is_active])
 }
 
+// ─────────────────────────────────────────────────────────────
+// NOTIFICATION — no changes
+// ─────────────────────────────────────────────────────────────
 model Notification {
-  id          String              @id @default(uuid())
-  school_id   String
-  student_id  String?
-  parent_id   String?
-  channel     NotificationChannel
-  status      NotificationStatus  @default(QUEUED)
-  payload     Json?
-  retry_count Int                 @default(0)
-  sent_at     DateTime?
-  error       String?
-  created_at  DateTime            @default(now())
-  content     String?
-  recipient   String
-  subject     String?
-  type        String
-  order_id    String?              // ✅ ADDED for order notifications
-  event_type  String?              // ✅ ADDED for notification event type
-  latency_ms  Int?                 // ✅ ADDED for performance tracking
-  provider_ref String?             // ✅ ADDED for provider reference (e.g., Msg91 ID)
-  parent      ParentUser?         @relation(fields: [parent_id], references: [id])
-  school      School              @relation(fields: [school_id], references: [id], onDelete: Cascade)
-  student     Student?            @relation(fields: [student_id], references: [id])
+  id           String              @id @default(uuid())
+  school_id    String
+  student_id   String?
+  parent_id    String?
+  channel      NotificationChannel
+  status       NotificationStatus  @default(QUEUED)
+  payload      Json?
+  retry_count  Int                 @default(0)
+  sent_at      DateTime?
+  error        String?
+  created_at   DateTime            @default(now())
+  content      String?
+  recipient    String
+  subject      String?
+  type         String
+  order_id     String?
+  event_type   String?
+  latency_ms   Int?
+  provider_ref String?
+  parent       ParentUser?         @relation(fields: [parent_id], references: [id])
+  school       School              @relation(fields: [school_id], references: [id], onDelete: Cascade)
+  student      Student?            @relation(fields: [student_id], references: [id])
 
   @@index([school_id])
   @@index([status, created_at])
   @@index([channel, status])
-  @@index([order_id])              // ✅ ADDED index
-  @@index([event_type, created_at]) // ✅ ADDED index
+  @@index([order_id])
+  @@index([event_type, created_at])
 }
 
+// ─────────────────────────────────────────────────────────────
+// AUDIT LOG — no changes
+// ─────────────────────────────────────────────────────────────
 model AuditLog {
   id         String    @id @default(uuid())
   school_id  String?
@@ -942,6 +1213,9 @@ model AuditLog {
   @@index([created_at])
 }
 
+// ─────────────────────────────────────────────────────────────
+// API KEY — no changes
+// ─────────────────────────────────────────────────────────────
 model ApiKey {
   id           String    @id @default(uuid())
   school_id    String
@@ -958,6 +1232,9 @@ model ApiKey {
   @@index([school_id])
 }
 
+// ─────────────────────────────────────────────────────────────
+// WEBHOOK — no changes
+// ─────────────────────────────────────────────────────────────
 model Webhook {
   id          String            @id @default(uuid())
   school_id   String
@@ -972,6 +1249,9 @@ model Webhook {
   @@index([school_id, is_active])
 }
 
+// ─────────────────────────────────────────────────────────────
+// WEBHOOK DELIVERY — no changes
+// ─────────────────────────────────────────────────────────────
 model WebhookDelivery {
   id              String    @id @default(uuid())
   webhook_id      String
@@ -988,6 +1268,9 @@ model WebhookDelivery {
   @@index([webhook_id, created_at])
 }
 
+// ─────────────────────────────────────────────────────────────
+// WEBHOOK EVENT — no changes
+// ─────────────────────────────────────────────────────────────
 model WebhookEvent {
   id           String    @id @default(uuid())
   provider     String
@@ -1002,6 +1285,9 @@ model WebhookEvent {
   @@index([processed])
 }
 
+// ─────────────────────────────────────────────────────────────
+// DEAD LETTER QUEUE — no changes
+// ─────────────────────────────────────────────────────────────
 model DeadLetterQueue {
   id            String    @id @default(uuid())
   job_type      String
@@ -1016,6 +1302,9 @@ model DeadLetterQueue {
   @@index([job_type, resolved])
 }
 
+// ─────────────────────────────────────────────────────────────
+// IDEMPOTENCY KEY — no changes
+// ─────────────────────────────────────────────────────────────
 model IdempotencyKey {
   id            String   @id @default(uuid())
   key           String   @unique
@@ -1029,6 +1318,9 @@ model IdempotencyKey {
   @@index([expires_at])
 }
 
+// ─────────────────────────────────────────────────────────────
+// FEATURE FLAG OVERRIDE — no changes
+// ─────────────────────────────────────────────────────────────
 model FeatureFlagOverride {
   id          String    @id @default(uuid())
   flag_key    String
@@ -1045,6 +1337,9 @@ model FeatureFlagOverride {
   @@index([flag_key])
 }
 
+// ─────────────────────────────────────────────────────────────
+// AUTH ATTEMPT — no changes
+// ─────────────────────────────────────────────────────────────
 model AuthAttempt {
   id              String   @id @default(uuid())
   identifier      String
@@ -1059,6 +1354,9 @@ model AuthAttempt {
   @@index([ip_address, created_at])
 }
 
+// ─────────────────────────────────────────────────────────────
+// IP BLOCKLIST — no changes
+// ─────────────────────────────────────────────────────────────
 model IpBlocklist {
   id         String    @id @default(uuid())
   ip_address String    @unique
@@ -1072,6 +1370,9 @@ model IpBlocklist {
   @@index([expires_at])
 }
 
+// ─────────────────────────────────────────────────────────────
+// ORDER PIPELINE — no changes
+// ─────────────────────────────────────────────────────────────
 model OrderPipeline {
   id               String               @id @default(uuid())
   order_id         String               @unique
@@ -1091,6 +1392,9 @@ model OrderPipeline {
   @@index([is_stalled])
 }
 
+// ─────────────────────────────────────────────────────────────
+// ORDER STEP EXECUTION — no changes
+// ─────────────────────────────────────────────────────────────
 model OrderStepExecution {
   id              String           @id @default(uuid())
   pipeline_id     String
@@ -1117,6 +1421,9 @@ model OrderStepExecution {
   @@index([step, status])
 }
 
+// ─────────────────────────────────────────────────────────────
+// JOB EXECUTION — no changes
+// ─────────────────────────────────────────────────────────────
 model JobExecution {
   id                String             @id @default(uuid())
   step_execution_id String
@@ -1143,6 +1450,9 @@ model JobExecution {
   @@index([queue_name, status])
 }
 
+// ─────────────────────────────────────────────────────────────
+// STEP LOG — no changes
+// ─────────────────────────────────────────────────────────────
 model StepLog {
   id                String             @id @default(uuid())
   step_execution_id String
@@ -1159,6 +1469,9 @@ model StepLog {
   @@index([level, created_at])
 }
 
+// ─────────────────────────────────────────────────────────────
+// FEATURE FLAG — no changes
+// ─────────────────────────────────────────────────────────────
 model FeatureFlag {
   id          String   @id @default(uuid())
   key         String   @unique
@@ -1168,6 +1481,9 @@ model FeatureFlag {
   updated_at  DateTime @updatedAt
 }
 
+// ─────────────────────────────────────────────────────────────
+// SCHOOL FEATURE FLAG — no changes
+// ─────────────────────────────────────────────────────────────
 model SchoolFeatureFlag {
   id         String   @id @default(uuid())
   school_id  String
@@ -1180,6 +1496,9 @@ model SchoolFeatureFlag {
   @@index([school_id])
 }
 
+// ─────────────────────────────────────────────────────────────
+// CARD TEMPLATE — no changes
+// ─────────────────────────────────────────────────────────────
 model CardTemplate {
   id                 String   @id @default(uuid())
   school_id          String   @unique
@@ -1200,15 +1519,16 @@ model CardTemplate {
   show_photo         Boolean  @default(true)
   is_locked          Boolean  @default(true)
   updated_by         String?
+  front_template_url String?
+  back_template_url  String?
   created_at         DateTime @default(now())
   updated_at         DateTime @updatedAt
   school             School   @relation(fields: [school_id], references: [id], onDelete: Cascade)
-  
-  // ADD THESE TWO FIELDS
-  front_template_url String?  // R2 URL for front side template image
-  back_template_url  String?  // R2 URL for back side template image
 }
 
+// ─────────────────────────────────────────────────────────────
+// SESSION — no changes
+// ─────────────────────────────────────────────────────────────
 model Session {
   id                 String               @id @default(uuid())
   parent_user_id     String?
@@ -1235,6 +1555,9 @@ model Session {
   @@index([expires_at])
 }
 
+// ─────────────────────────────────────────────────────────────
+// BLACKLIST TOKEN — no changes
+// ─────────────────────────────────────────────────────────────
 model BlacklistToken {
   token_hash String   @id
   expires_at DateTime
@@ -1243,6 +1566,9 @@ model BlacklistToken {
   @@index([expires_at])
 }
 
+// ─────────────────────────────────────────────────────────────
+// DEVICE LOGIN LOG — no changes
+// ─────────────────────────────────────────────────────────────
 model DeviceLoginLog {
   id            String         @id @default(uuid())
   parent_id     String
@@ -1262,6 +1588,10 @@ model DeviceLoginLog {
 
   @@index([parent_id, login_at])
 }
+
+// ═════════════════════════════════════════════════════════════
+// ENUMS
+// ═════════════════════════════════════════════════════════════
 
 enum UserStatus {
   ACTIVE
@@ -1364,11 +1694,12 @@ enum SubscriptionStatus {
   EXPIRED
 }
 
+// NEW: Clean plan types — what the school is paying for
+// FREE_PILOT removed — handled by Subscription.is_pilot flag
 enum PlanType {
-  FREE_PILOT
-  GOVT_STANDARD
-  PRIVATE_STANDARD
-  ENTERPRISE
+  BASIC
+  PREMIUM
+  CUSTOM
 }
 
 enum OrderPaymentStatus {
@@ -1385,18 +1716,12 @@ enum PaymentStatus {
   REFUNDED
 }
 
-enum InvoiceCategory {
-  ORDER_INVOICE
-  RENEWAL_INVOICE
-}
-
-enum OrderInvoiceType {
-  PARTIAL
-  FINAL
-}
-
-enum RenewalInvoiceType {
-  RENEWAL
+// NEW: Single invoice type — replaces InvoiceCategory + OrderInvoiceType + RenewalInvoiceType
+enum InvoiceType {
+  ORDER_ADVANCE   // 50% upfront, generated when order is CONFIRMED
+  ORDER_FINAL     // remaining balance, generated after DELIVERED
+  RENEWAL         // annual renewal, auto-generated 30 days before expiry
+  CUSTOM          // one-off adjustments, credit notes
 }
 
 enum InvoiceStatus {
@@ -1426,12 +1751,12 @@ enum OrderStatus {
   CONFIRMED
   PAYMENT_PENDING
   ADVANCE_RECEIVED
-  TOKEN_GENERATED          // ✅ Keep this (replaces TOKEN_GENERATING/TOKEN_COMPLETE)
-  CARD_DESIGN              // ✅ Keep this (replaces DESIGN_GENERATING)
+  TOKEN_GENERATED
+  CARD_DESIGN
   CARD_DESIGN_REVISION
-  CARD_DESIGN_READY        // ✅ Keep this (replaces DESIGN_COMPLETE)
+  CARD_DESIGN_READY
   DESIGN_APPROVED
-  SENT_TO_VENDOR           // ✅ Keep this (replaces VENDOR_SENT)
+  SENT_TO_VENDOR
   PRINTING
   PRINT_COMPLETE
   SHIPPED
@@ -1479,6 +1804,8 @@ enum SchoolType {
   NGO
 }
 
+// KEPT for any legacy references — but no longer used in new models
+// Can be removed in a future migration once all references are cleared
 enum PricingTier {
   GOVT_STANDARD
   PRIVATE_STANDARD
@@ -1548,6 +1875,9 @@ enum DashboardNotificationType {
   PIPELINE_STALLED
   DLQ_NEW_ENTRY
   EMERGENCY_FIRED
+  RENEWAL_DUE              // NEW: renewal reminder
+  PAYMENT_RECEIVED         // NEW: payment recorded
+  SUBSCRIPTION_ACTIVATED   // NEW: first payment confirmed
 }
 
 enum NotificationChannel {
@@ -1697,4 +2027,18 @@ enum DesignStatus {
   IN_PROGRESS
   COMPLETE
   FAILED
+}
+
+// NEW enums
+enum SchoolSetupStatus {
+  PENDING_SETUP   // registered, no admin has logged in yet
+  ACTIVE          // at least one admin has accepted credentials
+  SUSPENDED       // temporarily disabled by SuperAdmin
+  TERMINATED      // permanently closed
+}
+
+enum AgreementChannel {
+  DASHBOARD       // agreed via SuperAdmin dashboard
+  PHYSICAL        // physical paper contract
+  EMAIL           // email confirmation
 }

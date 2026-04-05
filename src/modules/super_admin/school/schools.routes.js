@@ -10,10 +10,12 @@ import {
   toggleSchoolStatus,
   getSchoolsStats,
   getCities,
+  registerSchool,
 } from './schools.controller.js';
 
 const router = Router();
 
+router.post('/', registerSchool);
 router.get('/', listSchools);
 router.get('/stats', getSchoolsStats);
 router.get('/cities', getCities);

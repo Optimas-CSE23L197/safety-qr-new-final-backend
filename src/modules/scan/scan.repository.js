@@ -12,7 +12,7 @@
 // =============================================================================
 
 import { prisma } from '#config/prisma.js';
-import crypto from 'crypto';
+import { logger } from '#config/logger.js';
 
 // =============================================================================
 // TOKEN LOOKUP
@@ -35,7 +35,7 @@ export const findTokenForScan = async tokenId => {
       expires_at: true,
       school_id: true,
       student_id: true,
-      is_honeypot: true, // honeypot check before building any profile
+      is_honeypot: true,
 
       school: {
         select: {
@@ -45,6 +45,11 @@ export const findTokenForScan = async tokenId => {
           logo_url: true,
           phone: true,
           address: true,
+          settings: {
+            select: {
+              scan_notifications_enabled: true,
+            },
+          },
         },
       },
 
@@ -53,12 +58,27 @@ export const findTokenForScan = async tokenId => {
           id: true,
           first_name: true,
           last_name: true,
-          photo_url: true, // S3 key — presigned URL generated in service
+          photo_url: true,
           class: true,
           section: true,
           gender: true,
           setup_stage: true,
           is_active: true,
+
+          parents: {
+            select: {
+              parent: {
+                select: {
+                  devices: {
+                    where: { is_active: true },
+                    select: {
+                      expo_push_token: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
 
           cardVisibility: {
             select: {
@@ -108,7 +128,6 @@ export const findTokenForScan = async tokenId => {
 /**
  * Write a scan log entry directly to DB.
  * For the hot path, use enqueueScanLog() from scan.cache.js instead.
- * .catch(() => {}) is intentional — observability must never affect correctness.
  */
 export const writeScanLog = ({
   tokenId,
@@ -139,7 +158,12 @@ export const writeScanLog = ({
         ip_capture_basis: 'LEGITIMATE_INTEREST',
       },
     })
-    .catch(() => {});
+    .catch(err => {
+      logger.error(
+        { err: err.message, tokenId, schoolId },
+        '[scan.repository] writeScanLog failed'
+      );
+    });
 
 // =============================================================================
 // BULK SCAN LOG (used by scan.worker)
@@ -148,56 +172,18 @@ export const writeScanLog = ({
 /**
  * Bulk insert scan log entries.
  * Called by scan.worker draining the Redis log queue every 5 seconds.
- * createMany skips duplicate conflicts rather than failing the whole batch.
  */
 export const bulkWriteScanLogs = async entries => {
   if (!entries.length) return;
-  return prisma.scanLog.createMany({
-    data: entries,
-    skipDuplicates: true,
-  });
-};
-
-// =============================================================================
-// REGISTRATION NONCE
-// =============================================================================
-
-export const findActiveNonce = async nonce => {
-  return prisma.registrationNonce.findFirst({
-    where: {
-      nonce,
-      used: false,
-      expires_at: { gt: new Date() },
-    },
-    select: { id: true, token_id: true, expires_at: true },
-  });
-};
-
-export const findActiveNonceByTokenId = async tokenId => {
-  return prisma.registrationNonce.findFirst({
-    where: {
-      token_id: tokenId,
-      used: false,
-      expires_at: { gt: new Date() },
-    },
-    select: { nonce: true, expires_at: true },
-  });
-};
-
-export const consumeNonce = async nonceId => {
-  return prisma.registrationNonce.update({
-    where: { id: nonceId },
-    data: { used: true, used_at: new Date() },
-  });
-};
-
-export const createRegistrationNonce = async tokenId => {
-  const nonce = crypto.randomUUID().replace(/-/g, '');
-  const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
-
-  await prisma.registrationNonce.create({
-    data: { nonce, token_id: tokenId, expires_at: expiresAt },
-  });
-
-  return { nonce, expiresAt };
+  try {
+    return await prisma.scanLog.createMany({
+      data: entries,
+    });
+  } catch (err) {
+    logger.error(
+      { err: err.message, count: entries.length },
+      '[scan.repository] bulkWriteScanLogs failed'
+    );
+    throw err;
+  }
 };
