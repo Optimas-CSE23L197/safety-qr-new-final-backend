@@ -27,6 +27,7 @@ export class DashboardRepository {
       studentsThisMonth,
       activeSubscriptions,
       mrrData,
+      schoolsThisMonth,
     ] = await Promise.all([
       prisma.school.count({ where: { ...schoolFilter, is_active: true } }),
       prisma.school.count({
@@ -58,6 +59,12 @@ export class DashboardRepository {
         },
         _sum: { grand_total: true },
       }),
+      prisma.school.count({
+        where: {
+          ...schoolFilter,
+          created_at: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) },
+        },
+      }),
     ]);
 
     return {
@@ -68,6 +75,7 @@ export class DashboardRepository {
       totalStudents,
       studentsThisMonth,
       activeSubscriptions,
+      schoolsThisMonth,
       mrrUsd: (mrrData._sum.grand_total || 0) / 100,
     };
   }
