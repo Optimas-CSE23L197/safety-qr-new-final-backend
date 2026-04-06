@@ -1,5 +1,5 @@
 // =============================================================================
-// modules/parents/parent.repository.js — RESQID
+// modules/parents/parent.repository.js — RESQID (FULLY FIXED)
 // ALL Prisma calls for the parent app. Nothing else.
 // =============================================================================
 
@@ -16,6 +16,7 @@ export async function getParentHomeData(parentId) {
         name: true,
         status: true,
         is_phone_verified: true,
+        active_student_id: true, // ← ADD THIS
         notificationPrefs: {
           select: {
             scan_notify_enabled: true,
@@ -32,7 +33,7 @@ export async function getParentHomeData(parentId) {
       },
     }),
 
-    // Full student tree — zero N+1
+    // Full student tree — zero N+1, includes parents relation for phone check
     prisma.parentStudent.findMany({
       where: { parent_id: parentId },
       select: {
@@ -52,11 +53,8 @@ export async function getParentHomeData(parentId) {
             },
             tokens: {
               where: {},
-              orderBy: [
-                // Fetch most recently created tokens — service picks best status
-                { created_at: 'desc' },
-              ],
-              take: 5, // fetch up to 5 so service can pick best status (ACTIVE > ISSUED > INACTIVE > REVOKED/EXPIRED)
+              orderBy: [{ created_at: 'desc' }],
+              take: 5,
               select: {
                 id: true,
                 status: true,
@@ -172,7 +170,7 @@ export async function getScanHistory({ parentId, cursor, limit, filter }) {
   const rows = await prisma.scanLog.findMany({
     where,
     orderBy: { created_at: 'desc' },
-    take: limit + 1, // fetch one extra to detect hasMore
+    take: limit + 1,
     ...(cursor && { cursor: { id: cursor }, skip: 1 }),
     select: {
       id: true,
@@ -193,7 +191,6 @@ export async function getScanHistory({ parentId, cursor, limit, filter }) {
   if (hasMore) rows.pop();
   const nextCursor = hasMore ? (rows[rows.length - 1]?.id ?? null) : null;
 
-  // Also fetch anomalies for this parent in parallel
   const anomalies = await prisma.scanAnomaly.findMany({
     where: {
       token: { student: { parents: { some: { parent_id: parentId } } } },
@@ -226,7 +223,6 @@ function buildScanWhere(parentId, filter) {
 // ─── /me/profile — Batched profile update ─────────────────────────────────────
 
 export async function updateStudentProfile({ parentId, studentId, student, emergency, contacts }) {
-  // Verify ownership first — parent must own this student
   const link = await prisma.parentStudent.findFirst({
     where: { parent_id: parentId, student_id: studentId },
   });
@@ -239,17 +235,19 @@ export async function updateStudentProfile({ parentId, studentId, student, emerg
   return prisma.$transaction(async tx => {
     const ops = [];
 
-    // Update student fields if provided
     if (student && Object.keys(student).length > 0) {
       ops.push(
         tx.student.update({
           where: { id: studentId },
-          data: student,
+          data: {
+            ...student,
+            // ✅ Promote to COMPLETE if first_name is now filled
+            ...(student.first_name && { setup_stage: 'COMPLETE' }),
+          },
         })
       );
     }
 
-    // Update emergency profile if provided
     if (emergency) {
       ops.push(
         tx.emergencyProfile.upsert({
@@ -260,17 +258,13 @@ export async function updateStudentProfile({ parentId, studentId, student, emerg
       );
     }
 
-    // Replace contacts atomically if provided
-    // Soft approach: deactivate old, upsert new by id (edit) or create (new)
     if (contacts !== undefined) {
-      // Get existing contact IDs for this student
       const existingProfile = await tx.emergencyProfile.findUnique({
         where: { student_id: studentId },
         select: { id: true },
       });
 
       if (existingProfile) {
-        // Deactivate all existing contacts
         ops.push(
           tx.emergencyContact.updateMany({
             where: { profile_id: existingProfile.id },
@@ -278,7 +272,6 @@ export async function updateStudentProfile({ parentId, studentId, student, emerg
           })
         );
 
-        // Upsert each contact in new list
         for (const c of contacts) {
           ops.push(
             c.id
@@ -312,21 +305,15 @@ function buildEmergencyData(e) {
   if (e.conditions !== undefined) data.conditions = e.conditions;
   if (e.medications !== undefined) data.medications = e.medications;
   if (e.doctor_name !== undefined) data.doctor_name = e.doctor_name;
-
-  // ✅ FIXED FIELD NAME
-  if (e.doctor_phone !== undefined) {
-    data.doctor_phone_encrypted = e.doctor_phone;
-  }
-
+  if (e.doctor_phone !== undefined) data.doctor_phone_encrypted = e.doctor_phone;
   if (e.notes !== undefined) data.notes = e.notes;
-
   return data;
 }
 
 function buildContactData(c) {
   return {
     name: c.name,
-    phone_encrypted: c.phone, // encrypted in service layer before hitting repo
+    phone_encrypted: c.phone,
     relationship: c.relationship,
     priority: c.priority,
     display_order: c.priority,
@@ -382,7 +369,6 @@ export async function updateLocationConsent({ parentId, studentId, enabled }) {
 export async function lockStudentCard({ parentId, studentId }) {
   await verifyStudentOwnership(parentId, studentId);
 
-  // Deactivate the student's active token
   const updated = await prisma.token.updateMany({
     where: { student_id: studentId, status: 'ACTIVE' },
     data: { status: 'INACTIVE' },
@@ -403,7 +389,6 @@ export async function lockStudentCard({ parentId, studentId }) {
 export async function createReplaceRequest({ parentId, studentId, reason }) {
   await verifyStudentOwnership(parentId, studentId);
 
-  // Log the replacement request as a ParentEditLog entry
   return prisma.parentEditLog.create({
     data: {
       student_id: studentId,
@@ -442,7 +427,6 @@ async function verifyStudentOwnership(parentId, studentId) {
 }
 
 // ─── /me/location-history ─────────────────────────────────────────────────────
-// NEW: Get location history for a student
 
 export async function getLocationHistory({ parentId, studentId, cursor, limit, fromDate, toDate }) {
   await verifyStudentOwnership(parentId, studentId);
@@ -476,7 +460,6 @@ export async function getLocationHistory({ parentId, studentId, cursor, limit, f
 }
 
 // ─── /me/anomalies ───────────────────────────────────────────────────────────
-// NEW: Get anomalies for parent's students
 
 export async function getAnomalies(parentId, { cursor, limit, severity, resolved }) {
   const where = {
@@ -517,7 +500,6 @@ export async function getAnomalies(parentId, { cursor, limit, severity, resolved
 }
 
 // ─── /me/cards ───────────────────────────────────────────────────────────────
-// NEW: Get all cards for parent's students
 
 export async function getCards(parentId) {
   const cards = await prisma.card.findMany({
@@ -549,7 +531,6 @@ export async function getCards(parentId) {
 }
 
 // ─── /me/request-renewal ─────────────────────────────────────────────────────
-// NEW: Request card renewal
 
 export async function requestRenewal(parentId, { cardId, paymentMethod }) {
   await verifyCardOwnership(parentId, cardId);
@@ -564,7 +545,6 @@ export async function requestRenewal(parentId, { cardId, paymentMethod }) {
 
   if (!card) throw new Error('Card not found');
 
-  // Create renewal request in ParentEditLog
   const log = await prisma.parentEditLog.create({
     data: {
       student_id: card.student_id,
@@ -605,22 +585,14 @@ async function verifyCardOwnership(parentId, cardId) {
 }
 
 // ─── POST /device-token — Upsert Expo push token ──────────────────────────────
-//
-// Strategy:
-//   • device_token is UNIQUE on ParentDevice.
-//   • If another parent owns this device_token, deactivate their record first
-//     (device handed off / re-registered). Then upsert for current parent.
-//   • Keeps is_active = true and bumps last_seen_at on every call so the
-//     notification dispatcher always has a fresh token.
 
 export async function upsertDeviceToken(
   parentId,
   { token, platform, device_name, deviceModel, os_version }
 ) {
-  // Deactivate the token if it belongs to a different parent (device reuse)
   await prisma.parentDevice.updateMany({
     where: {
-      device_token: token,
+      expo_push_token: token, // ✅ FIXED
       parent_id: { not: parentId },
     },
     data: {
@@ -630,9 +602,8 @@ export async function upsertDeviceToken(
     },
   });
 
-  // Upsert for current parent
   return prisma.parentDevice.upsert({
-    where: { device_token: token },
+    where: { expo_push_token: token }, // ✅ FIXED
     update: {
       platform,
       device_name: device_name ?? null,
@@ -645,7 +616,7 @@ export async function upsertDeviceToken(
     },
     create: {
       parent_id: parentId,
-      device_token: token,
+      expo_push_token: token, // ✅ FIXED
       platform,
       device_name: device_name ?? null,
       device_model: deviceModel ?? null,

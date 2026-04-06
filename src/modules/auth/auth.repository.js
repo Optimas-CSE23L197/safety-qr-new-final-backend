@@ -26,8 +26,6 @@ export const findSuperAdminById = id =>
     where: { id },
     select: {
       id: true,
-      school_id: true,
-      role: true,
       is_active: true,
       name: true,
       email: true,
@@ -136,12 +134,6 @@ export const updateParentLastLogin = id =>
     data: { last_login_at: new Date() },
   });
 
-export const updateParentPassword = (id, hashedPassword) =>
-  prisma.parentUser.update({
-    where: { id },
-    data: { password_hash: hashedPassword },
-  });
-
 // =============================================================================
 // CARD REGISTRATION
 // =============================================================================
@@ -159,7 +151,16 @@ export const findCardForRegistration = cardNumber =>
           first_name: true,
           setup_stage: true,
           is_active: true,
-          parents: { select: { id: true }, take: 1 },
+          parents: {
+            select: {
+              parent: {
+                select: {
+                  phone_index: true,
+                },
+              },
+            },
+            take: 1,
+          },
         },
       },
     },
@@ -215,8 +216,12 @@ export const createEmergencyProfile = studentId =>
 // PARENT-STUDENT LINK
 // =============================================================================
 
-export const linkParentToStudent = (parentId, studentId) =>
-  prisma.parentStudent.upsert({
+export const linkParentToStudent = async (parentId, studentId) => {
+  const existingCount = await prisma.parentStudent.count({
+    where: { parent_id: parentId },
+  });
+
+  return prisma.parentStudent.upsert({
     where: {
       parent_id_student_id: {
         parent_id: parentId,
@@ -228,9 +233,10 @@ export const linkParentToStudent = (parentId, studentId) =>
       parent_id: parentId,
       student_id: studentId,
       relationship: 'Parent',
-      is_primary: true,
+      is_primary: existingCount === 0,
     },
   });
+};
 
 export const createParentNotificationPref = parentId =>
   prisma.parentNotificationPref.upsert({
@@ -525,6 +531,11 @@ export const registerParentWithStudent = async ({
       });
     }
 
+    // ✅ FIX: Check existing children count for is_primary
+    const existingChildrenCount = await tx.parentStudent.count({
+      where: { parent_id: parent.id },
+    });
+
     // Link parent to student
     await tx.parentStudent.upsert({
       where: {
@@ -538,8 +549,14 @@ export const registerParentWithStudent = async ({
         parent_id: parent.id,
         student_id: studentId,
         relationship: 'Parent',
-        is_primary: true,
+        is_primary: existingChildrenCount === 0,
       },
+    });
+
+    // ✅ FIX: Set active student on parent
+    await tx.parentUser.update({
+      where: { id: parent.id },
+      data: { active_student_id: studentId },
     });
 
     // Create notification preferences

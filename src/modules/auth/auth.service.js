@@ -1,12 +1,5 @@
 // =============================================================================
-// src/services/auth/auth.service.js — RESQID (REFACTORED)
-// BUSINESS LOGIC ONLY — calls repository for DB operations
-// WITH COMPREHENSIVE NOTIFICATIONS:
-//   - OTP SMS on login/registration/phone change
-//   - Email alerts on login (new device)
-//   - Email on password change
-//   - Email on phone number change
-//   - Welcome email on registration
+// src/services/auth/auth.service.js — RESQID (FIXED)
 // =============================================================================
 
 import crypto from 'crypto';
@@ -60,23 +53,20 @@ async function dispatchOtp({ phone, otp, namespace, actorId, expiryMinutes }) {
  * Centralized OTP validation logic
  * Returns validated phone on success, throws on failure
  */
-async function validateOtp(phone, otp, ipAddress, context = 'LOGIN') {
-  // Atomic: get both values in one round trip
-  const [attemptsRaw, storedData] = await redis
-    .pipeline()
-    .get(`otp:attempts:${phone}`)
-    .get(`otp:${phone}`)
-    .exec();
+async function validateOtp(phone, otp, ipAddress, namespace = 'LOGIN') {
+  const key = `otp:${namespace}:${phone}`;
+  const attemptsKey = `otp:attempts:${namespace}:${phone}`;
+
+  const [attemptsRaw, storedData] = await redis.pipeline().get(attemptsKey).get(key).exec();
 
   const attempts = parseInt(attemptsRaw?.[1] ?? '0', 10);
-
   if (attempts >= OTP_MAX_ATTEMPTS) {
-    await recordFailedAuth(ipAddress, phone, `${context}_OTP_MAX_ATTEMPTS`);
+    await recordFailedAuth(ipAddress, phone, `${namespace}_OTP_MAX_ATTEMPTS`);
     throw ApiError.tooManyRequests('Too many OTP attempts. Try again later.');
   }
 
   if (!storedData?.[1]) {
-    await recordFailedAuth(ipAddress, phone, `${context}_OTP_EXPIRED`);
+    await recordFailedAuth(ipAddress, phone, `${namespace}_OTP_EXPIRED`);
     throw ApiError.badRequest('OTP expired or not requested');
   }
 
@@ -84,16 +74,15 @@ async function validateOtp(phone, otp, ipAddress, context = 'LOGIN') {
   const inputHash = hashOtp(otp);
   const storedBuf = Buffer.from(otpData.hash, 'hex');
   const inputBuf = Buffer.from(inputHash, 'hex');
-
   const valid = storedBuf.length === inputBuf.length && crypto.timingSafeEqual(storedBuf, inputBuf);
 
   if (!valid) {
-    await redis.incr(`otp:attempts:${phone}`);
-    await recordFailedAuth(ipAddress, phone, `${context}_INVALID_OTP`);
+    await redis.incr(attemptsKey);
+    await recordFailedAuth(ipAddress, phone, `${namespace}_INVALID_OTP`);
     throw ApiError.unauthorized('Invalid OTP');
   }
 
-  await Promise.all([redis.del(`otp:${phone}`), redis.del(`otp:attempts:${phone}`)]);
+  await Promise.all([redis.del(key), redis.del(attemptsKey)]);
   return true;
 }
 
@@ -334,7 +323,7 @@ export const sendOtp = async ({ phone, ipAddress, deviceId }) => {
     attempts: 0,
   };
 
-  await redis.setex(`otp:${phone}`, OTP_TTL_SECONDS, JSON.stringify(otpData));
+  await redis.setex(`otp:login:${phone}`, OTP_TTL_SECONDS, JSON.stringify(otpData));
   await dispatchOtp({
     phone,
     otp,
@@ -342,7 +331,7 @@ export const sendOtp = async ({ phone, ipAddress, deviceId }) => {
     actorId: phone,
     expiryMinutes: OTP_TTL_SECONDS / 60,
   });
-  await redis.del(`otp:attempts:${phone}`);
+  await redis.del(`otp:attempts:login:${phone}`);
 
   const response = {
     message: 'OTP sent successfully',
@@ -416,21 +405,41 @@ export const verifyOtp = async ({ phone, otp, ipAddress, deviceInfo }) => {
 export const registerInit = async ({ card_number, phone, ipAddress }) => {
   console.log(`\n📇 [REGISTER INIT] Card: ${card_number}, Phone: ${phone}`);
 
+  // Card rate limit
+  const cardKey = `reg:card:${card_number}`;
+  const cardAttempts = await redis.incr(cardKey);
+  if (cardAttempts === 1) await redis.expire(cardKey, 3600);
+  if (cardAttempts > 5) {
+    throw ApiError.tooManyRequests(
+      'Too many registration attempts for this card. Try after 1 hour.'
+    );
+  }
+
   const card = await repo.findCardForRegistration(card_number);
 
   if (!card) {
-    console.log(`❌ [REGISTER FAILED] Card not found: ${card_number}`);
     await recordFailedAuth(ipAddress, card_number, 'INVALID_CARD_NUMBER');
     throw ApiError.notFound('Card not found. Check the number printed on your physical card.');
   }
 
-  if (card.student_id && card.student?.parents?.length > 0) {
-    console.log(`❌ [REGISTER FAILED] Card already registered: ${card_number}`);
-    await recordFailedAuth(ipAddress, card_number, 'CARD_ALREADY_REGISTERED');
-    throw ApiError.conflict('This card is already registered. Sign in instead.');
+  // CHECK: card has existing parent with different phone
+  if (card.student?.parents?.length > 0) {
+    const existingPhoneIndex = card.student.parents[0].parent.phone_index;
+    const incomingPhoneIndex = hashForLookup(phone);
+
+    if (existingPhoneIndex !== incomingPhoneIndex) {
+      await recordFailedAuth(ipAddress, card_number, 'PHONE_MISMATCH');
+      throw ApiError.conflict(
+        'This card is already linked to a different phone number. Contact your school.'
+      );
+    }
   }
 
-  if (card.student_id && card.student?.setup_stage !== 'PENDING') {
+  if (
+    card.student_id &&
+    card.student?.parents?.length > 0 &&
+    card.student?.setup_stage !== 'PENDING'
+  ) {
     await recordFailedAuth(ipAddress, card_number, 'CARD_ALREADY_REGISTERED');
     throw ApiError.conflict('This card is already registered. Sign in instead.');
   }
@@ -462,8 +471,8 @@ export const registerInit = async ({ card_number, phone, ipAddress }) => {
   };
 
   await Promise.all([
-    redis.setex(`otp:${phone}`, OTP_TTL_SECONDS, JSON.stringify(otpData)),
-    redis.del(`otp:attempts:${phone}`),
+    redis.setex(`otp:register:${phone}`, OTP_TTL_SECONDS, JSON.stringify(otpData)),
+    redis.del(`otp:attempts:register:${phone}`),
   ]);
 
   await dispatchOtp({
@@ -525,8 +534,8 @@ export const registerVerify = async ({ nonce, otp, phone, ipAddress, deviceInfo 
 
   await Promise.all([
     redis.del(`reg:nonce:${nonce}`),
-    redis.del(`otp:${phone}`),
-    redis.del(`otp:attempts:${phone}`),
+    redis.del(`otp:register:${phone}`),
+    redis.del(`otp:attempts:register:${phone}`),
   ]);
 
   const sessionId = crypto.randomUUID();
@@ -689,6 +698,10 @@ export const logoutUser = async ({ token, exp, refreshToken, sessionId, userId, 
 export const changePassword = async ({ userId, role, oldPassword, newPassword, ipAddress }) => {
   console.log(`\n🔒 [CHANGE PASSWORD] User: ${userId}, Role: ${role}`);
 
+  if (role === 'PARENT_USER') {
+    throw ApiError.badRequest('Password change not supported for parent accounts. Use OTP login.');
+  }
+
   let user, passwordHash, email, name;
 
   if (role === 'SUPER_ADMIN') {
@@ -698,11 +711,6 @@ export const changePassword = async ({ userId, role, oldPassword, newPassword, i
     name = user?.name;
   } else if (role === 'ADMIN') {
     user = await repo.findSchoolUserById(userId);
-    passwordHash = user?.password_hash;
-    email = user?.email;
-    name = user?.name;
-  } else if (role === 'PARENT_USER') {
-    user = await repo.findParentById(userId);
     passwordHash = user?.password_hash;
     email = user?.email;
     name = user?.name;
@@ -725,8 +733,6 @@ export const changePassword = async ({ userId, role, oldPassword, newPassword, i
     await repo.updateSuperAdminPassword(userId, hashedPassword);
   } else if (role === 'ADMIN') {
     await repo.updateSchoolUserPassword(userId, hashedPassword);
-  } else {
-    await repo.updateParentPassword(userId, hashedPassword);
   }
 
   await repo.revokeAllUserSessions(userId, role, 'PASSWORD_CHANGED');

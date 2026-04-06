@@ -1,5 +1,5 @@
 // =============================================================================
-// modules/parents/parent.route.js — RESQID (FIXED)
+// modules/parents/parent.route.js — RESQID (FULLY FIXED + MULTI-CHILD ENDPOINTS)
 // Mounted at: /api/parents
 // ALL parent app endpoints — one file, complete picture
 // =============================================================================
@@ -24,6 +24,10 @@ import {
   changePhone,
   sendPhoneChangeOtp,
   registerDeviceToken,
+  // ✅ NEW IMPORTS for multi-child features
+  linkCard,
+  setActiveStudent,
+  getChildrenList,
 } from './parent.controller.js';
 
 import {
@@ -34,13 +38,15 @@ import {
   validateUpdateLocationConsent,
   validateLockCard,
   validateRequestReplace,
-  // ✅ ADD THESE MISSING IMPORTS
   validateLocationHistoryQuery,
   validateAnomaliesQuery,
   validateRequestRenewal,
   validateChangePhone,
   validateSendPhoneOtp,
   validateRegisterDeviceToken,
+  // ✅ NEW VALIDATIONS for multi-child features
+  validateLinkCard,
+  validateSetActiveStudent,
 } from './parent.validation.js';
 
 const router = Router();
@@ -49,22 +55,20 @@ const router = Router();
 router.use(authenticate, requireParent);
 
 // ── Core: home screen data ─────────────────────────────────────────────────────
-// Called once on login → response cached on device for 30 days
-// Also called on pull-to-refresh
 router.get('/me', getMe);
 
+// ── Multi-child support (NEW) ─────────────────────────────────────────────────
+router.get('/me/children', getChildrenList);                                    // GET all children (lightweight)
+router.post('/me/link-card', validateLinkCard, linkCard);                       // Add second child by card
+router.patch('/me/active-student', validateSetActiveStudent, setActiveStudent); // Switch active student
+
 // ── Scan history (scan-history screen) ────────────────────────────────────────
-// Cursor-paginated — never load all scans at once
-// Client caches the last N scans, cursor-fetches more on scroll
 router.get('/me/scans', validateScanHistoryQuery, getScanHistory);
 
 // ── Profile update wizard (updates screen) ────────────────────────────────────
-// Single batched PATCH — student info + emergency + contacts in one transaction
-// Invalidates device cache → forces fresh /me fetch
 router.patch('/me/profile', validateUpdateProfile, updateProfile);
 
 // ── Visibility (emergency + visibility screens) ────────────────────────────────
-// Updates CardVisibility: visibility level + hidden_fields[]
 router.patch('/me/visibility', validateUpdateVisibility, updateVisibility);
 
 // ── Notification preferences (settings screen) ────────────────────────────────
@@ -77,28 +81,28 @@ router.patch('/me/location-consent', validateUpdateLocationConsent, updateLocati
 router.post('/me/lock-card', validateLockCard, lockCard);
 router.post('/me/request-replace', validateRequestReplace, requestReplace);
 
-// ── NEW: Location history ─────────────────────────────────────────────────────
+// ── Location history ──────────────────────────────────────────────────────────
 router.get('/me/location-history', validateLocationHistoryQuery, getLocationHistory);
 
-// ── NEW: Anomalies list ──────────────────────────────────────────────────────
+// ── Anomalies list ────────────────────────────────────────────────────────────
 router.get('/me/anomalies', validateAnomaliesQuery, getAnomalies);
 
-// ── NEW: Cards list ──────────────────────────────────────────────────────────
+// ── Cards list ────────────────────────────────────────────────────────────────
 router.get('/me/cards', getCards);
 
-// ── NEW: Request renewal ─────────────────────────────────────────────────────
+// ── Request renewal ───────────────────────────────────────────────────────────
 router.post('/me/request-renewal', validateRequestRenewal, requestRenewal);
 
-// ── NEW: Change phone number ─────────────────────────────────────────────────
+// ── Change phone number ───────────────────────────────────────────────────────
 router.post('/me/change-phone', validateChangePhone, changePhone);
 
-// ── NEW: Send OTP for phone change ───────────────────────────────────────────
+// ── Send OTP for phone change ─────────────────────────────────────────────────
 router.post('/me/send-phone-otp', validateSendPhoneOtp, sendPhoneChangeOtp);
 
 // ── Account deletion (settings — danger zone) ─────────────────────────────────
 router.delete('/me', deleteAccount);
 
-// parent push notification
+// ── Push notification device token registration ───────────────────────────────
 router.post('/device-token', validateRegisterDeviceToken, registerDeviceToken);
 
 export default router;

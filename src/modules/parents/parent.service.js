@@ -1,14 +1,6 @@
 // =============================================================================
-// modules/parents/parent.service.js — RESQID (COMPLETE WITH NOTIFICATIONS)
+// modules/parents/parent.service.js — RESQID (FULLY FIXED)
 // Orchestration + encryption + caching + NOTIFICATIONS. No Prisma.
-//
-// NOTIFICATIONS TRIGGERS:
-//   - Phone change: SMS + Email
-//   - Card lock: Email
-//   - Card replacement: SMS + Email
-//   - Card renewal: Email
-//   - Profile update (sensitive fields): Email
-//   - Account deletion: Email
 // =============================================================================
 
 import crypto from 'crypto';
@@ -20,14 +12,11 @@ import { prisma } from '#config/prisma.js';
 import { redis } from '#config/redis.js';
 import { hashOtp } from '#services/otp.service.js';
 import { logger } from '#config/logger.js';
-import { ENV } from '#config/env.js';
-
-// Import notification services
 import { sendSms } from '#integrations/sms/sms.service.js';
 import { sendEmail } from '#integrations/email/email.service.js';
 
 const HOME_KEY = id => `parent:home:${id}`;
-const HOME_TTL = 5 * 60; // 5 min server-side Redis TTL
+const HOME_TTL = 5 * 60;
 
 // ─── Helper to get parent contact info ───────────────────────────────────────
 
@@ -57,6 +46,13 @@ async function getCardDetails(cardId) {
     },
   });
   return card;
+}
+
+function maskPhone(phone) {
+  if (!phone) return 'Unknown';
+  const last4 = phone.slice(-4);
+  const prefix = phone.slice(0, 3);
+  return `${prefix}****${last4}`;
 }
 
 // ─── GET /me ─────────────────────────────────────────────────────────────────
@@ -188,11 +184,9 @@ export async function getScanHistory(parentId, query) {
 export async function updateProfile(parentId, body) {
   const { student_id, student, emergency, contacts } = body;
 
-  // Get student name for notification
   const studentName = await getStudentName(student_id);
   const parentInfo = await getParentContactInfo(parentId);
 
-  // Check if sensitive fields were updated
   const sensitiveFields = [
     'blood_group',
     'doctor_name',
@@ -204,7 +198,6 @@ export async function updateProfile(parentId, body) {
   const hasSensitiveChange =
     emergency && Object.keys(emergency).some(k => sensitiveFields.includes(k));
 
-  // Encrypt sensitive fields before DB write
   const encryptedEmergency = emergency
     ? {
         ...emergency,
@@ -233,46 +226,11 @@ export async function updateProfile(parentId, body) {
     entityId: student_id,
   });
 
-  // ✅ NOTIFICATION: Send email for sensitive changes
   if (hasSensitiveChange && parentInfo?.email) {
     sendEmail({
       to: parentInfo.email,
       subject: '📝 Emergency Profile Updated - RESQID',
-      html: `
-        <!DOCTYPE html>
-        <html>
-        <head><style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background: #E8342A; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
-          .content { padding: 20px; background: #f9f9f9; border: 1px solid #ddd; border-top: none; border-radius: 0 0 8px 8px; }
-          .alert-box { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; }
-          .info-row { margin: 10px 0; padding: 8px; background: white; border-radius: 4px; }
-          .footer { text-align: center; margin-top: 20px; font-size: 12px; color: #666; }
-        </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header"><h1>📝 Emergency Profile Updated</h1></div>
-            <div class='content'>
-              <p>Hello <strong>${parentInfo.name || 'Parent'}</strong>,</p>
-              <p>The emergency profile for <strong>${studentName}</strong> has been updated.</p>
-              <div class="alert-box">
-                <strong>⚠️ If you didn"t make this change</strong><br>
-                Please contact support immediately.
-              </div>
-              <div class="info-row">⏰ Time: ${new Date().toLocaleString()}</div>
-              <p style="margin-top: 20px; font-size: 14px; color: #666;">
-                This is an automated notification from RESQID.
-              </p>
-            </div>
-            <div class='footer'>
-              <p>&copy; ${new Date().getFullYear()} RESQID. All rights reserved.</p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `,
+      html: `<div>Emergency profile for ${studentName} updated at ${new Date().toLocaleString()}</div>`,
     }).catch(err => logger.warn({ err: err.message }, 'Profile update email failed'));
   }
 
@@ -334,46 +292,11 @@ export async function lockCard(parentId, body) {
     entityId: student_id,
   });
 
-  // ✅ NOTIFICATION: Send email alert
   if (parentInfo?.email) {
     sendEmail({
       to: parentInfo.email,
       subject: '🔒 Card Locked - RESQID Security Alert',
-      html: `
-        <!DOCTYPE html>
-        <html>
-        <head><style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background: #E8342A; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
-          .content { padding: 20px; background: #f9f9f9; border: 1px solid #ddd; border-top: none; border-radius: 0 0 8px 8px; }
-          .alert-box { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; }
-          .info-row { margin: 10px 0; padding: 8px; background: white; border-radius: 4px; }
-          .footer { text-align: center; margin-top: 20px; font-size: 12px; color: #666; }
-        </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header"><h1>🔒 Card Locked</h1></div>
-            <div class='content'>
-              <p>Hello <strong>${parentInfo.name || 'Parent'}</strong>,</p>
-              <p>The RESQID card for <strong>${studentName}</strong> has been locked successfully.</p>
-              <div class="alert-box">
-                <strong>✅ If you locked this card</strong><br>
-                No further action is needed.
-              </div>
-              <div class="info-row">⏰ Time: ${new Date().toLocaleString()}</div>
-              <p style="margin-top: 20px; font-size: 14px; color: #dc3545;">
-                ⚠️ If you didn"t lock this card, please contact support immediately.
-              </p>
-            </div>
-            <div class='footer'>
-              <p>&copy; ${new Date().getFullYear()} RESQID. All rights reserved.</p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `,
+      html: `<div>Card for ${studentName} locked at ${new Date().toLocaleString()}</div>`,
     }).catch(err => logger.warn({ err: err.message }, 'Card lock email failed'));
   }
 
@@ -399,51 +322,18 @@ export async function requestCardReplacement(parentId, body) {
     entityId: result.id,
   });
 
-  // ✅ NOTIFICATION: Send SMS confirmation
   if (parentInfo?.phone) {
     sendSms(
       parentInfo.phone,
-      `RESQID: Your card replacement request for ${studentName} has been received. Request ID: ${result.id.slice(0, 8)}. We'll notify you when it's processed.`
+      `RESQID: Card replacement for ${studentName} requested. ID: ${result.id.slice(0, 8)}`
     ).catch(err => logger.warn({ err: err.message }, 'Card replacement SMS failed'));
   }
 
-  // ✅ NOTIFICATION: Send email confirmation
   if (parentInfo?.email) {
     sendEmail({
       to: parentInfo.email,
       subject: '🆔 Card Replacement Request Received - RESQID',
-      html: `
-        <!DOCTYPE html>
-        <html>
-        <head><style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background: #28a745; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
-          .content { padding: 20px; background: #f9f9f9; border: 1px solid #ddd; border-top: none; border-radius: 0 0 8px 8px; }
-          .info-row { margin: 10px 0; padding: 8px; background: white; border-radius: 4px; }
-          .footer { text-align: center; margin-top: 20px; font-size: 12px; color: #666; }
-        </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header"><h1>🆔 Card Replacement Request Received</h1></div>
-            <div class='content'>
-              <p>Hello <strong>${parentInfo.name || 'Parent'}</strong>,</p>
-              <p>Your request to replace the RESQID card for <strong>${studentName}</strong> has been received.</p>
-              <div class="info-row"><strong>Reason:</strong> ${reason}</div>
-              <div class="info-row"><strong>Request ID:</strong> ${result.id}</div>
-              <div class="info-row"><strong>Time:</strong> ${new Date().toLocaleString()}</div>
-              <p style="margin-top: 20px; background: #d4edda; padding: 15px; border-radius: 5px; color: #155724;">
-                ✅ We will process your request within 3-5 business days. You"ll receive another notification when your new card is ready.
-              </p>
-            </div>
-            <div class='footer'>
-              <p>&copy; ${new Date().getFullYear()} RESQID. All rights reserved.</p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `,
+      html: `<div>Request ID: ${result.id}<br>Student: ${studentName}<br>Reason: ${reason}</div>`,
     }).catch(err => logger.warn({ err: err.message }, 'Card replacement email failed'));
   }
 
@@ -455,48 +345,11 @@ export async function requestCardReplacement(parentId, body) {
 export async function deleteAccount(parentId) {
   const parentInfo = await getParentContactInfo(parentId);
 
-  // ✅ NOTIFICATION: Send goodbye email before deletion
   if (parentInfo?.email) {
     sendEmail({
       to: parentInfo.email,
       subject: '👋 RESQID Account Deleted',
-      html: `
-        <!DOCTYPE html>
-        <html>
-        <head><style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background: #6c757d; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
-          .content { padding: 20px; background: #f9f9f9; border: 1px solid #ddd; border-top: none; border-radius: 0 0 8px 8px; }
-          .alert-box { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; }
-          .footer { text-align: center; margin-top: 20px; font-size: 12px; color: #666; }
-        </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header"><h1>👋 Account Deleted</h1></div>
-            <div class='content'>
-              <p>Hello <strong>${parentInfo.name || 'Parent'}</strong>,</p>
-              <p>Your RESQID account has been successfully deleted.</p>
-              <div class="alert-box">
-                <strong>⚠️ If you didn"t request this deletion</strong><br>
-                Please contact support immediately.
-              </div>
-              <div class="info-row">⏰ Time: ${new Date().toLocaleString()}</div>
-              <p style="margin-top: 20px; font-size: 14px; color: #666;">
-                We"re sorry to see you go. If you change your mind, you can always create a new account.
-              </p>
-              <p style="margin-top: 20px; font-size: 14px;">
-                Thank you for being part of the RESQID community.
-              </p>
-            </div>
-            <div class='footer'>
-              <p>&copy; ${new Date().getFullYear()} RESQID. All rights reserved.</p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `,
+      html: `<div>Your RESQID account has been deleted at ${new Date().toLocaleString()}</div>`,
     }).catch(err => logger.warn({ err: err.message }, 'Account deletion email failed'));
   }
 
@@ -592,44 +445,11 @@ export async function requestRenewal(parentId, body) {
     entityId: card_id,
   });
 
-  // ✅ NOTIFICATION: Send email confirmation
   if (parentInfo?.email) {
     sendEmail({
       to: parentInfo.email,
       subject: '🔄 Card Renewal Request Received - RESQID',
-      html: `
-        <!DOCTYPE html>
-        <html>
-        <head><style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background: #28a745; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
-          .content { padding: 20px; background: #f9f9f9; border: 1px solid #ddd; border-top: none; border-radius: 0 0 8px 8px; }
-          .info-row { margin: 10px 0; padding: 8px; background: white; border-radius: 4px; }
-          .footer { text-align: center; margin-top: 20px; font-size: 12px; color: #666; }
-        </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header"><h1>🔄 Card Renewal Request Received</h1></div>
-            <div class='content'>
-              <p>Hello <strong>${parentInfo.name || 'Parent'}</strong>,</p>
-              <p>Your request to renew the RESQID card for <strong>${studentName}</strong> has been received.</p>
-              <div class='info-row'><strong>Card Number:</strong> ${cardDetails?.card_number || 'N/A'}</div>
-              <div class="info-row"><strong>Payment Method:</strong> ${payment_method}</div>
-              <div class="info-row"><strong>Request ID:</strong> ${result.requestId}</div>
-              <div class="info-row"><strong>Time:</strong> ${new Date().toLocaleString()}</div>
-              <p style="margin-top: 20px; background: #d4edda; padding: 15px; border-radius: 5px; color: #155724;">
-                ✅ We will process your renewal shortly. You"ll receive another notification when your card is renewed.
-              </p>
-            </div>
-            <div class='footer'>
-              <p>&copy; ${new Date().getFullYear()} RESQID. All rights reserved.</p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `,
+      html: `<div>Card: ${cardDetails?.card_number || 'N/A'}<br>Student: ${studentName}<br>Payment: ${payment_method}</div>`,
     }).catch(err => logger.warn({ err: err.message }, 'Card renewal email failed'));
   }
 
@@ -637,19 +457,17 @@ export async function requestRenewal(parentId, body) {
 }
 
 // ─── POST /me/change-phone ───────────────────────────────────────────────────
-
 export async function changePhone(parentId, newPhone, otp, ipAddress) {
-  // Get old phone and parent info before update
   const oldParentInfo = await prisma.parentUser.findUnique({
     where: { id: parentId },
     select: { phone: true, email: true, name: true },
   });
 
-  const oldPhone = oldParentInfo?.phone || 'Unknown';
+  // ✅ FIXED: Decrypt old phone before using
+  const decryptedOldPhone = oldParentInfo?.phone ? safeDecrypt(oldParentInfo.phone) : null;
   const parentEmail = oldParentInfo?.email;
   const parentName = oldParentInfo?.name;
 
-  // Verify OTP
   const storedData = await redis.get(`otp:phone_change:${newPhone}`);
   if (!storedData) throw new Error('OTP expired or not requested');
 
@@ -662,7 +480,6 @@ export async function changePhone(parentId, newPhone, otp, ipAddress) {
 
   if (!valid) throw new Error('Invalid OTP');
 
-  // Update phone
   const phoneIndex = hashForLookup(newPhone);
   const encryptedPhone = encryptField(newPhone);
 
@@ -675,7 +492,6 @@ export async function changePhone(parentId, newPhone, otp, ipAddress) {
     },
   });
 
-  // Revoke all sessions
   await prisma.session.updateMany({
     where: { parent_user_id: parentId, is_active: true },
     data: {
@@ -685,7 +501,6 @@ export async function changePhone(parentId, newPhone, otp, ipAddress) {
     },
   });
 
-  // Clean up OTP
   await redis.del(`otp:phone_change:${newPhone}`);
 
   writeAuditLog({
@@ -697,64 +512,25 @@ export async function changePhone(parentId, newPhone, otp, ipAddress) {
     ip: ipAddress,
   });
 
-  // ✅ NOTIFICATION: Send SMS to new phone
+  // ✅ FIXED: Send SMS to new phone (plain text, already decrypted)
   sendSms(
     newPhone,
-    `RESQID: Your account phone number has been changed successfully. If you didn't make this change, please contact support immediately.`
+    `RESQID: Your account phone number has been changed. If not you, contact support.`
   ).catch(err => logger.warn({ err: err.message }, 'Phone change SMS to new number failed'));
 
-  // ✅ NOTIFICATION: Send SMS to old phone (security alert)
-  if (oldPhone && oldPhone !== newPhone) {
+  // ✅ FIXED: Send SMS to OLD phone using decrypted value
+  if (decryptedOldPhone && decryptedOldPhone !== newPhone) {
     sendSms(
-      oldPhone,
-      `RESQID ALERT: Your account phone number was changed to ${newPhone} on ${new Date().toLocaleString()}. If this wasn't you, please contact support immediately.`
+      decryptedOldPhone,
+      `RESQID ALERT: Your account phone was changed to ${newPhone} at ${new Date().toLocaleString()}.`
     ).catch(err => logger.warn({ err: err.message }, 'Phone change SMS to old number failed'));
   }
 
-  // ✅ NOTIFICATION: Send email to parent
   if (parentEmail) {
     sendEmail({
       to: parentEmail,
       subject: '📱 Phone Number Changed - RESQID Security Alert',
-      html: `
-        <!DOCTYPE html>
-        <html>
-        <head><style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background: #E8342A; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
-          .content { padding: 20px; background: #f9f9f9; border: 1px solid #ddd; border-top: none; border-radius: 0 0 8px 8px; }
-          .alert-box { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; }
-          .info-row { margin: 10px 0; padding: 8px; background: white; border-radius: 4px; }
-          .footer { text-align: center; margin-top: 20px; font-size: 12px; color: #666; }
-        </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header"><h1>📱 Phone Number Changed</h1></div>
-            <div class='content'>
-              <p>Hello <strong>${parentName || 'Parent'}</strong>,</p>
-              <p>Your RESQID account phone number has been changed.</p>
-              <div class="info-row"><strong>📞 Old Phone:</strong> ${maskPhone(oldPhone)}</div>
-              <div class="info-row"><strong>📱 New Phone:</strong> ${maskPhone(newPhone)}</div>
-              <div class='info-row'><strong>🌍 IP Address:</strong> ${ipAddress || 'Unknown'}</div>
-              <div class="info-row"><strong>⏰ Time:</strong> ${new Date().toLocaleString()}</div>
-              <div class="alert-box">
-                <strong>⚠️ If you didn"t make this change</strong><br>
-                Please contact support immediately to secure your account.
-              </div>
-              <p style="margin-top: 20px; font-size: 14px; color: #28a745;">
-                ✅ If you made this change, no further action is needed.
-              </p>
-            </div>
-            <div class='footer'>
-              <p>This is an automated security alert from RESQID.</p>
-              <p>&copy; ${new Date().getFullYear()} RESQID. All rights reserved.</p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `,
+      html: `<div>Hello ${parentName || 'Parent'},<br>Phone changed from ${maskPhone(decryptedOldPhone || 'Unknown')} to ${maskPhone(newPhone)}<br>IP: ${ipAddress || 'Unknown'}<br>Time: ${new Date().toLocaleString()}</div>`,
     }).catch(err => logger.warn({ err: err.message }, 'Phone change email failed'));
   }
 
@@ -762,16 +538,238 @@ export async function changePhone(parentId, newPhone, otp, ipAddress) {
   return { message: 'Phone number updated. Please login again.' };
 }
 
-function maskPhone(phone) {
-  if (!phone) return 'Unknown';
-  const last4 = phone.slice(-4);
-  const prefix = phone.slice(0, 3);
-  return `${prefix}****${last4}`;
-}
-
 // ─── POST /device-token ───────────────────────────────────────────────────────
 
 export async function registerDeviceToken(parentId, body) {
   const device = await repo.upsertDeviceToken(parentId, body);
   return device;
+}
+
+// ─── GET /me/children ─────────────────────────────────────────────────────────
+// Lightweight list of all children for the switcher UI
+export async function getChildrenList(parentId) {
+  const students = await prisma.parentStudent.findMany({
+    where: { parent_id: parentId },
+    select: {
+      student: {
+        select: {
+          id: true,
+          first_name: true,
+          last_name: true,
+          class: true,
+          section: true,
+          photo_url: true,
+          token: {
+            select: {
+              status: true,
+              expires_at: true,
+            },
+            take: 1,
+          },
+        },
+      },
+      is_primary: true,
+      relationship: true,
+    },
+    orderBy: { created_at: 'asc' },
+  });
+
+  return students.map(item => ({
+    id: item.student.id,
+    first_name: item.student.first_name,
+    last_name: item.student.last_name,
+    class: item.student.class,
+    section: item.student.section,
+    photo_url: item.student.photo_url,
+    is_primary: item.is_primary,
+    relationship: item.relationship,
+    token_status: item.student.token?.[0]?.status || null,
+    token_expiry: item.student.token?.[0]?.expires_at || null,
+  }));
+}
+
+// ─── POST /me/link-card ───────────────────────────────────────────────────────
+export async function linkCard({ parentId, cardNumber, phone, ipAddress }) {
+  // 1. Find the card
+  const card = await prisma.card.findUnique({
+    where: { card_number: cardNumber },
+    select: {
+      id: true,
+      student_id: true,
+      school_id: true,
+      student: {
+        select: {
+          first_name: true,
+          setup_stage: true,
+          is_active: true,
+          parents: {
+            select: { parent_id: true },
+            take: 1,
+          },
+        },
+      },
+    },
+  });
+
+  if (!card) {
+    throw new ApiError('Card not found', 404);
+  }
+
+  // 2. Check if card already has a parent (different from current)
+  if (card.student?.parents?.length > 0) {
+    const existingParentId = card.student.parents[0].parent_id;
+    if (existingParentId !== parentId) {
+      throw new ApiError('This card is already linked to another parent', 409);
+    }
+  }
+
+  // 3. Check if card has a student already
+  let studentId = card.student_id;
+
+  if (!studentId) {
+    // Create new student
+    const newStudent = await prisma.student.create({
+      data: {
+        school_id: card.school_id,
+        first_name: card.student?.first_name || null,
+        setup_stage: 'PENDING',
+        is_active: true,
+      },
+      select: { id: true },
+    });
+    studentId = newStudent.id;
+
+    // Create emergency profile
+    await prisma.emergencyProfile.create({
+      data: {
+        student_id: studentId,
+        visibility: 'HIDDEN',
+        is_visible: false,
+      },
+    });
+
+    // Update card with student
+    await prisma.card.update({
+      where: { id: card.id },
+      data: { student_id: studentId },
+    });
+  }
+
+  // 4. Check if already linked to this parent
+  const existingLink = await prisma.parentStudent.findUnique({
+    where: {
+      parent_id_student_id: {
+        parent_id: parentId,
+        student_id: studentId,
+      },
+    },
+  });
+
+  if (existingLink) {
+    throw new ApiError('This child is already linked to your account', 409);
+  }
+
+  // 5. Link parent to student
+  const existingChildrenCount = await prisma.parentStudent.count({
+    where: { parent_id: parentId },
+  });
+
+  // ✅ ADD MAX CHILDREN LIMIT HERE
+  const MAX_FREE_CHILDREN = 3;
+  if (existingChildrenCount >= MAX_FREE_CHILDREN) {
+    throw new ApiError(
+      `Free plan supports up to ${MAX_FREE_CHILDREN} children. Upgrade to premium to add more.`,
+      403
+    );
+  }
+
+  await prisma.parentStudent.create({
+    data: {
+      parent_id: parentId,
+      student_id: studentId,
+      relationship: 'Parent',
+      is_primary: existingChildrenCount === 0,
+    },
+  });
+
+  // 6. Link token if exists
+  const cardWithToken = await prisma.card.findUnique({
+    where: { id: card.id },
+    select: { token_id: true },
+  });
+
+  if (cardWithToken?.token_id) {
+    await prisma.token.update({
+      where: { id: cardWithToken.token_id },
+      data: {
+        student_id: studentId,
+        status: 'ACTIVE',
+      },
+    });
+  }
+
+  // 7. If this is the first child, set as active
+  if (existingChildrenCount === 0) {
+    await prisma.parentUser.update({
+      where: { id: parentId },
+      data: { active_student_id: studentId },
+    });
+  }
+
+  // 8. Invalidate cache
+  await invalidateParentHome(parentId);
+
+  // 9. Send notification
+  const parentInfo = await getParentContactInfo(parentId);
+  if (parentInfo?.email) {
+    sendEmail({
+      to: parentInfo.email,
+      subject: '👶 New Child Added - RESQID',
+      html: `<div>A new child has been added to your RESQID account.</div>`,
+    }).catch(err => logger.warn({ err: err.message }, 'Link card email failed'));
+  }
+
+  return {
+    success: true,
+    student_id: studentId,
+    student_name: card.student?.first_name || 'Child',
+    is_first_child: existingChildrenCount === 0,
+  };
+}
+
+// ─── PATCH /me/active-student ─────────────────────────────────────────────────
+// Switch the active student for this parent
+export async function setActiveStudent(parentId, studentId) {
+  // 1. Verify student is linked to parent
+  const link = await prisma.parentStudent.findFirst({
+    where: {
+      parent_id: parentId,
+      student_id: studentId,
+    },
+  });
+
+  if (!link) {
+    throw new ApiError('Student not linked to this parent', 403);
+  }
+
+  // 2. Update parent's active student
+  await prisma.parentUser.update({
+    where: { id: parentId },
+    data: { active_student_id: studentId },
+  });
+
+  // 3. Invalidate cache
+  await invalidateParentHome(parentId);
+
+  // 4. Audit log
+  writeAuditLog({
+    actorId: parentId,
+    actorType: 'PARENT_USER',
+    action: 'ACTIVE_STUDENT_CHANGED',
+    entity: 'ParentUser',
+    entityId: parentId,
+    metadata: { student_id: studentId },
+  });
+
+  return { success: true, active_student_id: studentId };
 }

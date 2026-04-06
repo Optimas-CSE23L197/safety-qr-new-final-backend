@@ -192,7 +192,6 @@ exports.Prisma.ParentUserScalarFieldEnum = {
   email: 'email',
   phone: 'phone',
   phone_index: 'phone_index',
-  password_hash: 'password_hash',
   name: 'name',
   avatar_url: 'avatar_url',
   preferred_language: 'preferred_language',
@@ -203,7 +202,8 @@ exports.Prisma.ParentUserScalarFieldEnum = {
   last_login_at: 'last_login_at',
   deleted_at: 'deleted_at',
   created_at: 'created_at',
-  updated_at: 'updated_at'
+  updated_at: 'updated_at',
+  active_student_id: 'active_student_id'
 };
 
 exports.Prisma.ParentDeviceScalarFieldEnum = {
@@ -299,7 +299,8 @@ exports.Prisma.StudentScalarFieldEnum = {
   qr_code_url: 'qr_code_url',
   scan_url: 'scan_url',
   token: 'token',
-  token_hash: 'token_hash'
+  token_hash: 'token_hash',
+  claimed_at: 'claimed_at'
 };
 
 exports.Prisma.ParentStudentScalarFieldEnum = {
@@ -308,7 +309,7 @@ exports.Prisma.ParentStudentScalarFieldEnum = {
   student_id: 'student_id',
   relationship: 'relationship',
   is_primary: 'is_primary',
-  created_at: 'created_at'
+  linked_at: 'linked_at'
 };
 
 exports.Prisma.EmergencyProfileScalarFieldEnum = {
