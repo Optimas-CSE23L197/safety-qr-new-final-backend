@@ -1,0 +1,340 @@
+### =============================================================================
+### health.http — RESQID Super Admin · Health Monitor
+### =============================================================================
+### Setup:
+###   1. Install REST Client extension (Huachao Mao) in VS Code
+###   2. Run login request first → copy token → set @token below
+###   3. Or use the JS pre-request script in your .env file
+###
+### Variables — fill these before running
+### =============================================================================
+
+@baseUrl    = http://localhost:3000
+@token      = PASTE_YOUR_SUPER_ADMIN_ACCESS_TOKEN_HERE
+@incidentId = inc-PASTE_AFTER_CREATING
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 0. LOGIN  (run this first to get your token)
+# ──────────────────────────────────────────────────────────────────────────────
+
+### [0] Super Admin Login
+# @name login
+POST {{baseUrl}}/api/auth/super-admin
+Content-Type: application/json
+
+{
+  "email": "admin@resqid.in",
+  "password": "your-password-here"
+}
+
+###
+# After login succeeds:
+#   1. Copy the accessToken from the response
+#   2. Paste it into @token above
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 1. FULL SYSTEM HEALTH
+# ──────────────────────────────────────────────────────────────────────────────
+
+### [1] Get full health snapshot
+# What the frontend Refresh button calls.
+# Returns: overall_status, services[], incidents[], dlq_unresolved, stalled_pipelines
+GET {{baseUrl}}/api/super-admin/health
+Authorization: Bearer {{token}}
+
+###
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 2. SERVICE STATUSES
+# ──────────────────────────────────────────────────────────────────────────────
+
+### [2] Get service statuses only (lighter endpoint)
+# Returns: overall_status + services[] without incident data
+GET {{baseUrl}}/api/super-admin/health/services
+Authorization: Bearer {{token}}
+
+###
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 3. INCIDENTS — LIST
+# ──────────────────────────────────────────────────────────────────────────────
+
+### [3a] List all incidents (default — no filters)
+GET {{baseUrl}}/api/super-admin/health/incidents
+Authorization: Bearer {{token}}
+
+###
+
+### [3b] List active incidents only (excludes RESOLVED)
+GET {{baseUrl}}/api/super-admin/health/incidents?active_only=true
+Authorization: Bearer {{token}}
+
+###
+
+### [3c] Filter by status — INVESTIGATING
+GET {{baseUrl}}/api/super-admin/health/incidents?status=INVESTIGATING
+Authorization: Bearer {{token}}
+
+###
+
+### [3d] Filter by status — IDENTIFIED
+GET {{baseUrl}}/api/super-admin/health/incidents?status=IDENTIFIED
+Authorization: Bearer {{token}}
+
+###
+
+### [3e] Filter by status — MONITORING
+GET {{baseUrl}}/api/super-admin/health/incidents?status=MONITORING
+Authorization: Bearer {{token}}
+
+###
+
+### [3f] Filter by status — RESOLVED
+GET {{baseUrl}}/api/super-admin/health/incidents?status=RESOLVED
+Authorization: Bearer {{token}}
+
+###
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 4. INCIDENTS — CREATE
+# ──────────────────────────────────────────────────────────────────────────────
+
+### [4a] Create incident — HIGH severity (SMS Gateway)
+# Copy the returned `id` → set @incidentId above
+POST {{baseUrl}}/api/super-admin/health/incidents
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "title": "SMS Gateway elevated latency",
+  "severity": "HIGH",
+  "affected_services": ["sms", "notif"],
+  "message": "Outbound SMS delivery is experiencing elevated latency above 1200ms. Vendor notified and investigating."
+}
+
+###
+
+### [4b] Create incident — MEDIUM severity (single service)
+POST {{baseUrl}}/api/super-admin/health/incidents
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "title": "Email service degraded performance",
+  "severity": "MEDIUM",
+  "affected_services": ["email"],
+  "message": "Email delivery success rate has dropped to 85%. Provider support ticket raised."
+}
+
+###
+
+### [4c] Create incident — LOW severity (scheduled maintenance)
+POST {{baseUrl}}/api/super-admin/health/incidents
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "title": "Scheduled DB maintenance window",
+  "severity": "LOW",
+  "affected_services": ["db"],
+  "message": "Planned maintenance on Neon Postgres cluster. Expected downtime: 5 minutes. Scheduled for 02:00 IST."
+}
+
+###
+
+### [4d] Create incident — CRITICAL (full outage)
+POST {{baseUrl}}/api/super-admin/health/incidents
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "title": "Complete API server outage",
+  "severity": "CRITICAL",
+  "affected_services": ["api", "db", "redis", "qr", "notif"],
+  "message": "API server is not responding. All services are affected. Team is actively investigating."
+}
+
+###
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 5. INCIDENTS — GET SINGLE
+# ──────────────────────────────────────────────────────────────────────────────
+
+### [5a] Get incident by ID (set @incidentId after creating)
+GET {{baseUrl}}/api/super-admin/health/incidents/{{incidentId}}
+Authorization: Bearer {{token}}
+
+###
+
+### [5b] Get non-existent incident (expect 404)
+GET {{baseUrl}}/api/super-admin/health/incidents/inc-doesnotexist
+Authorization: Bearer {{token}}
+
+###
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 6. INCIDENTS — UPDATE (PATCH)
+# ──────────────────────────────────────────────────────────────────────────────
+
+### [6a] Update status → IDENTIFIED
+PATCH {{baseUrl}}/api/super-admin/health/incidents/{{incidentId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "status": "IDENTIFIED",
+  "message": "Root cause identified: MSG91 rate limiting on our API key due to spike in OTP requests. Contacted vendor to raise limits."
+}
+
+###
+
+### [6b] Update status → MONITORING (with escalated severity)
+PATCH {{baseUrl}}/api/super-admin/health/incidents/{{incidentId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "status": "MONITORING",
+  "severity": "HIGH",
+  "message": "Fix applied. Monitoring delivery rates for the next 30 minutes before marking resolved."
+}
+
+###
+
+### [6c] Resolve incident
+PATCH {{baseUrl}}/api/super-admin/health/incidents/{{incidentId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "status": "RESOLVED",
+  "message": "Delivery rates returned to normal. Incident resolved. Post-mortem scheduled for Monday."
+}
+
+###
+
+### [6d] Update message only (no status change)
+PATCH {{baseUrl}}/api/super-admin/health/incidents/{{incidentId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "message": "Engineering team is actively working on the fix. ETA: 20 minutes."
+}
+
+###
+
+### [6e] Update severity only
+PATCH {{baseUrl}}/api/super-admin/health/incidents/{{incidentId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "severity": "CRITICAL"
+}
+
+###
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 7. VALIDATION ERROR CASES  (all should return 422)
+# ──────────────────────────────────────────────────────────────────────────────
+
+### [7a] Create — missing required fields
+POST {{baseUrl}}/api/super-admin/health/incidents
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "title": "Incomplete incident"
+}
+
+###
+
+### [7b] Create — title too short
+POST {{baseUrl}}/api/super-admin/health/incidents
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "title": "Hi",
+  "severity": "LOW",
+  "affected_services": ["api"],
+  "message": "Some message that is long enough to pass"
+}
+
+###
+
+### [7c] Create — invalid service ID
+POST {{baseUrl}}/api/super-admin/health/incidents
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "title": "Test with bad service",
+  "severity": "LOW",
+  "affected_services": ["invalid-service"],
+  "message": "This should fail validation on affected_services"
+}
+
+###
+
+### [7d] Create — invalid severity
+POST {{baseUrl}}/api/super-admin/health/incidents
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "title": "Test with bad severity",
+  "severity": "SUPER_HIGH",
+  "affected_services": ["api"],
+  "message": "This should fail on severity validation"
+}
+
+###
+
+### [7e] Update — empty body (expect 422 — at least one field required)
+PATCH {{baseUrl}}/api/super-admin/health/incidents/{{incidentId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{}
+
+###
+
+### [7f] List — invalid status filter (expect 422)
+GET {{baseUrl}}/api/super-admin/health/incidents?status=UNKNOWN_STATUS
+Authorization: Bearer {{token}}
+
+###
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 8. AUTH ERROR CASES
+# ──────────────────────────────────────────────────────────────────────────────
+
+### [8a] No token (expect 401)
+GET {{baseUrl}}/api/super-admin/health
+
+###
+
+### [8b] Malformed token (expect 401)
+GET {{baseUrl}}/api/super-admin/health
+Authorization: Bearer this.is.not.a.valid.jwt
+
+###
+
+### [8c] Wrong role — school admin token (expect 403)
+# Replace with a valid SCHOOL_ADMIN token to test RBAC
+GET {{baseUrl}}/api/super-admin/health
+Authorization: Bearer PASTE_SCHOOL_ADMIN_TOKEN_HERE
+
+###
