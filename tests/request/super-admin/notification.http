@@ -1,0 +1,280 @@
+# =============================================================================
+# notifications.http — RESQID Super Admin
+# Notification module — all 3 endpoints
+#
+# Setup:
+#   1. Install REST Client extension (VS Code) or use JetBrains HTTP Client
+#   2. Run login request first → copy token → paste into @token below
+#   3. Replace @baseUrl if your dev port differs
+# =============================================================================
+
+@baseUrl    = http://localhost:3000
+@token      = PASTE_ACCESS_TOKEN_HERE
+@authHeader = Bearer {{token}}
+
+# Replace these with real UUIDs from your DB after seeding
+@schoolId        = 00000000-0000-0000-0000-000000000001
+@notificationId  = 00000000-0000-0000-0000-000000000002
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AUTH — run once, copy token from response
+# ─────────────────────────────────────────────────────────────────────────────
+
+### Login as Super Admin
+# @name login
+POST {{baseUrl}}/api/auth/super-admin
+Content-Type: application/json
+
+{
+  "email": "superadmin@resqid.in",
+  "password": "YourPassword@123"
+}
+
+###
+
+
+# =============================================================================
+# 1. STATS
+#    GET /api/super-admin/notifications/stats
+#    → Powers the three stat cards:
+#      "Total Notifications" / "Avg. Delivery Rate" / "Total Failed"
+# =============================================================================
+
+### 1a. Stats — default (last 30 days)
+GET {{baseUrl}}/api/super-admin/notifications/stats
+Authorization: {{authHeader}}
+
+###
+
+### 1b. Stats — last 24 hours
+GET {{baseUrl}}/api/super-admin/notifications/stats?date_range=24h
+Authorization: {{authHeader}}
+
+###
+
+### 1c. Stats — last 7 days
+GET {{baseUrl}}/api/super-admin/notifications/stats?date_range=7d
+Authorization: {{authHeader}}
+
+###
+
+### 1d. Stats — this calendar month
+GET {{baseUrl}}/api/super-admin/notifications/stats?date_range=this_month
+Authorization: {{authHeader}}
+
+###
+
+### 1e. Stats — custom date range
+GET {{baseUrl}}/api/super-admin/notifications/stats?date_range=custom&date_from=2026-01-01&date_to=2026-03-31
+Authorization: {{authHeader}}
+
+###
+
+### 1f. Stats — VALIDATION ERROR (custom without date_from/date_to)
+# Expected: 422 Validation Error
+GET {{baseUrl}}/api/super-admin/notifications/stats?date_range=custom
+Authorization: {{authHeader}}
+
+###
+
+
+# =============================================================================
+# 2. LIST NOTIFICATIONS
+#    GET /api/super-admin/notifications
+#    → Powers the Notification Logs table with filters + pagination
+# =============================================================================
+
+### 2a. List — no filters, first page (default limit 10)
+GET {{baseUrl}}/api/super-admin/notifications
+Authorization: {{authHeader}}
+
+###
+
+### 2b. List — page 2, limit 25
+GET {{baseUrl}}/api/super-admin/notifications?page=2&limit=25
+Authorization: {{authHeader}}
+
+###
+
+### 2c. List — filter by channel: PUSH
+GET {{baseUrl}}/api/super-admin/notifications?channel=PUSH
+Authorization: {{authHeader}}
+
+###
+
+### 2d. List — filter by channel: EMAIL
+GET {{baseUrl}}/api/super-admin/notifications?channel=EMAIL
+Authorization: {{authHeader}}
+
+###
+
+### 2e. List — filter by channel: SMS
+GET {{baseUrl}}/api/super-admin/notifications?channel=SMS
+Authorization: {{authHeader}}
+
+###
+
+### 2f. List — filter by status: SENT
+GET {{baseUrl}}/api/super-admin/notifications?status=SENT
+Authorization: {{authHeader}}
+
+###
+
+### 2g. List — filter by status: FAILED
+GET {{baseUrl}}/api/super-admin/notifications?status=FAILED
+Authorization: {{authHeader}}
+
+###
+
+### 2h. List — filter by status: QUEUED
+GET {{baseUrl}}/api/super-admin/notifications?status=QUEUED
+Authorization: {{authHeader}}
+
+###
+
+### 2i. List — filter by status: SUPPRESSED
+GET {{baseUrl}}/api/super-admin/notifications?status=SUPPRESSED
+Authorization: {{authHeader}}
+
+###
+
+### 2j. List — filter by type: SCAN_ALERT
+GET {{baseUrl}}/api/super-admin/notifications?type=SCAN_ALERT
+Authorization: {{authHeader}}
+
+###
+
+### 2k. List — filter by type: BILLING_ALERT
+GET {{baseUrl}}/api/super-admin/notifications?type=BILLING_ALERT
+Authorization: {{authHeader}}
+
+###
+
+### 2l. List — filter by type: SCAN_ANOMALY
+GET {{baseUrl}}/api/super-admin/notifications?type=SCAN_ANOMALY
+Authorization: {{authHeader}}
+
+###
+
+### 2m. List — filter by type: CARD_EXPIRING
+GET {{baseUrl}}/api/super-admin/notifications?type=CARD_EXPIRING
+Authorization: {{authHeader}}
+
+###
+
+### 2n. List — filter by type: CARD_REVOKED
+GET {{baseUrl}}/api/super-admin/notifications?type=CARD_REVOKED
+Authorization: {{authHeader}}
+
+###
+
+### 2o. List — filter by type: CARD_REPLACED
+GET {{baseUrl}}/api/super-admin/notifications?type=CARD_REPLACED
+Authorization: {{authHeader}}
+
+###
+
+### 2p. List — filter by school
+GET {{baseUrl}}/api/super-admin/notifications?school_id={{schoolId}}
+Authorization: {{authHeader}}
+
+###
+
+### 2q. List — combined: school + channel + status
+GET {{baseUrl}}/api/super-admin/notifications?school_id={{schoolId}}&channel=PUSH&status=FAILED
+Authorization: {{authHeader}}
+
+###
+
+### 2r. List — combined: type + status + date_range
+GET {{baseUrl}}/api/super-admin/notifications?type=SCAN_ALERT&status=SENT&date_range=7d
+Authorization: {{authHeader}}
+
+###
+
+### 2s. List — combined: all filters together
+GET {{baseUrl}}/api/super-admin/notifications?school_id={{schoolId}}&type=SCAN_ALERT&channel=PUSH&status=FAILED&date_range=30d&page=1&limit=25
+Authorization: {{authHeader}}
+
+###
+
+### 2t. List — custom date range with pagination
+GET {{baseUrl}}/api/super-admin/notifications?date_range=custom&date_from=2026-02-01&date_to=2026-03-07&page=1&limit=50
+Authorization: {{authHeader}}
+
+###
+
+### 2u. List — VALIDATION ERROR: limit over max (100)
+# Expected: 422 Validation Error
+GET {{baseUrl}}/api/super-admin/notifications?limit=200
+Authorization: {{authHeader}}
+
+###
+
+### 2v. List — VALIDATION ERROR: invalid channel value
+# Expected: 422 Validation Error
+GET {{baseUrl}}/api/super-admin/notifications?channel=WHATSAPP_BUSINESS
+Authorization: {{authHeader}}
+
+###
+
+### 2w. List — VALIDATION ERROR: invalid status value
+# Expected: 422 Validation Error
+GET {{baseUrl}}/api/super-admin/notifications?status=DELIVERED
+Authorization: {{authHeader}}
+
+###
+
+### 2x. List — VALIDATION ERROR: invalid school_id (not UUID)
+# Expected: 422 Validation Error
+GET {{baseUrl}}/api/super-admin/notifications?school_id=not-a-uuid
+Authorization: {{authHeader}}
+
+###
+
+### 2y. List — VALIDATION ERROR: custom range missing date_to
+# Expected: 422 Validation Error
+GET {{baseUrl}}/api/super-admin/notifications?date_range=custom&date_from=2026-01-01
+Authorization: {{authHeader}}
+
+###
+
+### 2z. List — AUTH ERROR: no token
+# Expected: 401 Unauthorized
+GET {{baseUrl}}/api/super-admin/notifications
+
+###
+
+
+# =============================================================================
+# 3. SINGLE NOTIFICATION (Payload Modal)
+#    GET /api/super-admin/notifications/:id
+#    → Called when user clicks [View Payload] in the table row
+# =============================================================================
+
+### 3a. Get notification by ID
+GET {{baseUrl}}/api/super-admin/notifications/{{notificationId}}
+Authorization: {{authHeader}}
+
+###
+
+### 3b. NOT FOUND — valid UUID but no record
+# Expected: 404 Not Found
+GET {{baseUrl}}/api/super-admin/notifications/00000000-0000-0000-0000-000000000000
+Authorization: {{authHeader}}
+
+###
+
+### 3c. VALIDATION ERROR — id is not a UUID
+# Expected: 422 Validation Error
+GET {{baseUrl}}/api/super-admin/notifications/not-a-uuid
+Authorization: {{authHeader}}
+
+###
+
+### 3d. AUTH ERROR — no token
+# Expected: 401 Unauthorized
+GET {{baseUrl}}/api/super-admin/notifications/{{notificationId}}
+
+###
