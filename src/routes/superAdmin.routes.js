@@ -24,7 +24,7 @@ router.use(requireSuperAdmin);
 router.use('/dashboard', dashboardRoutes);
 router.use('/schools', schoolsRoutes);
 router.use('/admins', adminRoutes);
-router.use('students', studentRoutes);
+router.use('/students', studentRoutes);
 router.use('/parents', parentRoutes);
 router.use('/tokens', tokenRoutes);
 router.use('/scan-logs', scanRoutes);

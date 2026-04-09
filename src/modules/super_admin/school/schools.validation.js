@@ -50,7 +50,10 @@ export const registerSchoolSchema = z
     admin: z.object({
       name: z.string().min(1),
       email: z.string().email(),
-      password: z.string().min(8),
+      password: z
+        .string()
+        .length(64)
+        .regex(/^[a-f0-9]{64}$/, 'Password must be valid SHA-256 hex hash'),
     }),
     subscription: z.object({
       plan: z.enum(['BASIC', 'PREMIUM', 'CUSTOM']),
@@ -64,5 +67,18 @@ export const registerSchoolSchema = z
       agreed_via: z.enum(['DASHBOARD', 'PHYSICAL', 'EMAIL']).default('DASHBOARD'),
       ip_address: z.string().optional(),
     }),
+    idempotencyKey: z.string().uuid().optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    data => {
+      if (data.subscription.plan === 'CUSTOM') {
+        return data.subscription.custom_unit_price && data.subscription.custom_renewal_price;
+      }
+      return true;
+    },
+    {
+      message: 'Custom plan requires custom_unit_price and custom_renewal_price',
+      path: ['subscription'],
+    }
+  );

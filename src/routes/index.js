@@ -7,13 +7,13 @@ import { Router } from 'express';
 
 import authRoute from '#modules/auth/auth.routes.js';
 import orderRoute from '#modules/order/order.routes.js';
-
 // ================================================
 // Super admin routes
 // ================================================
 import superAdminRoutes from './superAdmin.routes.js';
 
 const router = Router();
+
 
 router.use('/auth', authRoute);
 router.use('/orders', orderRoute);

@@ -1,0 +1,1139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <meta name="theme-color" content="#0A0F1E" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>RESQID — Emergency Profile</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      /* ── Reset ── */
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      /* ── Security ── */
+      body {
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+        overflow: hidden;
+      }
+      img {
+        pointer-events: none;
+        -webkit-user-drag: none;
+      }
+
+      /* ── Tokens ── */
+      :root {
+        --bg: #0a0f1e;
+        --surface: #111827;
+        --surface2: #1a2236;
+        --border: rgba(255, 255, 255, 0.07);
+        --border2: rgba(255, 255, 255, 0.12);
+        --text: #f1f5f9;
+        --text-muted: #64748b;
+        --text-dim: #94a3b8;
+        --red: #ef4444;
+        --red-bg: rgba(239, 68, 68, 0.1);
+        --red-border: rgba(239, 68, 68, 0.2);
+        --green: #10b981;
+        --green-bg: rgba(16, 185, 129, 0.1);
+        --amber: #f59e0b;
+        --amber-bg: rgba(245, 158, 11, 0.1);
+        --blue: #3b82f6;
+        --blue-bg: rgba(59, 130, 246, 0.1);
+        --accent: #e84545;
+        --accent2: #ff6b6b;
+        --font: 'DM Sans', sans-serif;
+        --mono: 'DM Mono', monospace;
+        --radius: 16px;
+        --radius-sm: 10px;
+      }
+
+      html,
+      body {
+        min-height: 100%;
+        background: var(--bg);
+        font-family: var(--font);
+        color: var(--text);
+        overflow-x: hidden;
+      }
+
+      /* ── Loading ── */
+      #loading {
+        position: fixed;
+        inset: 0;
+        background: var(--bg);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+        z-index: 100;
+        transition: opacity 0.4s ease;
+      }
+      .pulse-ring {
+        width: 64px;
+        height: 64px;
+        position: relative;
+      }
+      .pulse-ring::before,
+      .pulse-ring::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        border: 2px solid var(--accent);
+      }
+      .pulse-ring::before {
+        animation: pulse-expand 1.6s ease-out infinite;
+      }
+      .pulse-ring::after {
+        animation: pulse-expand 1.6s ease-out 0.5s infinite;
+      }
+      .pulse-logo {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+      }
+      @keyframes pulse-expand {
+        0% {
+          transform: scale(0.6);
+          opacity: 1;
+        }
+        100% {
+          transform: scale(2);
+          opacity: 0;
+        }
+      }
+      #loading p {
+        font-size: 0.78rem;
+        color: var(--text-muted);
+        font-weight: 500;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      /* ── App Shell ── */
+      #app {
+        display: none;
+        min-height: 100vh;
+      }
+      #app.visible {
+        display: block;
+        animation: fadeUp 0.5s ease both;
+      }
+      @keyframes fadeUp {
+        from {
+          opacity: 0;
+          transform: translateY(16px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* ── Status pages (error / inactive / unregistered) ── */
+      .status-page {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 32px 24px;
+        text-align: center;
+        gap: 16px;
+      }
+      .status-icon {
+        width: 72px;
+        height: 72px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+        margin-bottom: 8px;
+      }
+      .status-icon.error {
+        background: var(--red-bg);
+        border: 1px solid var(--red-border);
+      }
+      .status-icon.warn {
+        background: var(--amber-bg);
+        border: 1px solid rgba(245, 158, 11, 0.2);
+      }
+      .status-icon.info {
+        background: var(--blue-bg);
+        border: 1px solid rgba(59, 130, 246, 0.2);
+      }
+      .status-title {
+        font-size: 1.3rem;
+        font-weight: 800;
+        color: var(--text);
+      }
+      .status-msg {
+        font-size: 0.88rem;
+        color: var(--text-dim);
+        max-width: 280px;
+        line-height: 1.6;
+      }
+      .school-footer {
+        margin-top: 24px;
+        font-size: 0.75rem;
+        color: var(--text-muted);
+      }
+
+      /* ── Emergency Header ── */
+      .emergency-header {
+        background: linear-gradient(160deg, #1a0808 0%, #0a0f1e 60%);
+        padding: 0;
+        position: relative;
+        overflow: hidden;
+      }
+      .emergency-header::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(
+          ellipse at top left,
+          rgba(232, 69, 69, 0.15) 0%,
+          transparent 60%
+        );
+        pointer-events: none;
+      }
+
+      /* Red emergency strip */
+      .emer-strip {
+        background: var(--accent);
+        padding: 9px 20px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .emer-strip span {
+        font-size: 0.7rem;
+        font-weight: 800;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #fff;
+      }
+      .emer-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #fff;
+        animation: blink 1.2s ease-in-out infinite;
+        flex-shrink: 0;
+      }
+      @keyframes blink {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.3;
+        }
+      }
+
+      /* Profile hero */
+      .profile-hero {
+        padding: 24px 20px 28px;
+        display: flex;
+        gap: 18px;
+        align-items: flex-start;
+        position: relative;
+        z-index: 1;
+      }
+      .avatar-wrap {
+        flex-shrink: 0;
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        border: 2.5px solid rgba(232, 69, 69, 0.5);
+        overflow: hidden;
+        background: var(--surface2);
+        position: relative;
+      }
+      .avatar-wrap img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .avatar-initials {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.8rem;
+        font-weight: 800;
+        color: var(--accent);
+      }
+      .profile-info {
+        flex: 1;
+        min-width: 0;
+        padding-top: 4px;
+      }
+      .profile-name {
+        font-size: 1.35rem;
+        font-weight: 800;
+        color: var(--text);
+        line-height: 1.2;
+        margin-bottom: 4px;
+      }
+      .profile-meta {
+        font-size: 0.78rem;
+        color: var(--text-dim);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 10px;
+      }
+      .meta-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid var(--border2);
+        padding: 3px 8px;
+        border-radius: 20px;
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: var(--text-dim);
+      }
+      .blood-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        background: var(--red-bg);
+        border: 1px solid var(--red-border);
+        padding: 5px 12px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 800;
+        color: var(--accent2);
+      }
+
+      /* School strip */
+      .school-strip {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 20px;
+        background: rgba(255, 255, 255, 0.03);
+        border-top: 1px solid var(--border);
+      }
+      .school-logo {
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        object-fit: cover;
+        background: var(--surface2);
+        flex-shrink: 0;
+      }
+      .school-logo-placeholder {
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        background: var(--surface2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.7rem;
+        font-weight: 800;
+        color: var(--text-muted);
+        flex-shrink: 0;
+      }
+      .school-name {
+        font-size: 0.82rem;
+        font-weight: 700;
+        color: var(--text-dim);
+      }
+      .school-addr {
+        font-size: 0.7rem;
+        color: var(--text-muted);
+        margin-top: 1px;
+      }
+
+      /* ── Content ── */
+      .content {
+        padding: 16px 16px 32px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      /* ── Section Card ── */
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+      }
+      .card-header {
+        padding: 12px 16px 10px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .card-header-icon {
+        width: 26px;
+        height: 26px;
+        border-radius: 7px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.8rem;
+        flex-shrink: 0;
+      }
+      .card-header-title {
+        font-size: 0.7rem;
+        font-weight: 800;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+      }
+      .card-body {
+        padding: 14px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      /* ── Info Row ── */
+      .info-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+      }
+      .info-label {
+        font-size: 0.68rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-muted);
+        min-width: 90px;
+        padding-top: 2px;
+        flex-shrink: 0;
+      }
+      .info-value {
+        font-size: 0.88rem;
+        font-weight: 500;
+        color: var(--text);
+        line-height: 1.5;
+        flex: 1;
+      }
+      .info-value.mono {
+        font-family: var(--mono);
+        font-size: 0.82rem;
+      }
+
+      /* ── Contact Card ── */
+      .contact-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--border);
+      }
+      .contact-item:last-child {
+        border-bottom: none;
+      }
+      .contact-avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: var(--surface2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.85rem;
+        font-weight: 800;
+        color: var(--text-dim);
+        flex-shrink: 0;
+        border: 1px solid var(--border2);
+      }
+      .contact-info {
+        flex: 1;
+        min-width: 0;
+      }
+      .contact-name {
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: var(--text);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .contact-rel {
+        font-size: 0.72rem;
+        color: var(--text-muted);
+        margin-top: 1px;
+        font-weight: 500;
+      }
+      .contact-actions {
+        display: flex;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+
+      /* Action buttons */
+      .action-btn {
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        border: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+        transition:
+          transform 0.15s,
+          opacity 0.15s;
+        text-decoration: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .action-btn:active {
+        transform: scale(0.9);
+        opacity: 0.8;
+      }
+      .btn-call {
+        background: var(--green-bg);
+        border: 1px solid rgba(16, 185, 129, 0.25);
+        color: var(--green);
+      }
+      .btn-whatsapp {
+        background: rgba(37, 211, 102, 0.1);
+        border: 1px solid rgba(37, 211, 102, 0.2);
+        color: #25d366;
+      }
+
+      /* ── Doctor row ── */
+      .doctor-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 16px;
+      }
+      .doctor-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: var(--blue-bg);
+        border: 1px solid rgba(59, 130, 246, 0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+        flex-shrink: 0;
+      }
+      .doctor-info {
+        flex: 1;
+        min-width: 0;
+      }
+      .doctor-name {
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: var(--text);
+      }
+      .doctor-label {
+        font-size: 0.7rem;
+        color: var(--text-muted);
+        margin-top: 1px;
+        font-weight: 500;
+      }
+
+      /* ── Alert chips ── */
+      .alert-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 5px 10px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        margin: 0 4px 6px 0;
+      }
+      .chip-red {
+        background: var(--red-bg);
+        border: 1px solid var(--red-border);
+        color: #fca5a5;
+      }
+      .chip-amber {
+        background: var(--amber-bg);
+        border: 1px solid rgba(245, 158, 11, 0.2);
+        color: #fcd34d;
+      }
+      .chip-blue {
+        background: var(--blue-bg);
+        border: 1px solid rgba(59, 130, 246, 0.2);
+        color: #93c5fd;
+      }
+      .chip-wrap {
+        display: flex;
+        flex-wrap: wrap;
+        padding: 12px 16px;
+      }
+
+      /* ── Notes ── */
+      .notes-text {
+        font-size: 0.85rem;
+        color: var(--text-dim);
+        line-height: 1.65;
+        padding: 12px 16px;
+      }
+
+      /* ── RESQID footer ── */
+      .resqid-footer {
+        text-align: center;
+        padding: 24px 20px 40px;
+      }
+      .resqid-brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        margin-bottom: 6px;
+      }
+      .resqid-brand-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--accent);
+      }
+      .resqid-brand-name {
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+      }
+      .resqid-tagline {
+        font-size: 0.68rem;
+        color: var(--text-muted);
+        opacity: 0.5;
+        letter-spacing: 0.04em;
+      }
+
+      /* ── Minimal visibility ── */
+      .minimal-note {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: var(--amber-bg);
+        border: 1px solid rgba(245, 158, 11, 0.2);
+        border-radius: var(--radius-sm);
+        padding: 10px 14px;
+        margin: 0 16px;
+        font-size: 0.78rem;
+        color: #fcd34d;
+        font-weight: 500;
+      }
+
+      /* ── Hidden visibility ── */
+      .hidden-note {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(100, 116, 139, 0.1);
+        border: 1px solid rgba(100, 116, 139, 0.2);
+        border-radius: var(--radius-sm);
+        padding: 10px 14px;
+        margin: 0 16px;
+        font-size: 0.78rem;
+        color: var(--text-dim);
+        font-weight: 500;
+      }
+
+      /* ── School call strip ── */
+      .school-call-strip {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 16px;
+      }
+      .school-call-info {
+        flex: 1;
+        min-width: 0;
+      }
+      .school-call-name {
+        font-size: 0.88rem;
+        font-weight: 700;
+        color: var(--text);
+      }
+      .school-call-sub {
+        font-size: 0.7rem;
+        color: var(--text-muted);
+        margin-top: 1px;
+      }
+
+      .call-now-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 9px 16px;
+        border-radius: 24px;
+        border: none;
+        cursor: pointer;
+        font-family: var(--font);
+        font-size: 0.78rem;
+        font-weight: 700;
+        text-decoration: none;
+        -webkit-tap-highlight-color: transparent;
+        transition:
+          transform 0.15s,
+          opacity 0.15s;
+        flex-shrink: 0;
+      }
+      .call-now-btn:active {
+        transform: scale(0.95);
+        opacity: 0.85;
+      }
+      .call-now-btn.green {
+        background: var(--green);
+        color: #fff;
+      }
+      .call-now-btn.blue {
+        background: var(--blue);
+        color: #fff;
+      }
+
+      /* divider */
+      .divider {
+        height: 1px;
+        background: var(--border);
+        margin: 0;
+      }
+
+      /* empty state within card */
+      .empty-row {
+        padding: 16px;
+        text-align: center;
+        font-size: 0.78rem;
+        color: var(--text-muted);
+      }
+
+      /* ── Utility ── */
+      .hidden {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Loading -->
+    <div id="loading">
+      <div class="pulse-ring">
+        <div class="pulse-logo">🆘</div>
+      </div>
+      <p>Loading profile…</p>
+    </div>
+
+    <!-- App -->
+    <div id="app"></div>
+
+    <script>
+      // ── Security: disable right-click & common devtools shortcuts ────────────
+      document.addEventListener('contextmenu', e => e.preventDefault());
+      document.addEventListener('keydown', e => {
+        const blocked =
+          e.key === 'F12' ||
+          (e.ctrlKey && e.shiftKey && ['I', 'J', 'C', 'K'].includes(e.key)) ||
+          (e.ctrlKey && e.key === 'U') ||
+          (e.ctrlKey && e.key === 'S') ||
+          (e.ctrlKey && e.key === 'P');
+        if (blocked) e.preventDefault();
+      });
+
+      // ── Helpers ──────────────────────────────────────────────────────────────
+      const esc = s =>
+        s
+          ? String(s).replace(
+              /[&<>"']/g,
+              c =>
+                ({
+                  '&': '&amp;',
+                  '<': '&lt;',
+                  '>': '&gt;',
+                  '"': '&quot;',
+                  "'": '&#39;',
+                })[c]
+            )
+          : '';
+
+      const initials = name =>
+        name
+          ? name
+              .split(' ')
+              .map(w => w[0])
+              .slice(0, 2)
+              .join('')
+              .toUpperCase()
+          : '?';
+
+      function getToken() {
+        const parts = window.location.pathname.split('/');
+        return parts.filter(Boolean).pop() || null;
+      }
+
+      // ── Renderers ────────────────────────────────────────────────────────────
+
+      function resqidFooterHtml() {
+        return `
+        <div class="resqid-footer">
+          <div class="resqid-brand">
+            <div class="resqid-brand-dot"></div>
+            <span class="resqid-brand-name">RESQID</span>
+          </div>
+          <p class="resqid-tagline">Emergency Identity · coreZ Technologies</p>
+        </div>`;
+      }
+
+      function renderStatus({ icon, iconClass, title, message, school, extraHtml = '' }) {
+        const schoolHtml = school ? `<p class="school-footer">${esc(school.name)}</p>` : '';
+        return `
+        <div class="status-page">
+          <div class="status-icon ${iconClass}">${icon}</div>
+          <p class="status-title">${esc(title)}</p>
+          <p class="status-msg">${esc(message)}</p>
+          ${extraHtml}
+          ${schoolHtml}
+          ${resqidFooterHtml()}
+        </div>`;
+      }
+
+      function renderSchoolStrip(school) {
+        if (!school) return '';
+        const logoHtml = school.logo_url
+          ? `<img class="school-logo" src="${esc(school.logo_url)}" alt="" onerror="this.style.display='none'; this.nextElementSibling?.style.removeProperty('display')" />`
+          : '';
+        const placeholderHtml = `<div class="school-logo-placeholder"${school.logo_url ? ' style="display:none"' : ''}>${esc((school.name || 'S')[0])}</div>`;
+        const addrHtml = school.address ? `<p class="school-addr">${esc(school.address)}</p>` : '';
+        return `
+        <div class="school-strip">
+          ${logoHtml}
+          ${placeholderHtml}
+          <div>
+            <p class="school-name">${esc(school.name)}</p>
+            ${addrHtml}
+          </div>
+        </div>`;
+      }
+
+      function renderContactActions(contact, token) {
+        let html = '';
+        if (contact.call_enabled) {
+          html += `<a class="action-btn btn-call"
+          href="/s/call/${esc(contact.id)}/${esc(token)}"
+          title="Call ${esc(contact.name)}">📞</a>`;
+        }
+        if (contact.whatsapp_enabled) {
+          html += `<a class="action-btn btn-whatsapp"
+          href="/s/wa/${esc(contact.id)}/${esc(token)}"
+          title="WhatsApp ${esc(contact.name)}">💬</a>`;
+        }
+        return html ? `<div class="contact-actions">${html}</div>` : '';
+      }
+
+      function renderContacts(contacts, token) {
+        if (!contacts || contacts.length === 0) {
+          return `<div class="empty-row">No emergency contacts listed</div>`;
+        }
+        return contacts
+          .map(
+            c => `
+        <div class="contact-item">
+          <div class="contact-avatar">${esc(initials(c.name))}</div>
+          <div class="contact-info">
+            <p class="contact-name">${esc(c.name)}</p>
+            <p class="contact-rel">${esc(c.relationship || 'Contact')}</p>
+          </div>
+          ${renderContactActions(c, token)}
+        </div>`
+          )
+          .join('');
+      }
+
+      function renderMedicalChips(label, value, chipClass) {
+        if (!value) return '';
+        const items = value
+          .split(',')
+          .map(s => s.trim())
+          .filter(Boolean);
+        if (!items.length) return '';
+        return `<div>
+        <p class="info-label" style="padding:12px 16px 6px;display:block">${esc(label)}</p>
+        <div class="chip-wrap">
+          ${items.map(i => `<span class="alert-chip ${chipClass}">⚠ ${esc(i)}</span>`).join('')}
+        </div>
+      </div>`;
+      }
+
+      function renderActiveProfile(data, token) {
+        const p = data.profile;
+        const school = data.school;
+        const visibility = p.visibility;
+
+        const avatarHtml = p.photo_url
+          ? `<img src="${esc(p.photo_url)}" alt="${esc(p.name)}" onerror="this.style.display='none'; this.nextElementSibling?.style.removeProperty('display')" /><div class="avatar-initials" style="display:none">${esc(initials(p.name || '?'))}</div>`
+          : `<div class="avatar-initials">${esc(initials(p.name || '?'))}</div>`;
+
+        const chips = [
+          p.class && p.section
+            ? `<span class="meta-chip">🎓 Class ${esc(p.class)}-${esc(p.section)}</span>`
+            : '',
+          p.gender
+            ? `<span class="meta-chip">${p.gender === 'MALE' ? '♂' : p.gender === 'FEMALE' ? '♀' : '⚧'} ${esc(p.gender.charAt(0) + p.gender.slice(1).toLowerCase())}</span>`
+            : '',
+        ]
+          .filter(Boolean)
+          .join('');
+
+        const bloodHtml = p.blood_group
+          ? `<div class="blood-badge">🩸 ${esc(p.blood_group)}</div>`
+          : '';
+
+        const schoolCallHtml = school?.phone
+          ? `<div class="school-call-strip">
+            <div class="school-call-info">
+              <p class="school-call-name">${esc(school.name)}</p>
+              <p class="school-call-sub">School helpline</p>
+            </div>
+            <a class="call-now-btn blue" href="/s/school-call/${esc(token)}">
+              📞 Call School
+            </a>
+          </div>`
+          : `<div class="school-call-strip">
+            <div class="school-call-info">
+              <p class="school-call-name">${esc(school?.name || '')}</p>
+            </div>
+          </div>`;
+
+        let medicalHtml = '';
+        let contactsHtml = '';
+        let visibilityNote = '';
+
+        if (visibility === 'HIDDEN') {
+          visibilityNote = `<div class="hidden-note">🔒 Detailed profile is restricted by the family.</div>`;
+        } else if (visibility === 'MINIMAL') {
+          visibilityNote = `<div class="minimal-note">⚠ Only primary contact is shown — profile restricted by family.</div>`;
+          if (p.primary_contact) {
+            contactsHtml = `
+            <div class="card">
+              <div class="card-header">
+                <div class="card-header-icon" style="background:rgba(239,68,68,0.1)">🆘</div>
+                <span class="card-header-title">Emergency Contact</span>
+              </div>
+              ${renderContacts([{ ...p.primary_contact, id: p.primary_contact.id || 'primary', call_enabled: p.primary_contact.call_enabled, whatsapp_enabled: p.primary_contact.whatsapp_enabled }], token)}
+            </div>`;
+          }
+        } else {
+          const allergyChips = renderMedicalChips('Allergies', p.allergies, 'chip-red');
+          const conditionChips = renderMedicalChips('Conditions', p.conditions, 'chip-amber');
+          const medChips = renderMedicalChips('Medications', p.medications, 'chip-blue');
+
+          const hasMedical =
+            p.blood_group || p.allergies || p.conditions || p.medications || p.doctor || p.notes;
+
+          if (hasMedical) {
+            const doctorHtml = p.doctor
+              ? `<div class="divider"></div>
+               <div class="doctor-row">
+                 <div class="doctor-icon">🩺</div>
+                 <div class="doctor-info">
+                   <p class="doctor-name">${esc(p.doctor.name)}</p>
+                   <p class="doctor-label">Doctor / Physician</p>
+                 </div>
+                 ${
+                   p.doctor.phone
+                     ? `<a class="call-now-btn green" href="/s/doctor-call/${esc(token)}">📞 Call</a>`
+                     : ''
+                 }
+               </div>`
+              : '';
+
+            const notesHtml = p.notes
+              ? `<div class="divider"></div><p class="notes-text">📝 ${esc(p.notes)}</p>`
+              : '';
+
+            medicalHtml = `
+            <div class="card">
+              <div class="card-header">
+                <div class="card-header-icon" style="background:rgba(239,68,68,0.1)">🩺</div>
+                <span class="card-header-title">Medical Information</span>
+              </div>
+              ${allergyChips}
+              ${conditionChips}
+              ${medChips}
+              ${!allergyChips && !conditionChips && !medChips ? '<div class="empty-row">No medical alerts</div>' : ''}
+              ${doctorHtml}
+              ${notesHtml}
+            </div>`;
+          }
+
+          const contacts = p.contacts || [];
+          contactsHtml = `
+          <div class="card">
+            <div class="card-header">
+              <div class="card-header-icon" style="background:rgba(239,68,68,0.1)">🆘</div>
+              <span class="card-header-title">Emergency Contacts</span>
+            </div>
+            ${renderContacts(contacts, token)}
+          </div>`;
+        }
+
+        return `
+        <div class="emergency-header">
+          <div class="emer-strip">
+            <div class="emer-dot"></div>
+            <span>Emergency ID Card</span>
+          </div>
+          <div class="profile-hero">
+            <div class="avatar-wrap">${avatarHtml}</div>
+            <div class="profile-info">
+              <p class="profile-name">${esc(p.name || 'Student')}</p>
+              <div class="profile-meta">${chips}</div>
+              ${bloodHtml}
+            </div>
+          </div>
+          ${renderSchoolStrip(school)}
+        </div>
+
+        <div class="content">
+          ${visibilityNote}
+          ${medicalHtml}
+          ${contactsHtml}
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-header-icon" style="background:rgba(59,130,246,0.1)">🏫</div>
+              <span class="card-header-title">School Contact</span>
+            </div>
+            ${schoolCallHtml}
+          </div>
+        </div>
+
+        ${resqidFooterHtml()}`;
+      }
+
+      // ── Main ─────────────────────────────────────────────────────────────────
+      async function main() {
+        const token = getToken();
+        const app = document.getElementById('app');
+        const loader = document.getElementById('loading');
+
+        if (!token) {
+          loader.style.opacity = '0';
+          setTimeout(() => (loader.style.display = 'none'), 400);
+          app.innerHTML = renderStatus({
+            icon: '❌',
+            iconClass: 'error',
+            title: 'Invalid QR Code',
+            message: 'This QR code could not be verified.',
+          });
+          app.classList.add('visible');
+          return;
+        }
+
+        let data;
+        try {
+          const res = await fetch(`/s/${encodeURIComponent(token)}`, {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+            cache: 'no-store',
+          });
+
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          data = await res.json();
+        } catch (err) {
+          loader.style.opacity = '0';
+          setTimeout(() => (loader.style.display = 'none'), 400);
+          app.innerHTML = renderStatus({
+            icon: '📶',
+            iconClass: 'warn',
+            title: 'Connection Error',
+            message:
+              'Could not reach the server. Please check your internet connection and try again.',
+          });
+          app.classList.add('visible');
+          return;
+        }
+
+        loader.style.opacity = '0';
+        setTimeout(() => (loader.style.display = 'none'), 400);
+
+        switch (data.state) {
+          case 'ACTIVE':
+            app.innerHTML = renderActiveProfile(data, token);
+            break;
+
+          case 'INACTIVE':
+            app.innerHTML = renderStatus({
+              icon: '🚫',
+              iconClass: 'error',
+              title: 'Card Inactive',
+              message: data.message || 'This card is no longer active. Please contact the school.',
+              school: data.school,
+            });
+            break;
+
+          case 'UNREGISTERED':
+            app.innerHTML = renderStatus({
+              icon: '📋',
+              iconClass: 'info',
+              title: 'Not Registered',
+              message: data.message || 'This card has not been registered yet.',
+              school: data.school,
+            });
+            break;
+
+          case 'ISSUED':
+            app.innerHTML = renderStatus({
+              icon: '⏳',
+              iconClass: 'info',
+              title: 'Pending Activation',
+              message: data.message || 'This card has been issued but not yet activated.',
+              school: data.school,
+            });
+            break;
+
+          case 'INVALID':
+          default:
+            app.innerHTML = renderStatus({
+              icon: '❌',
+              iconClass: 'error',
+              title: 'Invalid QR Code',
+              message: data.message || 'This QR code could not be verified.',
+            });
+            break;
+        }
+
+        app.classList.add('visible');
+        data = null;
+      }
+
+      main();
+    </script>
+  </body>
+</html>

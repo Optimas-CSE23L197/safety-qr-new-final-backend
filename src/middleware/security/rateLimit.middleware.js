@@ -384,3 +384,13 @@ async function persistTokenBlock(scanCode, count) {
     },
   });
 }
+
+// register school rate limit
+export const registerLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: req => req.ip,
+  message: 'Too many registration attempts. Please try again later.',
+});

@@ -1,12 +1,13 @@
 import { Resend } from 'resend';
 import { EmailProvider } from './email.provider.js';
+import { logger } from '#config/logger.js';
 
 export class ResendAdapter extends EmailProvider {
   constructor(config = {}) {
     super();
     this.client = new Resend(config.API_KEY || process.env.RESEND_API_KEY);
     this.defaultFrom =
-      config.FROM_EMAIL || process.env.RESEND_FROM_EMAIL || 'noreply@mail.getresqid.in';
+      config.FROM_EMAIL || process.env.RESEND_FROM_EMAIL || 'RESQID <noreply@mail.getresqid.in>';
     this.templates = new Map();
   }
 
@@ -44,22 +45,31 @@ export class ResendAdapter extends EmailProvider {
         reply_to: replyTo,
       });
 
-      console.info(`[Email] Sent to [${recipients.join(', ')}] — ID: ${response.id}`);
+      logger.info({ to: recipients, id: response.id }, '[Email] Sent successfully');
       return { success: true, id: response.id };
     } catch (err) {
-      console.error(`[Email] Failed to send to [${recipients.join(', ')}]:`, err.message);
-      throw err;
+      logger.error({ to: recipients, error: err.message }, '[Email] Send failed');
+      return { success: false, error: err.message };
     }
   }
 
   async sendTemplate(template, data, to, subject) {
-    const { html, text } = this._renderTemplate(template, data);
-    return this.send({ to, subject, html, text });
+    try {
+      const { html, text } = this._renderTemplate(template, data);
+      return await this.send({ to, subject, html, text });
+    } catch (err) {
+      logger.error({ template, to, error: err.message }, '[Email] Template send failed');
+      return { success: false, error: err.message };
+    }
   }
 
   async sendBulk(emails) {
-    return Promise.all(
-      emails.map(email => this.send(email).catch(err => ({ success: false, error: err.message })))
+    const results = await Promise.allSettled(emails.map(email => this.send(email)));
+
+    return results.map((result, index) =>
+      result.status === 'fulfilled'
+        ? result.value
+        : { success: false, error: result.reason?.message, to: emails[index]?.to }
     );
   }
 }

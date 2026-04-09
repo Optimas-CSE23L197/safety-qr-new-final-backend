@@ -1,30 +1,32 @@
 // =============================================================================
 // modules/scan/scan.repository.js — RESQID
 //
-// All DB reads for the public QR scan flow.
-// This file never modifies profile data — read-only except ScanLog.
+// All DB reads/writes for the public QR scan flow.
+// Read-only for profile data. Write-only for ScanLog.
 //
 // QUERY STRATEGY:
 //   Single indexed PK lookup: Token.id
 //   All joins via FK relations — no raw SQL, no N+1
-//   ScanLog write is replaced by Redis queue enqueue (see scan.cache.js)
-//   Direct writeScanLog kept for edge cases (emergency worker, etc.)
+//   ScanLog write → Redis queue enqueue (hot path)
+//   writeScanLog kept for edge cases (emergency worker fallback)
+//   bulkWriteScanLogs called by scan.worker every 5 seconds
 // =============================================================================
 
 import { prisma } from '#config/prisma.js';
 import { logger } from '#config/logger.js';
 
 // =============================================================================
-// TOKEN LOOKUP
+// findTokenForScan
+// Single query — all required joins, called only on Redis cache miss.
+// FIX: Student filtered by is_active at query level — no PII fetched for
+//      inactive students before rejection.
+// FIX: Device fetch capped with take+orderBy — prevents unbounded push tokens.
 // =============================================================================
 
 /**
  * Find a token by UUID for scan resolution.
- * Single query with all required joins.
- * Called only on Redis cache miss.
- *
  * @param {string} tokenId
- * @returns {object|null}
+ * @returns {Promise<object|null>}
  */
 export const findTokenForScan = async tokenId => {
   return prisma.token.findUnique({
@@ -43,7 +45,7 @@ export const findTokenForScan = async tokenId => {
           name: true,
           code: true,
           logo_url: true,
-          phone: true,
+          phone: true, // plaintext — school contact, intentionally public
           address: true,
           settings: {
             select: {
@@ -62,7 +64,7 @@ export const findTokenForScan = async tokenId => {
           class: true,
           section: true,
           gender: true,
-          setup_stage: true,
+          setup_stage: true, // FIX: checked in service before building profile
           is_active: true,
 
           parents: {
@@ -71,6 +73,10 @@ export const findTokenForScan = async tokenId => {
                 select: {
                   devices: {
                     where: { is_active: true },
+                    // FIX: Cap devices per parent — prevent unbounded push tokens
+                    // and duplicate notifications from old/reinstalled devices
+                    take: 3,
+                    orderBy: { last_seen_at: 'desc' },
                     select: {
                       expo_push_token: true,
                     },
@@ -83,7 +89,7 @@ export const findTokenForScan = async tokenId => {
           cardVisibility: {
             select: {
               visibility: true,
-              hidden_fields: true,
+              hidden_fields: true, // consumed by service — never forwarded raw
             },
           },
 
@@ -94,6 +100,7 @@ export const findTokenForScan = async tokenId => {
               conditions: true,
               medications: true,
               doctor_name: true,
+              // FIX: Renamed to signal encryption — consuming code must decrypt
               doctor_phone_encrypted: true,
               notes: true,
               visibility: true,
@@ -105,6 +112,7 @@ export const findTokenForScan = async tokenId => {
                 select: {
                   id: true,
                   name: true,
+                  // FIX: Renamed to signal encryption — consuming code must decrypt
                   phone_encrypted: true,
                   relationship: true,
                   priority: true,
@@ -122,68 +130,67 @@ export const findTokenForScan = async tokenId => {
 };
 
 // =============================================================================
-// SCAN LOG (direct write — for non-hot-path callers like emergency worker)
+// writeScanLog — direct DB write (non-hot-path: emergency worker fallback)
+// FIX: Made explicitly async with try/catch — no implicit Promise footgun
+// FIX: Uses buildScanLogPayload shape — consistent field names
 // =============================================================================
 
 /**
- * Write a scan log entry directly to DB.
+ * Write a single scan log entry directly to DB.
  * For the hot path, use enqueueScanLog() from scan.cache.js instead.
+ * @param {object} entry — shape from buildScanLogPayload()
+ * @returns {Promise<void>}
  */
-export const writeScanLog = ({
-  tokenId,
-  schoolId,
-  result,
-  ip,
-  userAgent,
-  deviceHash,
-  latitude,
-  longitude,
-  responseTimeMs,
-  scanPurpose,
-}) =>
-  prisma.scanLog
-    .create({
-      data: {
-        token_id: tokenId,
-        school_id: schoolId,
-        result,
-        scan_purpose: scanPurpose ?? 'QR_SCAN',
-        ip_address: ip ?? null,
-        user_agent: userAgent ?? null,
-        device_hash: deviceHash ?? null,
-        latitude: latitude ?? null,
-        longitude: longitude ?? null,
-        location_derived: latitude != null,
-        response_time_ms: responseTimeMs ?? null,
-        ip_capture_basis: 'LEGITIMATE_INTEREST',
-      },
-    })
-    .catch(err => {
-      logger.error(
-        { err: err.message, tokenId, schoolId },
-        '[scan.repository] writeScanLog failed'
-      );
-    });
+export const writeScanLog = async entry => {
+  try {
+    await prisma.scanLog.create({ data: entry });
+  } catch (err) {
+    logger.error(
+      { err: err.message, tokenId: entry.token_id, schoolId: entry.school_id },
+      '[scan.repository] writeScanLog failed'
+    );
+    // Swallowed — log write failure must never crash the scan response
+  }
+};
 
 // =============================================================================
-// BULK SCAN LOG (used by scan.worker)
+// bulkWriteScanLogs — batch insert (called by scan.worker every 5 seconds)
+// FIX: Array guard before .length access — null/undefined won't throw
+// FIX: Per-entry validation filter — one bad entry won't kill the whole batch
 // =============================================================================
 
 /**
  * Bulk insert scan log entries.
- * Called by scan.worker draining the Redis log queue every 5 seconds.
+ * Called by scan.worker draining the Redis log queue.
+ * @param {object[]} entries
+ * @returns {Promise<void>}
  */
 export const bulkWriteScanLogs = async entries => {
-  if (!entries.length) return;
+  // FIX: Guard against null/undefined before .length
+  if (!Array.isArray(entries) || entries.length === 0) return;
+
+  // FIX: Filter out malformed entries — don't let one bad record kill the batch
+  const valid = entries.filter(e => e && e.token_id && e.school_id && e.result);
+
+  if (valid.length === 0) {
+    logger.warn('[scan.repository] bulkWriteScanLogs: all entries invalid, skipping');
+    return;
+  }
+
+  if (valid.length < entries.length) {
+    logger.warn(
+      { dropped: entries.length - valid.length },
+      '[scan.repository] bulkWriteScanLogs: some entries dropped (missing required fields)'
+    );
+  }
+
   try {
-    return await prisma.scanLog.createMany({
-      data: entries,
-    });
+    await prisma.scanLog.createMany({ data: valid });
   } catch (err) {
     logger.error(
-      { err: err.message, count: entries.length },
+      { err: err.message, count: valid.length },
       '[scan.repository] bulkWriteScanLogs failed'
     );
-    throw err;
+    throw err; // Re-throw — worker handles retry logic
   }
 };

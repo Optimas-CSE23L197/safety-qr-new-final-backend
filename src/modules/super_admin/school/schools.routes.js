@@ -4,6 +4,7 @@
 // =============================================================================
 
 import { Router } from 'express';
+import { registerLimiter } from '#middleware/security/rateLimit.middleware.js';
 import {
   listSchools,
   getSchoolById,
@@ -15,7 +16,7 @@ import {
 
 const router = Router();
 
-router.post('/', registerSchool);
+router.post('/', registerLimiter, registerSchool);
 router.get('/', listSchools);
 router.get('/stats', getSchoolsStats);
 router.get('/cities', getCities);

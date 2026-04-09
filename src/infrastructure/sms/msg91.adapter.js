@@ -1,11 +1,13 @@
 import axios from 'axios';
 import { SmsProvider } from './sms.provider.js';
+import { logger } from '#config/logger.js';
 
 export class MSG91Adapter extends SmsProvider {
   constructor(config = {}) {
     super();
     this.authKey = config.AUTH_KEY ?? process.env.MSG91_AUTH_KEY;
     this.senderId = config.SENDER_ID ?? process.env.MSG91_SENDER_ID ?? 'RESQID';
+    this.templateId = config.TEMPLATE_ID ?? process.env.MSG91_TEMPLATE_ID; // DLT Template ID
     this.route = config.ROUTE ?? process.env.MSG91_ROUTE ?? '4';
     this.country = config.COUNTRY ?? process.env.MSG91_COUNTRY ?? '91';
     this.baseUrl = 'https://api.msg91.com/api/v5';
@@ -28,31 +30,45 @@ export class MSG91Adapter extends SmsProvider {
     );
   }
 
-  async send(phoneNumber, message) {
-    try {
-      const response = await axios.post(
-        `${this.baseUrl}/flow/`,
-        {
-          sender: this.senderId,
-          mobiles: phoneNumber,
-          message,
-          route: this.route,
-          country: this.country,
-        },
-        {
-          headers: {
-            authkey: this.authKey,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+  async send(phoneNumber, message, options = {}) {
+    const { templateId = this.templateId } = options;
 
-      const messageId = response.data?.message_id;
-      console.info(`[SMS] Message dispatched to ${phoneNumber} — ID: ${messageId}`);
+    try {
+      // MSG91 Flow API (supports DLT templates)
+      const payload = {
+        sender: this.senderId,
+        mobiles: phoneNumber.replace(/\D/g, ''),
+        country: this.country,
+        route: this.route,
+      };
+
+      // Use template if available (DLT compliance)
+      if (templateId) {
+        payload.template_id = templateId;
+        payload.var = message; // Variable content for template
+      } else {
+        payload.message = message;
+      }
+
+      const response = await axios.post(`${this.baseUrl}/flow/`, payload, {
+        headers: {
+          authkey: this.authKey,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const messageId = response.data?.message_id || response.data?.request_id;
+      logger.info({ phone: phoneNumber.slice(0, 6) + '…', messageId }, '[SMS] Sent');
       return { success: true, messageId };
     } catch (err) {
-      console.error(`[SMS] Failed to send to ${phoneNumber}:`, err.message);
-      throw err;
+      logger.error(
+        {
+          phone: phoneNumber.slice(0, 6) + '…',
+          error: err.response?.data || err.message,
+        },
+        '[SMS] Send failed'
+      );
+      return { success: false, error: err.message };
     }
   }
 
@@ -62,12 +78,14 @@ export class MSG91Adapter extends SmsProvider {
   }
 
   async sendBulk(messages) {
-    return Promise.all(
-      messages.map(({ phone, message }) =>
-        this.send(phone, message)
-          .then(result => ({ success: true, phone, ...result }))
-          .catch(err => ({ success: false, phone, error: err.message }))
-      )
+    const results = await Promise.allSettled(
+      messages.map(({ phone, message, templateId }) => this.send(phone, message, { templateId }))
+    );
+
+    return results.map((result, index) =>
+      result.status === 'fulfilled'
+        ? result.value
+        : { success: false, error: result.reason?.message, phone: messages[index]?.phone }
     );
   }
 
@@ -78,8 +96,8 @@ export class MSG91Adapter extends SmsProvider {
       });
       return response.data;
     } catch (err) {
-      console.error(`[SMS] Failed to retrieve status for message "${messageId}":`, err.message);
-      throw err;
+      logger.error({ messageId, error: err.message }, '[SMS] Status check failed');
+      return null;
     }
   }
 }

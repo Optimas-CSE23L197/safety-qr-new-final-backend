@@ -5,7 +5,16 @@
 
 import { prisma } from '#config/prisma.js';
 import { generateSchoolCode } from '#shared/utils/schoolCodeGenerator.js';
-import bcrypt from 'bcrypt';
+import { createHash } from 'crypto';
+
+const PASSWORD_PEPPER =
+  process.env.PASSWORD_PEPPER || 'resqid-super-admin-pepper-2026-change-in-production';
+
+function pepperAndHashPassword(hashedPasswordFromFrontend) {
+  // Frontend sends SHA-256 hash, add pepper and re-hash
+  const peppered = hashedPasswordFromFrontend + PASSWORD_PEPPER;
+  return createHash('sha256').update(peppered).digest('hex');
+}
 
 export class SchoolsRepository {
   async getSchoolsList(filters, pagination, sorting) {
@@ -16,10 +25,11 @@ export class SchoolsRepository {
     const where = {};
 
     if (search) {
+      const sanitizedSearch = search.replace(/[^a-zA-Z0-9\s]/g, '');
       where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { code: { contains: search, mode: 'insensitive' } },
-        { city: { contains: search, mode: 'insensitive' } },
+        { name: { contains: sanitizedSearch, mode: 'insensitive' } },
+        { code: { contains: sanitizedSearch, mode: 'insensitive' } },
+        { city: { contains: sanitizedSearch, mode: 'insensitive' } },
       ];
     }
 
@@ -33,10 +43,18 @@ export class SchoolsRepository {
       where.is_active = false;
     }
 
+    if (subscription_status) {
+      where.subscriptions = {
+        some: {
+          status: subscription_status,
+          NOT: { status: 'CANCELED' },
+        },
+      };
+    }
+
     const orderBy = {};
     if (sort_field === 'students') {
-      // Will handle in JS due to aggregation
-      orderBy.created_at = sort_dir;
+      orderBy.students = { _count: sort_dir };
     } else {
       orderBy[sort_field] = sort_dir;
     }
@@ -45,7 +63,7 @@ export class SchoolsRepository {
       where,
       skip,
       take,
-      orderBy: sort_field === 'students' ? { created_at: sort_dir } : orderBy,
+      orderBy,
       select: {
         id: true,
         name: true,
@@ -71,25 +89,9 @@ export class SchoolsRepository {
       },
     });
 
-    let filteredSchools = schools;
-
-    if (subscription_status) {
-      filteredSchools = schools.filter(
-        school => school.subscriptions[0]?.status === subscription_status
-      );
-    }
-
-    if (sort_field === 'students') {
-      filteredSchools.sort((a, b) => {
-        const aCount = a._count.students;
-        const bCount = b._count.students;
-        return sort_dir === 'asc' ? aCount - bCount : bCount - aCount;
-      });
-    }
-
     const total = await prisma.school.count({ where });
 
-    return { schools: filteredSchools, total };
+    return { schools, total };
   }
 
   async getSchoolById(id) {
@@ -140,15 +142,50 @@ export class SchoolsRepository {
     return cities.map(c => c.city).filter(Boolean);
   }
 
+  async checkRecentRegistration(schoolEmail, adminEmail) {
+    const thirtySecondsAgo = new Date(Date.now() - 30 * 1000);
+    const existing = await prisma.school.findFirst({
+      where: {
+        OR: [{ email: schoolEmail }, { users: { some: { email: adminEmail } } }],
+        created_at: { gte: thirtySecondsAgo },
+      },
+    });
+    return !!existing;
+  }
+
+  async generateUniqueSchoolCode(name, city, retryCount = 0) {
+    const maxRetries = 3;
+
+    const lastSchool = await prisma.school.findFirst({
+      orderBy: { serial_number: 'desc' },
+      select: { serial_number: true },
+    });
+    const nextSerial = (lastSchool?.serial_number || 0) + 1;
+
+    let schoolCode = generateSchoolCode(name, city, nextSerial);
+
+    const existing = await prisma.school.findUnique({
+      where: { code: schoolCode },
+      select: { id: true },
+    });
+
+    if (existing && retryCount < maxRetries) {
+      return this.generateUniqueSchoolCode(name, city, retryCount + 1);
+    }
+
+    if (existing) {
+      schoolCode = `${schoolCode}_${Date.now().toString().slice(-6)}`;
+    }
+
+    return { code: schoolCode, serialNumber: nextSerial };
+  }
+
   async createSchoolWithAdmin(data) {
     return prisma.$transaction(async tx => {
-      const lastSchool = await tx.school.findFirst({
-        orderBy: { serial_number: 'desc' },
-        select: { serial_number: true },
-      });
-      const nextSerial = (lastSchool?.serial_number || 0) + 1;
-
-      const schoolCode = generateSchoolCode(data.school.name, data.school.city, nextSerial);
+      const { code: schoolCode, serialNumber: nextSerial } = await this.generateUniqueSchoolCode(
+        data.school.name,
+        data.school.city
+      );
 
       const school = await tx.school.create({
         data: {
@@ -159,10 +196,18 @@ export class SchoolsRepository {
         },
       });
 
-      const pricing =
-        data.subscription.plan !== 'CUSTOM'
-          ? await tx.pricingConfig.findUnique({ where: { plan: data.subscription.plan } })
-          : null;
+      let pricing = null;
+      if (data.subscription.plan !== 'CUSTOM') {
+        pricing = await tx.pricingConfig.findUnique({ where: { plan: data.subscription.plan } });
+
+        if (!pricing) {
+          const defaultPrices = {
+            BASIC: { unit_price: 14900, renewal_price: 14900, advance_percent: 50 },
+            PREMIUM: { unit_price: 19900, renewal_price: 19900, advance_percent: 50 },
+          };
+          pricing = defaultPrices[data.subscription.plan];
+        }
+      }
 
       const unitPrice =
         data.subscription.plan === 'CUSTOM'
@@ -183,30 +228,44 @@ export class SchoolsRepository {
           advance_percent: pricing?.advance_percent || 50,
           is_custom_pricing: data.subscription.plan === 'CUSTOM',
           custom_price_note: data.subscription.plan === 'CUSTOM' ? 'Manual custom pricing' : null,
-          custom_approved_by: data.admin.created_by,
-          is_pilot: data.subscription.is_pilot,
-          pilot_expires_at: data.subscription.pilot_expires_at,
+          custom_approved_by: data.subscription.plan === 'CUSTOM' ? data.admin.created_by : null,
+          custom_approved_at: data.subscription.plan === 'CUSTOM' ? new Date() : null,
+          is_pilot: data.subscription.is_pilot || false,
+          pilot_expires_at: data.subscription.pilot_expires_at || null,
+          pilot_converted_at: null,
           student_count: data.subscription.student_count,
+          active_card_count: 0,
           grand_total: unitPrice * data.subscription.student_count,
+          total_invoiced: 0,
+          total_received: 0,
+          balance_due: unitPrice * data.subscription.student_count,
           status: 'TRIALING',
           current_period_start: new Date(),
           current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          trial_ends_at: data.subscription.is_pilot
+            ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+            : null,
+          fully_paid_at: null,
         },
       });
 
-      const hashedPassword = await bcrypt.hash(data.admin.password, 10);
+      // Apply pepper to password before storing
+      const finalPasswordHash = pepperAndHashPassword(data.admin.password);
 
       const schoolUser = await tx.schoolUser.create({
         data: {
           school_id: school.id,
           email: data.admin.email,
-          password_hash: hashedPassword,
+          password_hash: finalPasswordHash,
           name: data.admin.name,
           role: 'ADMIN',
           is_primary: true,
           must_change_password: true,
           invited_by: data.admin.created_by,
           invite_sent_at: new Date(),
+          invite_accepted_at: null,
+          is_active: true,
+          last_login_at: null,
         },
       });
 
@@ -216,7 +275,10 @@ export class SchoolsRepository {
           subscription_id: subscription.id,
           agreed_by: data.admin.created_by,
           agreed_via: data.agreement.agreed_via,
-          ip_address: data.agreement.ip_address,
+          ip_address: data.agreement.ip_address || null,
+          document_url: null,
+          notes: null,
+          is_active: true,
         },
       });
 

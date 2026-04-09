@@ -2,32 +2,57 @@
 // modules/scan/scan.controller.js — RESQID
 //
 // Handles GET /s/:code — the public QR scan endpoint.
+// NO AUTH — guards are entirely in the middleware chain (scan.routes.js).
 //
-// NO AUTH — this endpoint is called by anyone who scans a QR code.
-// Guards are entirely in the middleware chain (see scan.routes.js).
-//
-// startTime is captured HERE at controller entry, not in the service.
-// This measures total time including middleware overhead, giving accurate
-// response_time_ms in ScanLog for p99 tracking.
+// startTime uses performance.now() for monotonic, drift-safe latency tracking.
 // =============================================================================
 
+import { performance } from 'perf_hooks';
+import crypto from 'crypto';
 import { resolveScan } from './scan.service.js';
 import { asyncHandler } from '#shared/response/asyncHandler.js';
 import { extractIp } from '#shared/network/extractIp.js';
-import crypto from 'crypto';
+import { logger } from '#config/logger.js';
 
 const DEVICE_HASH_LENGTH = 16;
 
 export const scanQr = asyncHandler(async (req, res) => {
-  const startTime = Date.now();
+  const startTime = performance.now(); // FIX: monotonic clock — no NTP drift risk
+
   const { code } = req.params;
   const ip = extractIp(req);
 
+  // FIX: Multi-header fingerprint — harder to spoof than UA alone
+  const fingerprintSource = [
+    req.headers['user-agent'] ?? '',
+    req.headers['accept-language'] ?? '',
+    req.headers['accept-encoding'] ?? '',
+    ip,
+  ].join('|');
+
   const deviceHash = crypto
     .createHash('sha256')
-    .update(`${req.headers['user-agent'] ?? ''}`)
+    .update(fingerprintSource)
     .digest('hex')
     .slice(0, DEVICE_HASH_LENGTH);
+
+  // FIX: Validate scanCount — don't trust raw req value
+  const rawScanCount = req.scanCount;
+  const scanCount = Number.isInteger(rawScanCount) && rawScanCount > 0 ? rawScanCount : 1;
+
+  // FIX: Entry log for traceability — captured before service call
+  logger.debug(
+    { code: code?.slice(0, 8) + '…', ip, deviceHash },
+    '[scan.controller] incoming scan'
+  );
+
+  // FIX: Set security headers here — Cache-Control critical for emergency data
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'no-referrer',
+  });
 
   const result = await resolveScan({
     code,
@@ -35,8 +60,19 @@ export const scanQr = asyncHandler(async (req, res) => {
     userAgent: req.headers['user-agent'] ?? null,
     deviceHash,
     startTime,
-    scanCount: req.scanCount ?? 1,
+    scanCount,
   });
 
-  return res.json(result);
+  // FIX: Map result state to correct HTTP status code
+  const statusMap = {
+    ACTIVE: 200,
+    INACTIVE: 200,
+    UNREGISTERED: 200,
+    ISSUED: 200,
+    INVALID: 400,
+    ERROR: 500,
+  };
+  const httpStatus = statusMap[result.state] ?? 200;
+
+  return res.status(httpStatus).json(result);
 });
