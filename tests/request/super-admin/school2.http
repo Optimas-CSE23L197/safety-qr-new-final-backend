@@ -1,6 +1,6 @@
 @baseUrl = http://localhost:3000/api
-@super-adminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3YTZiNjdhNi0zZTA5LTQ2M2MtOTc3NC01MTdjNDdjOTdmNGEiLCJyb2xlIjoiU1VQRVJfQURNSU4iLCJzZXNzaW9uSWQiOiJlNzdlYzg1MS1hOTdiLTRmZDktODMyMy1jMjZkM2JkNzc1MzkiLCJqdGkiOiIxOWUzZDgxZS1lYjBhLTQzZWYtYjZhMi04OTc1OWI3OTM0NGUiLCJpYXQiOjE3NzUzMTM2NjAsImV4cCI6MTc3NTMxNTQ2MCwiYXVkIjoicmVzcWlkLWFwaSIsImlzcyI6InJlc3FpZCJ9.yxdIVgTGL_PEhEaxNpWoNfbQiQViiu4XiKnkrBD7LkU
-@schoolId = 310ceec7-cfb4-428f-a788-69b6bd2e0cdf
+@super-adminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJlN2M4NzUxZi04NmI4LTRlYjctOTljZi04NWNkZDE3ZGY2NDAiLCJyb2xlIjoiU1VQRVJfQURNSU4iLCJzZXNzaW9uSWQiOiJjY2MxY2FlMi1hMmU1LTRiNWItYjg0OS04YmMyZjViZjIwNzkiLCJqdGkiOiJiZTUxNTBhYS0wMWQ5LTRjMDgtYWJiMy0xM2NhZmEyZGE5ZTciLCJpYXQiOjE3NzU3OTQ2OTQsImV4cCI6MTc3NTc5NjQ5NCwiYXVkIjoicmVzcWlkLWFwaSIsImlzcyI6InJlc3FpZCJ9.LsH_TDjAAi1SN3boApJtMVbTbynJJge-fb7QZKfog80
+@schoolId = d8eb1216-7d88-436a-9bef-2a5184cf6b0e
 # @schoolId = 13d489cb-5929-41bc-b753-b598efa703c4
 # @schoolID = cb5c504c-08cf-4ed6-ab9b-72254d1cf838
 
@@ -24,7 +24,7 @@ Authorization: Bearer {{super-adminToken}}
   "admin": {
     "name": "Rajesh Kumar",
     "email": "admin@dpsrohini.edu.in",
-    "password": "TempPass@123"
+    "password": "bd1767c4a465393f6bf7b9746b970c83e5d400960c6a78fd0f6b9319d15af016"
   },
   "subscription": {
     "plan": "BASIC",

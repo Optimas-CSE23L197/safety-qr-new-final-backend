@@ -167,20 +167,21 @@ model ParentUser {
 // PARENT DEVICE — no changes
 // ─────────────────────────────────────────────────────────────
 model ParentDevice {
-  id              String              @id @default(uuid())
-  parent_id       String
-  platform        DevicePlatform
-  device_name     String?
-  device_model    String?
-  os_version      String?
-  app_version     String?
-  is_active       Boolean             @default(true)
-  last_seen_at    DateTime?
-  logged_out_at   DateTime?
-  logout_reason   DeviceLogoutReason?
-  created_at      DateTime            @default(now())
-  expo_push_token String?             @unique
-  parent          ParentUser          @relation(fields: [parent_id], references: [id], onDelete: Cascade)
+  id                 String              @id @default(uuid())
+  parent_id          String
+  platform           DevicePlatform
+  device_name        String?
+  device_model       String?
+  device_fingerprint String?             @unique
+  os_version         String?
+  app_version        String?
+  is_active          Boolean             @default(true)
+  last_seen_at       DateTime?
+  logged_out_at      DateTime?
+  logout_reason      DeviceLogoutReason?
+  created_at         DateTime            @default(now())
+  expo_push_token    String?             @unique
+  parent             ParentUser          @relation(fields: [parent_id], references: [id], onDelete: Cascade)
 
   @@index([parent_id, is_active])
 }

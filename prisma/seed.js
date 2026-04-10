@@ -5,16 +5,16 @@
 
 import { prisma } from '../src/config/prisma.js';
 import { seedSchools } from './seed.school.js';
-import { seedSuperAdmin } from './seed.super-admin.js';
+// import { seedSuperAdmin } from './seed.super-admin.js';
 
 async function main() {
   console.log('\n🌱 Starting database seeding...\n');
 
   // Seed super admin
-  await seedSuperAdmin();
+  // await seedSuperAdmin();
 
   // Seed schools with subscriptions
-  // await seedSchools();
+  await seedSchools();
 
   console.log('\n🎉 Database seeding completed!\n');
 }

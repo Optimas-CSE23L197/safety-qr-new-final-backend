@@ -212,6 +212,7 @@ exports.Prisma.ParentDeviceScalarFieldEnum = {
   platform: 'platform',
   device_name: 'device_name',
   device_model: 'device_model',
+  device_fingerprint: 'device_fingerprint',
   os_version: 'os_version',
   app_version: 'app_version',
   is_active: 'is_active',

@@ -73,11 +73,12 @@ export function globalErrorHandler(err, req, res, next) {
 
   // ── 2. Zod Validation Error — schema parse failed ─────────────────────────
   if (err instanceof ZodError) {
-    const errors = err.errors.map(e => ({
-      field: e.path.join('.'),
-      message: e.message,
-      code: e.code,
-    }));
+    const errors =
+      err.errors?.map(e => ({
+        field: e.path?.join('.') || 'unknown',
+        message: e.message,
+        code: e.code,
+      })) || [];
 
     log.warn({ type: 'validation_error', errors, path: req.path }, 'Zod validation error');
 

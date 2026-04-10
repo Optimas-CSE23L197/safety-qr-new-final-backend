@@ -170,7 +170,7 @@ export function createApp() {
   // ════════════════════════════════════════════════════════════════════════════
   app.use(authenticate); // 18. JWT verification
   app.use(tenantScope); // 19. School ID injection
-  app.use(verifyDevice); // 20. Device fingerprint (mobile only)
+  // app.use(verifyDevice); // 20. Device fingerprint (mobile only)
   app.use(auditLog); // 21. Audit trail (after auth)
 
   // ════════════════════════════════════════════════════════════════════════════

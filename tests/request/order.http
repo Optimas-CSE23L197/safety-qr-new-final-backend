@@ -3,11 +3,11 @@
 # =============================================================================
 
 @baseUrl = http://localhost:3000/api
-@superAdminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI4ZTUzODU5Yi0xMjgxLTRmZjItOTQyZC04NTAyYTNkZjZhMjYiLCJyb2xlIjoiU1VQRVJfQURNSU4iLCJzZXNzaW9uSWQiOiI2OGNmN2Q1My01YmY4LTQwMWItODY2ZC1hNTYzNWExODg5ZWUiLCJqdGkiOiI5MjUxNzVmMC03MTM3LTQyNzctYThjOC04M2M0MmJkNDc1NzIiLCJpYXQiOjE3NzUxNTI1MjgsImV4cCI6MTc3NTE1NDMyOCwiYXVkIjoicmVzcWlkLWFwaSIsImlzcyI6InJlc3FpZCJ9.zjpkpWAnTMqOCtn3M0wNFRIKoJSXihK00uAm29wE6mg
+@superAdminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJlN2M4NzUxZi04NmI4LTRlYjctOTljZi04NWNkZDE3ZGY2NDAiLCJyb2xlIjoiU1VQRVJfQURNSU4iLCJzZXNzaW9uSWQiOiJjY2MxY2FlMi1hMmU1LTRiNWItYjg0OS04YmMyZjViZjIwNzkiLCJqdGkiOiI0NjU5N2E4YS02MDVjLTQ4ODUtYTZmMy00N2Y5YTc0NjhjNmYiLCJpYXQiOjE3NzU3OTcwNzksImV4cCI6MTc3NTc5ODg3OSwiYXVkIjoicmVzcWlkLWFwaSIsImlzcyI6InJlc3FpZCJ9.UElQGIzD6e5d4oPnK_CMuVjI3DpStlf5IdOGxdMyWkk
 @schoolAdminToken = Bearer YOUR_SCHOOL_ADMIN_TOKEN_HERE
-@orderId = 09bceb5c-586a-4988-94a2-29cba584ace1
-@invoiceId = 06b8389e-ef69-412d-a869-1395e875da9a
-@schoolId = ea17bb8c-d9f3-4111-90f1-ffb45b349fd9	
+@orderId = 2f8aab26-913f-4bcd-b955-613c191c792e
+@invoiceId = b76ef5d1-ee62-4a07-9fa9-3783059c638d
+@schoolId = d8eb1216-7d88-436a-9bef-2a5184cf6b0e	
 
 
 # =============================================================================
@@ -22,7 +22,7 @@ Content-Type: application/json
 {
   "school_id": "{{schoolId}}",
   "order_type": "BLANK",
-  "card_count": 100,
+  "card_count": 10,
   "delivery_address": {
     "name": "Rajesh Kumar",
     "phone": "9876543210",
@@ -102,7 +102,7 @@ Authorization: {{superAdminToken}}
 Content-Type: application/json
 
 {
-  "amount_received": 1174100,
+  "amount_received": 87910,
   "payment_mode": "BANK_TRANSFER",
   "payment_ref": "TXN123456",
   "note": "Advance payment received"

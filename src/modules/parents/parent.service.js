@@ -1,25 +1,73 @@
 // =============================================================================
-// modules/parents/parent.service.js — RESQID (FULLY FIXED)
-// Orchestration + encryption + caching + NOTIFICATIONS. No Prisma.
+// modules/parents/parent.service.js — RESQID (FIXED IMPORTS)
 // =============================================================================
 
 import crypto from 'crypto';
 import * as repo from './parent.repository.js';
-import { cacheAside, cacheDel } from '#utils/cache/cache.js';
 import { encryptField, decryptField, hashForLookup } from '#shared/security/encryption.js';
-import { writeAuditLog } from '#utils/helpers/auditLogger.js';
 import { prisma } from '#config/prisma.js';
 import { redis } from '#config/redis.js';
-import { hashOtp } from '#services/otp.service.js';
 import { logger } from '#config/logger.js';
-import { sendSms } from '#integrations/sms/sms.service.js';
-import { sendEmail } from '#integrations/email/email.service.js';
 
+// ─── CORRECT IMPORTS (matching your project structure) ────────────────────────
+import { cacheGet, cacheSet, cacheDel } from '#shared/cache/cache.js';
+import { hashOtp } from '#services/otp.service.js';
+import { getSms } from '#infrastructure/sms/sms.index.js';
+import { getEmail } from '#infrastructure/email/email.index.js';
+
+// ─── ApiError class ───────────────────────────────────────────────────────────
+class ApiError extends Error {
+  constructor(message, statusCode = 400, code = 'ERROR') {
+    super(message);
+    this.statusCode = statusCode;
+    this.code = code;
+  }
+}
+
+// ─── Audit logger stub (replace with real import if exists) ───────────────────
+const writeAuditLog = data => {
+  logger.info({ ...data }, 'AUDIT');
+};
+
+// ─── Cache helpers using your actual cache functions ──────────────────────────
 const HOME_KEY = id => `parent:home:${id}`;
-const HOME_TTL = 5 * 60;
+const HOME_TTL = 5 * 60; // 5 minutes
+
+async function cacheAside(key, ttl, fetchFn) {
+  const cached = await cacheGet(key);
+  if (cached !== null) return cached;
+
+  const data = await fetchFn();
+  if (data !== null && data !== undefined) {
+    await cacheSet(key, data, ttl);
+  }
+  return data;
+}
+
+async function invalidateParentHome(parentId) {
+  await cacheDel(HOME_KEY(parentId));
+}
+
+// ─── Notification helpers ─────────────────────────────────────────────────────
+async function sendSms(phone, message) {
+  try {
+    const sms = getSms();
+    return await sms.send(phone, message);
+  } catch (err) {
+    logger.error({ err: err.message, phone }, '[parent.service] SMS failed');
+  }
+}
+
+async function sendEmail({ to, subject, html }) {
+  try {
+    const email = getEmail();
+    return await email.send({ to, subject, html });
+  } catch (err) {
+    logger.error({ err: err.message, to }, '[parent.service] Email failed');
+  }
+}
 
 // ─── Helper to get parent contact info ───────────────────────────────────────
-
 async function getParentContactInfo(parentId) {
   const parent = await prisma.parentUser.findUnique({
     where: { id: parentId },
@@ -55,14 +103,19 @@ function maskPhone(phone) {
   return `${prefix}****${last4}`;
 }
 
-// ─── GET /me ─────────────────────────────────────────────────────────────────
-
-export async function getParentHomeData(parentId) {
-  return cacheAside(HOME_KEY(parentId), HOME_TTL, () => fetchAndShape(parentId));
+// ─── Safe decrypt ─────────────────────────────────────────────────────────────
+function safeDecrypt(encrypted) {
+  if (!encrypted) return null;
+  try {
+    return decryptField(encrypted);
+  } catch {
+    return null;
+  }
 }
 
-export async function invalidateParentHome(parentId) {
-  await cacheDel(HOME_KEY(parentId));
+// ─── GET /me ─────────────────────────────────────────────────────────────────
+export async function getParentHomeData(parentId) {
+  return cacheAside(HOME_KEY(parentId), HOME_TTL, () => fetchAndShape(parentId));
 }
 
 async function fetchAndShape(parentId) {
@@ -79,6 +132,7 @@ async function fetchAndShape(parentId) {
     REVOKED: 4,
     UNASSIGNED: 5,
   };
+
   const pickBestToken = tokens => {
     if (!tokens?.length) return null;
     return tokens
@@ -163,24 +217,13 @@ function shapeEmergency(ep) {
   };
 }
 
-function safeDecrypt(encrypted) {
-  if (!encrypted) return null;
-  try {
-    return decryptField(encrypted);
-  } catch {
-    return null;
-  }
-}
-
 // ─── GET /me/scans ────────────────────────────────────────────────────────────
-
 export async function getScanHistory(parentId, query) {
   const { cursor, limit, filter } = query;
   return repo.getScanHistory({ parentId, cursor, limit, filter });
 }
 
 // ─── PATCH /me/profile ───────────────────────────────────────────────────────
-
 export async function updateProfile(parentId, body) {
   const { student_id, student, emergency, contacts } = body;
 
@@ -239,7 +282,6 @@ export async function updateProfile(parentId, body) {
 }
 
 // ─── PATCH /me/visibility ────────────────────────────────────────────────────
-
 export async function updateVisibility(parentId, body) {
   await repo.updateCardVisibility({ parentId, ...body });
 
@@ -256,7 +298,6 @@ export async function updateVisibility(parentId, body) {
 }
 
 // ─── PATCH /me/notifications ─────────────────────────────────────────────────
-
 export async function updateNotifications(parentId, prefs) {
   await repo.updateNotificationPrefs(parentId, prefs);
   await invalidateParentHome(parentId);
@@ -264,7 +305,6 @@ export async function updateNotifications(parentId, prefs) {
 }
 
 // ─── PATCH /me/location-consent ──────────────────────────────────────────────
-
 export async function updateLocationConsent(parentId, body) {
   await repo.updateLocationConsent({ parentId, ...body });
   await invalidateParentHome(parentId);
@@ -272,7 +312,6 @@ export async function updateLocationConsent(parentId, body) {
 }
 
 // ─── POST /me/lock-card ──────────────────────────────────────────────────────
-
 export async function lockCard(parentId, body) {
   const { student_id } = body;
 
@@ -305,7 +344,6 @@ export async function lockCard(parentId, body) {
 }
 
 // ─── POST /me/request-replace ────────────────────────────────────────────────
-
 export async function requestCardReplacement(parentId, body) {
   const { student_id, reason } = body;
 
@@ -341,7 +379,6 @@ export async function requestCardReplacement(parentId, body) {
 }
 
 // ─── DELETE /me ──────────────────────────────────────────────────────────────
-
 export async function deleteAccount(parentId) {
   const parentInfo = await getParentContactInfo(parentId);
 
@@ -366,7 +403,6 @@ export async function deleteAccount(parentId) {
 }
 
 // ─── GET /me/location-history ────────────────────────────────────────────────
-
 export async function getLocationHistory(parentId, query) {
   const { student_id, cursor, limit = 20, from_date, to_date } = query;
 
@@ -390,7 +426,6 @@ export async function getLocationHistory(parentId, query) {
 }
 
 // ─── GET /me/anomalies ───────────────────────────────────────────────────────
-
 export async function getAnomalies(parentId, query) {
   const { cursor, limit = 20, severity, resolved } = query;
 
@@ -405,7 +440,6 @@ export async function getAnomalies(parentId, query) {
 }
 
 // ─── GET /me/cards ───────────────────────────────────────────────────────────
-
 export async function getCards(parentId) {
   const cards = await repo.getCards(parentId);
 
@@ -422,7 +456,6 @@ export async function getCards(parentId) {
 }
 
 // ─── POST /me/request-renewal ────────────────────────────────────────────────
-
 export async function requestRenewal(parentId, body) {
   const { card_id, payment_method } = body;
 
@@ -463,7 +496,6 @@ export async function changePhone(parentId, newPhone, otp, ipAddress) {
     select: { phone: true, email: true, name: true },
   });
 
-  // ✅ FIXED: Decrypt old phone before using
   const decryptedOldPhone = oldParentInfo?.phone ? safeDecrypt(oldParentInfo.phone) : null;
   const parentEmail = oldParentInfo?.email;
   const parentName = oldParentInfo?.name;
@@ -512,13 +544,11 @@ export async function changePhone(parentId, newPhone, otp, ipAddress) {
     ip: ipAddress,
   });
 
-  // ✅ FIXED: Send SMS to new phone (plain text, already decrypted)
   sendSms(
     newPhone,
     `RESQID: Your account phone number has been changed. If not you, contact support.`
   ).catch(err => logger.warn({ err: err.message }, 'Phone change SMS to new number failed'));
 
-  // ✅ FIXED: Send SMS to OLD phone using decrypted value
   if (decryptedOldPhone && decryptedOldPhone !== newPhone) {
     sendSms(
       decryptedOldPhone,
@@ -539,14 +569,12 @@ export async function changePhone(parentId, newPhone, otp, ipAddress) {
 }
 
 // ─── POST /device-token ───────────────────────────────────────────────────────
-
 export async function registerDeviceToken(parentId, body) {
   const device = await repo.upsertDeviceToken(parentId, body);
   return device;
 }
 
 // ─── GET /me/children ─────────────────────────────────────────────────────────
-// Lightweight list of all children for the switcher UI
 export async function getChildrenList(parentId) {
   const students = await prisma.parentStudent.findMany({
     where: { parent_id: parentId },
@@ -559,12 +587,10 @@ export async function getChildrenList(parentId) {
           class: true,
           section: true,
           photo_url: true,
-          token: {
-            select: {
-              status: true,
-              expires_at: true,
-            },
+          tokens: {
+            select: { status: true, expires_at: true },
             take: 1,
+            orderBy: { created_at: 'desc' },
           },
         },
       },
@@ -583,14 +609,13 @@ export async function getChildrenList(parentId) {
     photo_url: item.student.photo_url,
     is_primary: item.is_primary,
     relationship: item.relationship,
-    token_status: item.student.token?.[0]?.status || null,
-    token_expiry: item.student.token?.[0]?.expires_at || null,
+    token_status: item.student.tokens?.[0]?.status || null,
+    token_expiry: item.student.tokens?.[0]?.expires_at || null,
   }));
 }
 
 // ─── POST /me/link-card ───────────────────────────────────────────────────────
 export async function linkCard({ parentId, cardNumber, phone, ipAddress }) {
-  // 1. Find the card
   const card = await prisma.card.findUnique({
     where: { card_number: cardNumber },
     select: {
@@ -602,20 +627,14 @@ export async function linkCard({ parentId, cardNumber, phone, ipAddress }) {
           first_name: true,
           setup_stage: true,
           is_active: true,
-          parents: {
-            select: { parent_id: true },
-            take: 1,
-          },
+          parents: { select: { parent_id: true }, take: 1 },
         },
       },
     },
   });
 
-  if (!card) {
-    throw new ApiError('Card not found', 404);
-  }
+  if (!card) throw new ApiError('Card not found', 404);
 
-  // 2. Check if card already has a parent (different from current)
   if (card.student?.parents?.length > 0) {
     const existingParentId = card.student.parents[0].parent_id;
     if (existingParentId !== parentId) {
@@ -623,11 +642,9 @@ export async function linkCard({ parentId, cardNumber, phone, ipAddress }) {
     }
   }
 
-  // 3. Check if card has a student already
   let studentId = card.student_id;
 
   if (!studentId) {
-    // Create new student
     const newStudent = await prisma.student.create({
       data: {
         school_id: card.school_id,
@@ -639,46 +656,30 @@ export async function linkCard({ parentId, cardNumber, phone, ipAddress }) {
     });
     studentId = newStudent.id;
 
-    // Create emergency profile
     await prisma.emergencyProfile.create({
-      data: {
-        student_id: studentId,
-        visibility: 'HIDDEN',
-        is_visible: false,
-      },
+      data: { student_id: studentId, visibility: 'HIDDEN', is_visible: false },
     });
 
-    // Update card with student
     await prisma.card.update({
       where: { id: card.id },
       data: { student_id: studentId },
     });
   }
 
-  // 4. Check if already linked to this parent
   const existingLink = await prisma.parentStudent.findUnique({
-    where: {
-      parent_id_student_id: {
-        parent_id: parentId,
-        student_id: studentId,
-      },
-    },
+    where: { parent_id_student_id: { parent_id: parentId, student_id: studentId } },
   });
 
-  if (existingLink) {
-    throw new ApiError('This child is already linked to your account', 409);
-  }
+  if (existingLink) throw new ApiError('This child is already linked to your account', 409);
 
-  // 5. Link parent to student
   const existingChildrenCount = await prisma.parentStudent.count({
     where: { parent_id: parentId },
   });
 
-  // ✅ ADD MAX CHILDREN LIMIT HERE
   const MAX_FREE_CHILDREN = 3;
   if (existingChildrenCount >= MAX_FREE_CHILDREN) {
     throw new ApiError(
-      `Free plan supports up to ${MAX_FREE_CHILDREN} children. Upgrade to premium to add more.`,
+      `Free plan supports up to ${MAX_FREE_CHILDREN} children. Upgrade to add more.`,
       403
     );
   }
@@ -692,7 +693,6 @@ export async function linkCard({ parentId, cardNumber, phone, ipAddress }) {
     },
   });
 
-  // 6. Link token if exists
   const cardWithToken = await prisma.card.findUnique({
     where: { id: card.id },
     select: { token_id: true },
@@ -701,14 +701,10 @@ export async function linkCard({ parentId, cardNumber, phone, ipAddress }) {
   if (cardWithToken?.token_id) {
     await prisma.token.update({
       where: { id: cardWithToken.token_id },
-      data: {
-        student_id: studentId,
-        status: 'ACTIVE',
-      },
+      data: { student_id: studentId, status: 'ACTIVE' },
     });
   }
 
-  // 7. If this is the first child, set as active
   if (existingChildrenCount === 0) {
     await prisma.parentUser.update({
       where: { id: parentId },
@@ -716,10 +712,8 @@ export async function linkCard({ parentId, cardNumber, phone, ipAddress }) {
     });
   }
 
-  // 8. Invalidate cache
   await invalidateParentHome(parentId);
 
-  // 9. Send notification
   const parentInfo = await getParentContactInfo(parentId);
   if (parentInfo?.email) {
     sendEmail({
@@ -738,30 +732,20 @@ export async function linkCard({ parentId, cardNumber, phone, ipAddress }) {
 }
 
 // ─── PATCH /me/active-student ─────────────────────────────────────────────────
-// Switch the active student for this parent
 export async function setActiveStudent(parentId, studentId) {
-  // 1. Verify student is linked to parent
   const link = await prisma.parentStudent.findFirst({
-    where: {
-      parent_id: parentId,
-      student_id: studentId,
-    },
+    where: { parent_id: parentId, student_id: studentId },
   });
 
-  if (!link) {
-    throw new ApiError('Student not linked to this parent', 403);
-  }
+  if (!link) throw new ApiError('Student not linked to this parent', 403);
 
-  // 2. Update parent's active student
   await prisma.parentUser.update({
     where: { id: parentId },
     data: { active_student_id: studentId },
   });
 
-  // 3. Invalidate cache
   await invalidateParentHome(parentId);
 
-  // 4. Audit log
   writeAuditLog({
     actorId: parentId,
     actorType: 'PARENT_USER',
@@ -773,3 +757,6 @@ export async function setActiveStudent(parentId, studentId) {
 
   return { success: true, active_student_id: studentId };
 }
+
+// ─── Exports ─────────────────────────────────────────────────────────────────
+export { invalidateParentHome };

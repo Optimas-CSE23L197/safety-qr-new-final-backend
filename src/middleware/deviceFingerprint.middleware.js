@@ -13,7 +13,7 @@
 // Only applies to PARENT_USER — school users and super admins use
 // password-based sessions from known browsers, not mobile device tokens.
 //
-// Header: X-Device-ID  (FCM/APNS device token or stable device fingerprint)
+// Header: X-Device-ID (device fingerprint from mobile app)
 // =============================================================================
 
 import { prisma } from '#config/prisma.js';
@@ -42,13 +42,13 @@ export const verifyDevice = asyncHandler(async (req, _res, next) => {
   // Only enforce for mobile app (PARENT_USER)
   if (req.role !== 'PARENT_USER') return next();
 
-  const deviceToken = req.headers[DEVICE_HEADER];
+  const deviceFingerprint = req.headers[DEVICE_HEADER];
 
-  if (!deviceToken) {
+  if (!deviceFingerprint) {
     throw ApiError.unauthorized('Device identification header missing (X-Device-ID required)');
   }
 
-  const device = await getDevice(req.userId, deviceToken);
+  const device = await getDevice(req.userId, deviceFingerprint);
 
   if (!device) {
     throw ApiError.unauthorized('Device not recognized — please log in again');
@@ -61,7 +61,7 @@ export const verifyDevice = asyncHandler(async (req, _res, next) => {
       {
         claimedUserId: req.userId,
         deviceOwnerId: device.parent_id,
-        deviceToken: deviceToken.slice(0, 16) + '...', // partial for logs
+        deviceFingerprint: deviceFingerprint.slice(0, 16) + '...', // partial for logs
       },
       'Device fingerprint mismatch — token used by wrong parent'
     );
@@ -92,17 +92,18 @@ export const verifyDevice = asyncHandler(async (req, _res, next) => {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-async function getDevice(parentId, deviceToken) {
-  // Cache key: parent + device token (device token is the FCM/APNS token)
-  const cacheKey = `device:${parentId}:${deviceToken}`;
+async function getDevice(parentId, deviceFingerprint) {
+  // Cache key: parent + device fingerprint
+  const cacheKey = `device:${parentId}:${deviceFingerprint}`;
   const cached = await redis.get(cacheKey);
 
   if (cached) return JSON.parse(cached);
 
+  // ✅ FIXED: Using device_fingerprint field instead of device_token
   const device = await prisma.parentDevice.findFirst({
     where: {
       parent_id: parentId,
-      device_token: deviceToken,
+      device_fingerprint: deviceFingerprint,
     },
     select: {
       id: true,
@@ -137,6 +138,6 @@ async function updateDeviceLastSeen(deviceId) {
  * Call this when a device's is_active status changes (login/logout/force-logout)
  * so the cache doesn't serve stale active=true entries
  */
-export async function invalidateDeviceCache(parentId, deviceToken) {
-  await redis.del(`device:${parentId}:${deviceToken}`);
+export async function invalidateDeviceCache(parentId, deviceFingerprint) {
+  await redis.del(`device:${parentId}:${deviceFingerprint}`);
 }

@@ -1,7 +1,7 @@
 // =============================================================================
 // src/services/auth/auth.service.js — RESQID (FIXED)
 // =============================================================================
-
+import { prisma } from '#config/prisma.js';
 import crypto from 'crypto';
 import bcrypt from 'bcrypt';
 import { redis } from '#config/redis.js';
@@ -313,6 +313,9 @@ export const sendOtp = async ({ phone, ipAddress, deviceId }) => {
 
   // Generate OTP
   const otp = generateOtp();
+
+  if (ENV.NODE_ENV === 'development') console.log('[DEV Parent Login Otp]', otp);
+
   const hashed = hashOtp(otp);
 
   const otpData = {
@@ -344,12 +347,10 @@ export const sendOtp = async ({ phone, ipAddress, deviceId }) => {
 // =============================================================================
 // PARENT LOGIN: VERIFY OTP
 // =============================================================================
-
 export const verifyOtp = async ({ phone, otp, ipAddress, deviceInfo }) => {
   console.log(`\n🔑 [OTP VERIFY] Phone: ${phone}`);
 
-  // Centralized OTP validation
-  await validateOtp(phone, otp, ipAddress, 'LOGIN');
+  await validateOtp(phone, otp, ipAddress, 'login');
 
   const phoneIndex = hashForLookup(phone);
   const parent = await repo.findParentByPhoneIndex(phoneIndex);
@@ -370,6 +371,13 @@ export const verifyOtp = async ({ phone, otp, ipAddress, deviceInfo }) => {
     ip: ipAddress,
   });
 
+  // ✅ ADD THIS: Create or update device record
+  await upsertParentDevice({
+    parentId: parent.id,
+    deviceFingerprint,
+    deviceInfo,
+  });
+
   const { accessToken, refreshToken, expiresAt } = await createUserSession({
     userId: parent.id,
     role: 'PARENT_USER',
@@ -382,7 +390,6 @@ export const verifyOtp = async ({ phone, otp, ipAddress, deviceInfo }) => {
   await updateLastLogin('PARENT_USER', parent.id);
   await recordSuccessfulAuth(ipAddress, parent.id, 'PARENT_USER');
 
-  // Get parent details and preferences from repository
   const children = await repo.findParentChildren(parent.id, 1);
 
   console.log(`✅ [LOGIN SUCCESS] Parent ${parent.id} - ${children.length} child(ren)`);
@@ -461,6 +468,9 @@ export const registerInit = async ({ card_number, phone, ipAddress }) => {
   await redis.setex(`reg:nonce:${nonce}`, NONCE_TTL, nonceData);
 
   const otp = generateOtp();
+
+  if (ENV.NODE_ENV === 'development') console.log('[DEV OTP]', otp);
+
   const hashed = hashOtp(otp);
 
   const otpData = {
@@ -495,12 +505,10 @@ export const registerInit = async ({ card_number, phone, ipAddress }) => {
 // =============================================================================
 // PARENT REGISTRATION: STEP 2 — VERIFY
 // =============================================================================
-
 export const registerVerify = async ({ nonce, otp, phone, ipAddress, deviceInfo }) => {
   console.log(`\n✅ [REGISTER VERIFY] Phone: ${phone}, Nonce: ${nonce.slice(0, 16)}...`);
 
-  // Centralized OTP validation
-  await validateOtp(phone, otp, ipAddress, 'REGISTRATION');
+  await validateOtp(phone, otp, ipAddress, 'register');
 
   const nonceRaw = await redis.get(`reg:nonce:${nonce}`);
   if (!nonceRaw) {
@@ -522,7 +530,6 @@ export const registerVerify = async ({ nonce, otp, phone, ipAddress, deviceInfo 
   const phoneIndex = hashForLookup(phone);
   const encryptedPhone = encryptField(phone);
 
-  // Use repository transaction for registration
   const { parent, studentId, isNewUser } = await repo.registerParentWithStudent({
     phone,
     phoneIndex,
@@ -542,6 +549,13 @@ export const registerVerify = async ({ nonce, otp, phone, ipAddress, deviceInfo 
   const deviceFingerprint = generateDeviceFingerprint({
     headers: { 'user-agent': deviceInfo?.userAgent },
     ip: ipAddress,
+  });
+
+  // ✅ ADD THIS: Create or update device record
+  await upsertParentDevice({
+    parentId: parent.id,
+    deviceFingerprint,
+    deviceInfo,
   });
 
   const { accessToken, refreshToken, expiresAt } = await createUserSession({
@@ -866,3 +880,52 @@ export const verifyPhoneChange = async ({ changeToken, otp, ipAddress }) => {
     message: 'Phone number changed successfully. Please login again.',
   };
 };
+
+// Add this helper function near the top of auth.service.js (around line 30-50)
+
+/**
+ * upsertParentDevice
+ * Creates or updates a device record for the parent
+ */
+async function upsertParentDevice({ parentId, deviceFingerprint, deviceInfo }) {
+  if (!deviceFingerprint) return null;
+
+  const existingDevice = await prisma.parentDevice.findFirst({
+    where: {
+      parent_id: parentId,
+      device_fingerprint: deviceFingerprint,
+    },
+  });
+
+  if (existingDevice) {
+    // Update existing device
+    return prisma.parentDevice.update({
+      where: { id: existingDevice.id },
+      data: {
+        is_active: true,
+        logged_out_at: null,
+        last_seen_at: new Date(),
+        device_name: deviceInfo?.device_name || existingDevice.device_name,
+        device_model: deviceInfo?.device_model || existingDevice.device_model,
+        os_version: deviceInfo?.os_version || existingDevice.os_version,
+        app_version: deviceInfo?.app_version || existingDevice.app_version,
+        platform: deviceInfo?.platform || existingDevice.platform,
+      },
+    });
+  } else {
+    // Create new device
+    return prisma.parentDevice.create({
+      data: {
+        parent_id: parentId,
+        device_fingerprint: deviceFingerprint,
+        platform: deviceInfo?.platform || 'ANDROID',
+        device_name: deviceInfo?.device_name || null,
+        device_model: deviceInfo?.device_model || null,
+        os_version: deviceInfo?.os_version || null,
+        app_version: deviceInfo?.app_version || null,
+        is_active: true,
+        last_seen_at: new Date(),
+      },
+    });
+  }
+}

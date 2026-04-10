@@ -58,8 +58,8 @@ router.use(authenticate, requireParent);
 router.get('/me', getMe);
 
 // ── Multi-child support (NEW) ─────────────────────────────────────────────────
-router.get('/me/children', getChildrenList);                                    // GET all children (lightweight)
-router.post('/me/link-card', validateLinkCard, linkCard);                       // Add second child by card
+router.get('/me/children', getChildrenList); // GET all children (lightweight)
+router.post('/me/link-card', validateLinkCard, linkCard); // Add second child by card
 router.patch('/me/active-student', validateSetActiveStudent, setActiveStudent); // Switch active student
 
 // ── Scan history (scan-history screen) ────────────────────────────────────────
