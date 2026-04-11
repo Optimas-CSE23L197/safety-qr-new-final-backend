@@ -310,17 +310,16 @@ export async function getChildrenList(req, res) {
 }
 
 // ─── POST /me/link-card ───────────────────────────────────────────────────────
-// Add a new child (second/third/etc.) by scanning a new card
+// add a new child
 export async function linkCard(req, res) {
   const parentId = requireOwnParent(req, res);
   if (!parentId) return;
 
   try {
-    const { card_number, phone } = req.validatedBody;
+    const { card_number } = req.validatedBody; // removed phone
     const result = await service.linkCard({
       parentId,
       cardNumber: card_number,
-      phone,
       ipAddress: extractIp(req),
     });
     return res.status(200).json({ success: true, data: result });

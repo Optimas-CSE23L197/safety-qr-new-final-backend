@@ -615,24 +615,8 @@ export async function getChildrenList(parentId) {
 }
 
 // ─── POST /me/link-card ───────────────────────────────────────────────────────
-export async function linkCard({ parentId, cardNumber, phone, ipAddress }) {
-  const card = await prisma.card.findUnique({
-    where: { card_number: cardNumber },
-    select: {
-      id: true,
-      student_id: true,
-      school_id: true,
-      student: {
-        select: {
-          first_name: true,
-          setup_stage: true,
-          is_active: true,
-          parents: { select: { parent_id: true }, take: 1 },
-        },
-      },
-    },
-  });
-
+export async function linkCard({ parentId, cardNumber, ipAddress }) {
+  const card = await repo.findCardByNumber(cardNumber);
   if (!card) throw new ApiError('Card not found', 404);
 
   if (card.student?.parents?.length > 0) {
@@ -645,37 +629,16 @@ export async function linkCard({ parentId, cardNumber, phone, ipAddress }) {
   let studentId = card.student_id;
 
   if (!studentId) {
-    const newStudent = await prisma.student.create({
-      data: {
-        school_id: card.school_id,
-        first_name: card.student?.first_name || null,
-        setup_stage: 'PENDING',
-        is_active: true,
-      },
-      select: { id: true },
-    });
+    const newStudent = await repo.createStubStudent(card.school_id, card.student?.first_name);
     studentId = newStudent.id;
-
-    await prisma.emergencyProfile.create({
-      data: { student_id: studentId, visibility: 'HIDDEN', is_visible: false },
-    });
-
-    await prisma.card.update({
-      where: { id: card.id },
-      data: { student_id: studentId },
-    });
+    await repo.createEmergencyProfileForStudent(studentId);
+    await repo.updateCardStudentId(card.id, studentId);
   }
 
-  const existingLink = await prisma.parentStudent.findUnique({
-    where: { parent_id_student_id: { parent_id: parentId, student_id: studentId } },
-  });
-
+  const existingLink = await repo.findParentStudentLink(parentId, studentId);
   if (existingLink) throw new ApiError('This child is already linked to your account', 409);
 
-  const existingChildrenCount = await prisma.parentStudent.count({
-    where: { parent_id: parentId },
-  });
-
+  const existingChildrenCount = await repo.countParentChildren(parentId);
   const MAX_FREE_CHILDREN = 3;
   if (existingChildrenCount >= MAX_FREE_CHILDREN) {
     throw new ApiError(
@@ -684,42 +647,25 @@ export async function linkCard({ parentId, cardNumber, phone, ipAddress }) {
     );
   }
 
-  await prisma.parentStudent.create({
-    data: {
-      parent_id: parentId,
-      student_id: studentId,
-      relationship: 'Parent',
-      is_primary: existingChildrenCount === 0,
-    },
-  });
+  await repo.createParentStudentLink(parentId, studentId, existingChildrenCount === 0);
 
-  const cardWithToken = await prisma.card.findUnique({
-    where: { id: card.id },
-    select: { token_id: true },
-  });
-
+  const cardWithToken = await repo.findCardTokenId(card.id);
   if (cardWithToken?.token_id) {
-    await prisma.token.update({
-      where: { id: cardWithToken.token_id },
-      data: { student_id: studentId, status: 'ACTIVE' },
-    });
+    await repo.activateTokenForStudent(cardWithToken.token_id, studentId);
   }
 
   if (existingChildrenCount === 0) {
-    await prisma.parentUser.update({
-      where: { id: parentId },
-      data: { active_student_id: studentId },
-    });
+    await repo.setParentActiveStudent(parentId, studentId);
   }
 
   await invalidateParentHome(parentId);
 
-  const parentInfo = await getParentContactInfo(parentId);
-  if (parentInfo?.email) {
+  const parent = await repo.findParentEmail(parentId);
+  if (parent?.email) {
     sendEmail({
-      to: parentInfo.email,
+      to: parent.email,
       subject: '👶 New Child Added - RESQID',
-      html: `<div>A new child has been added to your RESQID account.</div>`,
+      html: `<div>Your child has been added to your RESQID account.</div>`,
     }).catch(err => logger.warn({ err: err.message }, 'Link card email failed'));
   }
 

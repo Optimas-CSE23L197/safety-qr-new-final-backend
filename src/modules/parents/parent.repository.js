@@ -632,3 +632,96 @@ export async function upsertDeviceToken(
     },
   });
 }
+
+export async function findCardByNumber(cardNumber) {
+  return prisma.card.findUnique({
+    where: { card_number: cardNumber },
+    select: {
+      id: true,
+      student_id: true,
+      school_id: true,
+      student: {
+        select: {
+          first_name: true,
+          setup_stage: true,
+          is_active: true,
+          parents: { select: { parent_id: true }, take: 1 },
+        },
+      },
+    },
+  });
+}
+
+export async function createStubStudent(schoolId, firstName) {
+  return prisma.student.create({
+    data: {
+      school_id: schoolId,
+      first_name: firstName || null,
+      setup_stage: 'PENDING',
+      is_active: true,
+    },
+    select: { id: true },
+  });
+}
+
+export async function createEmergencyProfileForStudent(studentId) {
+  return prisma.emergencyProfile.create({
+    data: { student_id: studentId, visibility: 'HIDDEN', is_visible: false },
+  });
+}
+
+export async function updateCardStudentId(cardId, studentId) {
+  return prisma.card.update({
+    where: { id: cardId },
+    data: { student_id: studentId },
+  });
+}
+
+export async function findParentStudentLink(parentId, studentId) {
+  return prisma.parentStudent.findUnique({
+    where: { parent_id_student_id: { parent_id: parentId, student_id: studentId } },
+  });
+}
+
+export async function countParentChildren(parentId) {
+  return prisma.parentStudent.count({ where: { parent_id: parentId } });
+}
+
+export async function createParentStudentLink(parentId, studentId, isPrimary) {
+  return prisma.parentStudent.create({
+    data: {
+      parent_id: parentId,
+      student_id: studentId,
+      relationship: 'Parent',
+      is_primary: isPrimary,
+    },
+  });
+}
+
+export async function findCardTokenId(cardId) {
+  return prisma.card.findUnique({
+    where: { id: cardId },
+    select: { token_id: true },
+  });
+}
+
+export async function activateTokenForStudent(tokenId, studentId) {
+  return prisma.token.update({
+    where: { id: tokenId },
+    data: { student_id: studentId, status: 'ACTIVE' },
+  });
+}
+
+export async function setParentActiveStudent(parentId, studentId) {
+  return prisma.parentUser.update({
+    where: { id: parentId },
+    data: { active_student_id: studentId },
+  });
+}
+
+export async function findParentEmail(parentId) {
+  return prisma.parentUser.findUnique({
+    where: { id: parentId },
+    select: { email: true, name: true },
+  });
+}

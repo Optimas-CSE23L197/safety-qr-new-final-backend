@@ -502,7 +502,6 @@ export function validateRegisterDeviceToken(req, res, next) {
 // ─── POST /me/link-card ───────────────────────────────────────────────────────
 // Add a new child by scanning a new card
 // Card number format: alphanumeric with hyphens, 10-20 chars
-
 const linkCardSchema = z.object({
   card_number: z
     .string()
@@ -510,11 +509,6 @@ const linkCardSchema = z.object({
     .min(10, 'Card number must be at least 10 characters')
     .max(20, 'Card number too long')
     .transform(v => v.toUpperCase().replace(/[^A-Z0-9-]/g, '')),
-  phone: z
-    .string()
-    .trim()
-    .transform(normalisePhone)
-    .pipe(z.string().regex(PHONE_REGEX, 'Phone must be a valid number e.g. +919876543210')),
 });
 
 export function validateLinkCard(req, res, next) {
