@@ -723,6 +723,7 @@ exports.Prisma.ScanLogScalarFieldEnum = {
   location_derived: 'location_derived',
   latitude: 'latitude',
   longitude: 'longitude',
+  accuracy: 'accuracy',
   device_hash: 'device_hash',
   user_agent: 'user_agent',
   response_time_ms: 'response_time_ms',

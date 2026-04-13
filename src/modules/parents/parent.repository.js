@@ -324,14 +324,14 @@ function buildContactData(c) {
 
 // ─── /me/visibility ───────────────────────────────────────────────────────────
 
-export async function updateCardVisibility({ parentId, studentId, visibility, hidden_fields }) {
-  await verifyStudentOwnership(parentId, studentId);
+export async function updateCardVisibility({ parentId, student_id, visibility, hidden_fields }) {
+  await verifyStudentOwnership(parentId, student_id);
 
   return prisma.cardVisibility.upsert({
-    where: { student_id: studentId },
+    where: { student_id: student_id },
     update: { visibility, hidden_fields, updated_by_parent: true },
     create: {
-      student_id: studentId,
+      student_id: student_id,
       visibility,
       hidden_fields,
       updated_by_parent: true,
@@ -723,5 +723,46 @@ export async function findParentEmail(parentId) {
   return prisma.parentUser.findUnique({
     where: { id: parentId },
     select: { email: true, name: true },
+  });
+}
+
+// ─── /me/unlink-child ────────────────────────────────────────────────────────
+export async function findParentPhone(parentId) {
+  return prisma.parentUser.findUnique({
+    where: { id: parentId },
+    select: { phone: true, email: true, name: true },
+  });
+}
+
+export async function findStudentById(studentId) {
+  return prisma.student.findUnique({
+    where: { id: studentId },
+    select: { id: true, first_name: true, last_name: true },
+  });
+}
+
+export async function deleteParentStudentLink(parentId, studentId) {
+  return prisma.parentStudent.delete({
+    where: {
+      parent_id_student_id: { parent_id: parentId, student_id: studentId },
+    },
+  });
+}
+
+export async function deactivateTokenForStudent(studentId) {
+  return prisma.token.updateMany({
+    where: { student_id: studentId, status: 'ACTIVE' },
+    data: { status: 'UNASSIGNED', student_id: null },
+  });
+}
+
+export async function getRemainingChildrenCount(parentId) {
+  return prisma.parentStudent.count({ where: { parent_id: parentId } });
+}
+
+export async function updateParentActiveStudent(parentId, newActiveStudentId) {
+  return prisma.parentUser.update({
+    where: { id: parentId },
+    data: { active_student_id: newActiveStudentId },
   });
 }

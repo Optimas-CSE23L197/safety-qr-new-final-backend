@@ -1019,6 +1019,7 @@ model ScanLog {
   location_derived     Boolean        @default(true)
   latitude             Float?
   longitude            Float?
+  accuracy             Float?
   device_hash          String?
   user_agent           String?
   response_time_ms     Int?

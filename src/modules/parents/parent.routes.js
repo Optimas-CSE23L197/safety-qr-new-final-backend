@@ -24,10 +24,12 @@ import {
   changePhone,
   sendPhoneChangeOtp,
   registerDeviceToken,
-  // ✅ NEW IMPORTS for multi-child features
+  // NEW IMPORTS for multi-child features
   linkCard,
   setActiveStudent,
   getChildrenList,
+  unlinkChildInit,
+  unlinkChildVerify,
 } from './parent.controller.js';
 
 import {
@@ -44,9 +46,11 @@ import {
   validateChangePhone,
   validateSendPhoneOtp,
   validateRegisterDeviceToken,
-  // ✅ NEW VALIDATIONS for multi-child features
+  // NEW VALIDATIONS for multi-child features
   validateLinkCard,
   validateSetActiveStudent,
+  validateUnlinkChildInit,
+  validateUnlinkChildVerify,
 } from './parent.validation.js';
 
 const router = Router();
@@ -104,5 +108,9 @@ router.delete('/me', deleteAccount);
 
 // ── Push notification device token registration ───────────────────────────────
 router.post('/device-token', validateRegisterDeviceToken, registerDeviceToken);
+
+// ── Unlink child (remove child from parent account) ──────────────────────────
+router.post('/me/unlink-child/init', validateUnlinkChildInit, unlinkChildInit);
+router.post('/me/unlink-child/verify', validateUnlinkChildVerify, unlinkChildVerify);
 
 export default router;

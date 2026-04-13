@@ -6,18 +6,17 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
     />
-    <meta name="theme-color" content="#0A0F1E" />
+    <meta name="theme-color" content="#060810" />
     <meta name="robots" content="noindex, nofollow" />
     <title>RESQID — Emergency Profile</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Cabinet+Grotesk:wght@400;500;700;800;900&family=Instrument+Sans:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
 
     <style>
-      /* ── Reset ── */
       *,
       *::before,
       *::after {
@@ -26,56 +25,48 @@
         padding: 0;
       }
 
-      /* ── Security ── */
+      :root {
+        --bg: #060810;
+        --surface: #0d1120;
+        --surface2: #141928;
+        --surface3: #1c2335;
+        --border: rgba(255, 255, 255, 0.06);
+        --border2: rgba(255, 255, 255, 0.11);
+        --text: #eef2f8;
+        --text-muted: #4e5a72;
+        --text-dim: #8896b0;
+        --red: #ef4444;
+        --red-soft: #ff6b6b;
+        --red-bg: rgba(239, 68, 68, 0.08);
+        --red-border: rgba(239, 68, 68, 0.18);
+        --green: #10b981;
+        --green-bg: rgba(16, 185, 129, 0.08);
+        --amber: #f59e0b;
+        --amber-bg: rgba(245, 158, 11, 0.08);
+        --blue: #3b82f6;
+        --blue-bg: rgba(59, 130, 246, 0.08);
+        --accent: #e84545;
+        --accent2: #ff5757;
+        --r: 14px;
+        --r-sm: 10px;
+        --r-lg: 20px;
+      }
+
+      html {
+        background: var(--bg);
+      }
+
       body {
+        font-family: 'Instrument Sans', sans-serif;
+        background: var(--bg);
+        color: var(--text);
         -webkit-user-select: none;
-        -moz-user-select: none;
         user-select: none;
         -webkit-touch-callout: none;
-        overflow: hidden;
-      }
-      img {
-        pointer-events: none;
-        -webkit-user-drag: none;
+        min-height: 100vh;
       }
 
-      /* ── Tokens ── */
-      :root {
-        --bg: #0a0f1e;
-        --surface: #111827;
-        --surface2: #1a2236;
-        --border: rgba(255, 255, 255, 0.07);
-        --border2: rgba(255, 255, 255, 0.12);
-        --text: #f1f5f9;
-        --text-muted: #64748b;
-        --text-dim: #94a3b8;
-        --red: #ef4444;
-        --red-bg: rgba(239, 68, 68, 0.1);
-        --red-border: rgba(239, 68, 68, 0.2);
-        --green: #10b981;
-        --green-bg: rgba(16, 185, 129, 0.1);
-        --amber: #f59e0b;
-        --amber-bg: rgba(245, 158, 11, 0.1);
-        --blue: #3b82f6;
-        --blue-bg: rgba(59, 130, 246, 0.1);
-        --accent: #e84545;
-        --accent2: #ff6b6b;
-        --font: 'DM Sans', sans-serif;
-        --mono: 'DM Mono', monospace;
-        --radius: 16px;
-        --radius-sm: 10px;
-      }
-
-      html,
-      body {
-        min-height: 100%;
-        background: var(--bg);
-        font-family: var(--font);
-        color: var(--text);
-        overflow-x: hidden;
-      }
-
-      /* ── Loading ── */
+      /* ── Loading ─────────────────────────────────────────────────────── */
       #loading {
         position: fixed;
         inset: 0;
@@ -88,9 +79,10 @@
         z-index: 100;
         transition: opacity 0.4s ease;
       }
+
       .pulse-ring {
-        width: 64px;
-        height: 64px;
+        width: 68px;
+        height: 68px;
         position: relative;
       }
       .pulse-ring::before,
@@ -102,10 +94,10 @@
         border: 2px solid var(--accent);
       }
       .pulse-ring::before {
-        animation: pulse-expand 1.6s ease-out infinite;
+        animation: pex 1.6s ease-out infinite;
       }
       .pulse-ring::after {
-        animation: pulse-expand 1.6s ease-out 0.5s infinite;
+        animation: pex 1.6s ease-out 0.55s infinite;
       }
       .pulse-logo {
         position: absolute;
@@ -113,39 +105,41 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 1.5rem;
+        font-size: 1.6rem;
       }
-      @keyframes pulse-expand {
+      @keyframes pex {
         0% {
-          transform: scale(0.6);
+          transform: scale(0.55);
           opacity: 1;
         }
         100% {
-          transform: scale(2);
+          transform: scale(2.1);
           opacity: 0;
         }
       }
+
       #loading p {
-        font-size: 0.78rem;
+        font-family: 'Geist Mono', monospace;
+        font-size: 0.7rem;
         color: var(--text-muted);
-        font-weight: 500;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.1em;
         text-transform: uppercase;
       }
 
-      /* ── App Shell ── */
+      /* ── App shell ───────────────────────────────────────────────────── */
       #app {
         display: none;
         min-height: 100vh;
+        background: var(--bg);
       }
       #app.visible {
         display: block;
-        animation: fadeUp 0.5s ease both;
+        animation: fadeUp 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
       }
       @keyframes fadeUp {
         from {
           opacity: 0;
-          transform: translateY(16px);
+          transform: translateY(18px);
         }
         to {
           opacity: 1;
@@ -153,26 +147,109 @@
         }
       }
 
-      /* ── Status pages (error / inactive / unregistered) ── */
+      /* ── Location banner (top, NOT bottom popup) ─────────────────────── */
+      .loc-banner {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 300;
+        background: var(--surface2);
+        border-bottom: 1px solid var(--border2);
+        padding: 14px 16px;
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        animation: slideDown 0.3s ease;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+      }
+      @keyframes slideDown {
+        from {
+          transform: translateY(-100%);
+          opacity: 0;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+      .loc-banner-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        background: rgba(59, 130, 246, 0.15);
+        border: 1px solid rgba(59, 130, 246, 0.25);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+        flex-shrink: 0;
+        margin-top: 1px;
+      }
+      .loc-banner-body {
+        flex: 1;
+      }
+      .loc-banner-title {
+        font-family: 'Cabinet Grotesk', sans-serif;
+        font-size: 0.92rem;
+        font-weight: 800;
+        color: var(--text);
+        margin-bottom: 2px;
+      }
+      .loc-banner-desc {
+        font-size: 0.75rem;
+        color: var(--text-dim);
+        line-height: 1.5;
+        margin-bottom: 12px;
+      }
+      .loc-banner-btns {
+        display: flex;
+        gap: 8px;
+      }
+      .loc-banner-btn {
+        flex: 1;
+        padding: 9px 12px;
+        border-radius: 10px;
+        font-size: 0.8rem;
+        font-weight: 700;
+        cursor: pointer;
+        border: none;
+        font-family: 'Instrument Sans', sans-serif;
+        transition: opacity 0.15s;
+      }
+      .loc-banner-btn:active {
+        opacity: 0.75;
+      }
+      .loc-banner-btn.allow {
+        background: var(--blue);
+        color: #fff;
+      }
+      .loc-banner-btn.deny {
+        background: transparent;
+        border: 1px solid var(--border2);
+        color: var(--text-dim);
+      }
+
+      /* ── Status pages ─────────────────────────────────────────────────── */
       .status-page {
         min-height: 100vh;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        padding: 32px 24px;
+        padding: 40px 24px;
         text-align: center;
-        gap: 16px;
+        gap: 14px;
       }
       .status-icon {
-        width: 72px;
-        height: 72px;
+        width: 76px;
+        height: 76px;
         border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 2rem;
-        margin-bottom: 8px;
+        font-size: 2.1rem;
+        margin-bottom: 6px;
       }
       .status-icon.error {
         background: var(--red-bg);
@@ -187,26 +264,26 @@
         border: 1px solid rgba(59, 130, 246, 0.2);
       }
       .status-title {
-        font-size: 1.3rem;
-        font-weight: 800;
+        font-family: 'Cabinet Grotesk', sans-serif;
+        font-size: 1.4rem;
+        font-weight: 900;
         color: var(--text);
       }
       .status-msg {
-        font-size: 0.88rem;
+        font-size: 0.875rem;
         color: var(--text-dim);
         max-width: 280px;
-        line-height: 1.6;
+        line-height: 1.65;
       }
-      .school-footer {
-        margin-top: 24px;
+      .status-school {
         font-size: 0.75rem;
         color: var(--text-muted);
+        margin-top: 8px;
       }
 
-      /* ── Emergency Header ── */
+      /* ── Emergency Header ─────────────────────────────────────────────── */
       .emergency-header {
-        background: linear-gradient(160deg, #1a0808 0%, #0a0f1e 60%);
-        padding: 0;
+        background: linear-gradient(170deg, #160606 0%, #0a0f1e 55%, var(--bg) 100%);
         position: relative;
         overflow: hidden;
       }
@@ -214,32 +291,46 @@
         content: '';
         position: absolute;
         inset: 0;
-        background: radial-gradient(
-          ellipse at top left,
-          rgba(232, 69, 69, 0.15) 0%,
-          transparent 60%
-        );
         pointer-events: none;
+        background: radial-gradient(
+          ellipse 70% 50% at 10% 0%,
+          rgba(232, 69, 69, 0.18) 0%,
+          transparent 70%
+        );
+      }
+      .emergency-header::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: radial-gradient(
+          ellipse 40% 30% at 90% 80%,
+          rgba(59, 130, 246, 0.07) 0%,
+          transparent 70%
+        );
       }
 
-      /* Red emergency strip */
+      /* top strip */
       .emer-strip {
         background: var(--accent);
-        padding: 9px 20px;
+        padding: 8px 20px;
         display: flex;
         align-items: center;
         gap: 8px;
+        position: relative;
+        z-index: 1;
       }
       .emer-strip span {
-        font-size: 0.7rem;
-        font-weight: 800;
-        letter-spacing: 0.14em;
+        font-family: 'Geist Mono', monospace;
+        font-size: 0.65rem;
+        font-weight: 500;
+        letter-spacing: 0.16em;
         text-transform: uppercase;
         color: #fff;
       }
       .emer-dot {
-        width: 7px;
-        height: 7px;
+        width: 6px;
+        height: 6px;
         border-radius: 50%;
         background: #fff;
         animation: blink 1.2s ease-in-out infinite;
@@ -251,28 +342,28 @@
           opacity: 1;
         }
         50% {
-          opacity: 0.3;
+          opacity: 0.25;
         }
       }
 
-      /* Profile hero */
+      /* profile hero */
       .profile-hero {
-        padding: 24px 20px 28px;
+        padding: 22px 20px 24px;
         display: flex;
-        gap: 18px;
+        gap: 16px;
         align-items: flex-start;
         position: relative;
         z-index: 1;
       }
       .avatar-wrap {
         flex-shrink: 0;
-        width: 80px;
-        height: 80px;
+        width: 82px;
+        height: 82px;
         border-radius: 50%;
-        border: 2.5px solid rgba(232, 69, 69, 0.5);
+        border: 2.5px solid rgba(232, 69, 69, 0.45);
         overflow: hidden;
-        background: var(--surface2);
-        position: relative;
+        background: var(--surface3);
+        box-shadow: 0 0 0 4px rgba(232, 69, 69, 0.08);
       }
       .avatar-wrap img {
         width: 100%;
@@ -285,39 +376,39 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 1.8rem;
-        font-weight: 800;
-        color: var(--accent);
+        font-family: 'Cabinet Grotesk', sans-serif;
+        font-size: 1.9rem;
+        font-weight: 900;
+        color: var(--accent2);
       }
       .profile-info {
         flex: 1;
         min-width: 0;
-        padding-top: 4px;
+        padding-top: 3px;
       }
       .profile-name {
-        font-size: 1.35rem;
-        font-weight: 800;
+        font-family: 'Cabinet Grotesk', sans-serif;
+        font-size: 1.45rem;
+        font-weight: 900;
         color: var(--text);
-        line-height: 1.2;
-        margin-bottom: 4px;
+        line-height: 1.15;
+        margin-bottom: 6px;
       }
       .profile-meta {
-        font-size: 0.78rem;
-        color: var(--text-dim);
         display: flex;
         flex-wrap: wrap;
-        gap: 6px;
+        gap: 5px;
         margin-bottom: 10px;
       }
       .meta-chip {
         display: inline-flex;
         align-items: center;
         gap: 4px;
-        background: rgba(255, 255, 255, 0.06);
+        background: rgba(255, 255, 255, 0.05);
         border: 1px solid var(--border2);
-        padding: 3px 8px;
+        padding: 3px 9px;
         border-radius: 20px;
-        font-size: 0.72rem;
+        font-size: 0.7rem;
         font-weight: 600;
         color: var(--text-dim);
       }
@@ -327,38 +418,41 @@
         gap: 5px;
         background: var(--red-bg);
         border: 1px solid var(--red-border);
-        padding: 5px 12px;
+        padding: 5px 13px;
         border-radius: 20px;
-        font-size: 0.85rem;
+        font-family: 'Cabinet Grotesk', sans-serif;
+        font-size: 0.88rem;
         font-weight: 800;
-        color: var(--accent2);
+        color: var(--red-soft);
       }
 
-      /* School strip */
+      /* school strip */
       .school-strip {
         display: flex;
         align-items: center;
         gap: 10px;
-        padding: 12px 20px;
-        background: rgba(255, 255, 255, 0.03);
+        padding: 11px 20px;
+        position: relative;
+        z-index: 1;
+        background: rgba(255, 255, 255, 0.025);
         border-top: 1px solid var(--border);
       }
       .school-logo {
-        width: 30px;
-        height: 30px;
-        border-radius: 8px;
+        width: 28px;
+        height: 28px;
+        border-radius: 7px;
         object-fit: cover;
-        background: var(--surface2);
         flex-shrink: 0;
       }
       .school-logo-placeholder {
-        width: 30px;
-        height: 30px;
-        border-radius: 8px;
-        background: var(--surface2);
+        width: 28px;
+        height: 28px;
+        border-radius: 7px;
+        background: var(--surface3);
         display: flex;
         align-items: center;
         justify-content: center;
+        font-family: 'Cabinet Grotesk', sans-serif;
         font-size: 0.7rem;
         font-weight: 800;
         color: var(--text-muted);
@@ -370,211 +464,166 @@
         color: var(--text-dim);
       }
       .school-addr {
-        font-size: 0.7rem;
+        font-size: 0.68rem;
         color: var(--text-muted);
         margin-top: 1px;
       }
 
-      /* ── Content ── */
+      /* ── Content ──────────────────────────────────────────────────────── */
       .content {
-        padding: 16px 16px 32px;
+        padding: 14px 14px 32px;
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 11px;
       }
 
-      /* ── Section Card ── */
+      /* ── Cards ────────────────────────────────────────────────────────── */
       .card {
         background: var(--surface);
         border: 1px solid var(--border);
-        border-radius: var(--radius);
+        border-radius: var(--r);
         overflow: hidden;
       }
       .card-header {
-        padding: 12px 16px 10px;
+        padding: 11px 15px 10px;
         border-bottom: 1px solid var(--border);
         display: flex;
         align-items: center;
         gap: 8px;
       }
       .card-header-icon {
-        width: 26px;
-        height: 26px;
+        width: 25px;
+        height: 25px;
         border-radius: 7px;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 0.8rem;
+        font-size: 0.78rem;
         flex-shrink: 0;
       }
       .card-header-title {
-        font-size: 0.7rem;
-        font-weight: 800;
+        font-family: 'Geist Mono', monospace;
+        font-size: 0.65rem;
+        font-weight: 500;
         letter-spacing: 0.1em;
         text-transform: uppercase;
         color: var(--text-muted);
       }
-      .card-body {
-        padding: 14px 16px;
+
+      /* ── Emergency Services ───────────────────────────────────────────── */
+      .emer-services-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 0;
+        border-top: 1px solid var(--border);
+      }
+      .emer-service-btn {
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        align-items: center;
+        gap: 6px;
+        padding: 16px 8px 14px;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        position: relative;
+        text-decoration: none;
+        transition: background 0.15s;
+        border-right: 1px solid var(--border);
+      }
+      .emer-service-btn:last-child {
+        border-right: none;
+      }
+      .emer-service-btn:active {
+        background: rgba(255, 255, 255, 0.04);
+      }
+      .emer-service-icon {
+        width: 46px;
+        height: 46px;
+        border-radius: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.35rem;
+        transition: transform 0.15s;
+      }
+      .emer-service-btn:active .emer-service-icon {
+        transform: scale(0.9);
+      }
+      .emer-service-label {
+        font-family: 'Instrument Sans', sans-serif;
+        font-size: 0.65rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--text-dim);
+        text-align: center;
+        line-height: 1.3;
+      }
+      .emer-service-number {
+        font-family: 'Geist Mono', monospace;
+        font-size: 0.78rem;
+        font-weight: 500;
+        color: var(--text-muted);
+      }
+      /* colour variants */
+      .svc-police .emer-service-icon {
+        background: rgba(59, 130, 246, 0.12);
+        border: 1px solid rgba(59, 130, 246, 0.2);
+      }
+      .svc-ambulance .emer-service-icon {
+        background: rgba(239, 68, 68, 0.12);
+        border: 1px solid rgba(239, 68, 68, 0.2);
+      }
+      .svc-fire .emer-service-icon {
+        background: rgba(245, 158, 11, 0.12);
+        border: 1px solid rgba(245, 158, 11, 0.2);
       }
 
-      /* ── Info Row ── */
-      .info-row {
-        display: flex;
-        align-items: flex-start;
-        gap: 10px;
-      }
+      /* ── Info rows ────────────────────────────────────────────────────── */
       .info-label {
-        font-size: 0.68rem;
-        font-weight: 700;
+        font-family: 'Geist Mono', monospace;
+        font-size: 0.65rem;
+        font-weight: 500;
         text-transform: uppercase;
         letter-spacing: 0.08em;
         color: var(--text-muted);
-        min-width: 90px;
-        padding-top: 2px;
+        min-width: 88px;
         flex-shrink: 0;
       }
       .info-value {
-        font-size: 0.88rem;
+        font-size: 0.875rem;
         font-weight: 500;
         color: var(--text);
         line-height: 1.5;
         flex: 1;
       }
-      .info-value.mono {
-        font-family: var(--mono);
-        font-size: 0.82rem;
-      }
 
-      /* ── Contact Card ── */
-      .contact-item {
+      /* ── Alert chips ──────────────────────────────────────────────────── */
+      .chip-wrap {
         display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 12px 16px;
-        border-bottom: 1px solid var(--border);
+        flex-wrap: wrap;
+        padding: 10px 14px;
+        gap: 6px;
       }
-      .contact-item:last-child {
-        border-bottom: none;
-      }
-      .contact-avatar {
-        width: 40px;
-        height: 40px;
-        border-radius: 50%;
-        background: var(--surface2);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 0.85rem;
-        font-weight: 800;
-        color: var(--text-dim);
-        flex-shrink: 0;
-        border: 1px solid var(--border2);
-      }
-      .contact-info {
-        flex: 1;
-        min-width: 0;
-      }
-      .contact-name {
-        font-size: 0.9rem;
-        font-weight: 700;
-        color: var(--text);
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      .contact-rel {
-        font-size: 0.72rem;
-        color: var(--text-muted);
-        margin-top: 1px;
+      .chip-section-label {
+        font-family: 'Geist Mono', monospace;
+        font-size: 0.62rem;
         font-weight: 500;
-      }
-      .contact-actions {
-        display: flex;
-        gap: 8px;
-        flex-shrink: 0;
-      }
-
-      /* Action buttons */
-      .action-btn {
-        width: 38px;
-        height: 38px;
-        border-radius: 50%;
-        border: none;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1rem;
-        transition:
-          transform 0.15s,
-          opacity 0.15s;
-        text-decoration: none;
-        -webkit-tap-highlight-color: transparent;
-      }
-      .action-btn:active {
-        transform: scale(0.9);
-        opacity: 0.8;
-      }
-      .btn-call {
-        background: var(--green-bg);
-        border: 1px solid rgba(16, 185, 129, 0.25);
-        color: var(--green);
-      }
-      .btn-whatsapp {
-        background: rgba(37, 211, 102, 0.1);
-        border: 1px solid rgba(37, 211, 102, 0.2);
-        color: #25d366;
-      }
-
-      /* ── Doctor row ── */
-      .doctor-row {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 14px 16px;
-      }
-      .doctor-icon {
-        width: 40px;
-        height: 40px;
-        border-radius: 50%;
-        background: var(--blue-bg);
-        border: 1px solid rgba(59, 130, 246, 0.2);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1rem;
-        flex-shrink: 0;
-      }
-      .doctor-info {
-        flex: 1;
-        min-width: 0;
-      }
-      .doctor-name {
-        font-size: 0.9rem;
-        font-weight: 700;
-        color: var(--text);
-      }
-      .doctor-label {
-        font-size: 0.7rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
         color: var(--text-muted);
-        margin-top: 1px;
-        font-weight: 500;
+        padding: 10px 15px 4px;
+        display: block;
       }
-
-      /* ── Alert chips ── */
       .alert-chip {
         display: inline-flex;
         align-items: center;
         gap: 5px;
-        padding: 5px 10px;
+        padding: 5px 11px;
         border-radius: 20px;
-        font-size: 0.75rem;
+        font-size: 0.73rem;
         font-weight: 600;
-        margin: 0 4px 6px 0;
       }
       .chip-red {
         background: var(--red-bg);
@@ -591,100 +640,133 @@
         border: 1px solid rgba(59, 130, 246, 0.2);
         color: #93c5fd;
       }
-      .chip-wrap {
+
+      /* ── Contacts ─────────────────────────────────────────────────────── */
+      .contact-item {
         display: flex;
-        flex-wrap: wrap;
-        padding: 12px 16px;
-      }
-
-      /* ── Notes ── */
-      .notes-text {
-        font-size: 0.85rem;
-        color: var(--text-dim);
-        line-height: 1.65;
-        padding: 12px 16px;
-      }
-
-      /* ── RESQID footer ── */
-      .resqid-footer {
-        text-align: center;
-        padding: 24px 20px 40px;
-      }
-      .resqid-brand {
-        display: inline-flex;
         align-items: center;
-        gap: 7px;
-        margin-bottom: 6px;
+        gap: 12px;
+        padding: 12px 15px;
+        border-bottom: 1px solid var(--border);
       }
-      .resqid-brand-dot {
-        width: 8px;
-        height: 8px;
+      .contact-item:last-child {
+        border-bottom: none;
+      }
+      .contact-avatar {
+        width: 40px;
+        height: 40px;
         border-radius: 50%;
-        background: var(--accent);
-      }
-      .resqid-brand-name {
-        font-size: 0.72rem;
+        background: var(--surface3);
+        border: 1px solid var(--border2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: 'Cabinet Grotesk', sans-serif;
+        font-size: 0.82rem;
         font-weight: 800;
-        letter-spacing: 0.15em;
-        text-transform: uppercase;
-        color: var(--text-muted);
+        color: var(--text-dim);
+        flex-shrink: 0;
       }
-      .resqid-tagline {
+      .contact-info {
+        flex: 1;
+        min-width: 0;
+      }
+      .contact-name {
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: var(--text);
+      }
+      .contact-rel {
+        font-size: 0.7rem;
+        color: var(--text-muted);
+        margin-top: 1px;
+      }
+      .contact-actions {
+        display: flex;
+        gap: 7px;
+        flex-shrink: 0;
+      }
+      .action-btn {
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        border: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+        transition:
+          transform 0.15s,
+          opacity 0.15s;
+        text-decoration: none;
+      }
+      .action-btn:active {
+        transform: scale(0.88);
+        opacity: 0.8;
+      }
+      .btn-call {
+        background: var(--green-bg);
+        border: 1px solid rgba(16, 185, 129, 0.25);
+        color: var(--green);
+      }
+      .btn-whatsapp {
+        background: rgba(37, 211, 102, 0.08);
+        border: 1px solid rgba(37, 211, 102, 0.2);
+        color: #25d366;
+      }
+
+      /* ── Doctor row ───────────────────────────────────────────────────── */
+      .doctor-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 13px 15px;
+      }
+      .doctor-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: var(--blue-bg);
+        border: 1px solid rgba(59, 130, 246, 0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+        flex-shrink: 0;
+      }
+      .doctor-info {
+        flex: 1;
+      }
+      .doctor-name {
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: var(--text);
+      }
+      .doctor-label {
         font-size: 0.68rem;
         color: var(--text-muted);
-        opacity: 0.5;
-        letter-spacing: 0.04em;
+        margin-top: 1px;
       }
 
-      /* ── Minimal visibility ── */
-      .minimal-note {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        background: var(--amber-bg);
-        border: 1px solid rgba(245, 158, 11, 0.2);
-        border-radius: var(--radius-sm);
-        padding: 10px 14px;
-        margin: 0 16px;
-        font-size: 0.78rem;
-        color: #fcd34d;
-        font-weight: 500;
-      }
-
-      /* ── Hidden visibility ── */
-      .hidden-note {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        background: rgba(100, 116, 139, 0.1);
-        border: 1px solid rgba(100, 116, 139, 0.2);
-        border-radius: var(--radius-sm);
-        padding: 10px 14px;
-        margin: 0 16px;
-        font-size: 0.78rem;
-        color: var(--text-dim);
-        font-weight: 500;
-      }
-
-      /* ── School call strip ── */
+      /* ── School call strip ────────────────────────────────────────────── */
       .school-call-strip {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 12px;
-        padding: 14px 16px;
+        padding: 13px 15px;
       }
       .school-call-info {
         flex: 1;
-        min-width: 0;
       }
       .school-call-name {
-        font-size: 0.88rem;
+        font-size: 0.875rem;
         font-weight: 700;
         color: var(--text);
       }
       .school-call-sub {
-        font-size: 0.7rem;
+        font-size: 0.68rem;
         color: var(--text-muted);
         margin-top: 1px;
       }
@@ -693,22 +775,21 @@
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        padding: 9px 16px;
+        padding: 8px 16px;
         border-radius: 24px;
         border: none;
         cursor: pointer;
-        font-family: var(--font);
+        font-family: 'Instrument Sans', sans-serif;
         font-size: 0.78rem;
         font-weight: 700;
         text-decoration: none;
-        -webkit-tap-highlight-color: transparent;
         transition:
           transform 0.15s,
           opacity 0.15s;
         flex-shrink: 0;
       }
       .call-now-btn:active {
-        transform: scale(0.95);
+        transform: scale(0.93);
         opacity: 0.85;
       }
       .call-now-btn.green {
@@ -720,14 +801,17 @@
         color: #fff;
       }
 
-      /* divider */
+      /* ── Misc ─────────────────────────────────────────────────────────── */
       .divider {
         height: 1px;
         background: var(--border);
-        margin: 0;
       }
-
-      /* empty state within card */
+      .notes-text {
+        font-size: 0.85rem;
+        color: var(--text-dim);
+        line-height: 1.65;
+        padding: 12px 15px;
+      }
       .empty-row {
         padding: 16px;
         text-align: center;
@@ -735,50 +819,128 @@
         color: var(--text-muted);
       }
 
-      /* ── Utility ── */
-      .hidden {
-        display: none !important;
+      .minimal-note {
+        background: var(--amber-bg);
+        border: 1px solid rgba(245, 158, 11, 0.2);
+        border-radius: var(--r-sm);
+        padding: 10px 13px;
+        margin: 0 14px;
+        font-size: 0.78rem;
+        color: #fcd34d;
+        font-weight: 500;
+      }
+      .hidden-note {
+        background: rgba(100, 116, 139, 0.08);
+        border: 1px solid rgba(100, 116, 139, 0.2);
+        border-radius: var(--r-sm);
+        padding: 10px 13px;
+        margin: 0 14px;
+        font-size: 0.78rem;
+        color: var(--text-dim);
+        font-weight: 500;
+      }
+
+      /* ── Footer ───────────────────────────────────────────────────────── */
+      .resqid-footer {
+        text-align: center;
+        padding: 24px 20px 44px;
+      }
+      .resqid-brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        margin-bottom: 5px;
+      }
+      .resqid-brand-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--accent);
+      }
+      .resqid-brand-name {
+        font-family: 'Geist Mono', monospace;
+        font-size: 0.7rem;
+        font-weight: 500;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+      }
+      .resqid-tagline {
+        font-size: 0.65rem;
+        color: var(--text-muted);
+        opacity: 0.45;
+        letter-spacing: 0.04em;
+      }
+
+      /* ── Toast ────────────────────────────────────────────────────────── */
+      .toast {
+        position: fixed;
+        bottom: 20px;
+        left: 16px;
+        right: 16px;
+        z-index: 250;
+        background: var(--surface2);
+        border: 1px solid var(--border2);
+        border-radius: 14px;
+        padding: 11px 14px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+        animation: slideUp 0.3s ease;
+        font-size: 0.82rem;
+        color: var(--text);
+      }
+      @keyframes slideUp {
+        from {
+          transform: translateY(100%);
+          opacity: 0;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+      .toast-spin {
+        width: 18px;
+        height: 18px;
+        border: 2px solid var(--blue);
+        border-top-color: transparent;
+        border-radius: 50%;
+        flex-shrink: 0;
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
       }
     </style>
   </head>
   <body>
-    <!-- Loading -->
     <div id="loading">
-      <div class="pulse-ring">
-        <div class="pulse-logo">🆘</div>
-      </div>
+      <div class="pulse-ring"><div class="pulse-logo">🆘</div></div>
       <p>Loading profile…</p>
     </div>
-
-    <!-- App -->
     <div id="app"></div>
 
     <script>
-      // ── Security: disable right-click & common devtools shortcuts ────────────
+      /* ── Security ─────────────────────────────────────────────────────── */
       document.addEventListener('contextmenu', e => e.preventDefault());
       document.addEventListener('keydown', e => {
-        const blocked =
+        const b =
           e.key === 'F12' ||
           (e.ctrlKey && e.shiftKey && ['I', 'J', 'C', 'K'].includes(e.key)) ||
-          (e.ctrlKey && e.key === 'U') ||
-          (e.ctrlKey && e.key === 'S') ||
-          (e.ctrlKey && e.key === 'P');
-        if (blocked) e.preventDefault();
+          (e.ctrlKey && ['U', 'S', 'P'].includes(e.key));
+        if (b) e.preventDefault();
       });
 
-      // ── Helpers ──────────────────────────────────────────────────────────────
+      /* ── Helpers ──────────────────────────────────────────────────────── */
       const esc = s =>
         s
           ? String(s).replace(
               /[&<>"']/g,
-              c =>
-                ({
-                  '&': '&amp;',
-                  '<': '&lt;',
-                  '>': '&gt;',
-                  '"': '&quot;',
-                  "'": '&#39;',
-                })[c]
+              c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
             )
           : '';
 
@@ -797,80 +959,232 @@
         return parts.filter(Boolean).pop() || null;
       }
 
-      // ── Renderers ────────────────────────────────────────────────────────────
+      /* ── Location — ask ONCE, cache in sessionStorage ─────────────────── */
+      const LOC_KEY = 'resqid_loc_decision'; // 'granted' | 'denied'
+      const LOC_DATA_KEY = 'resqid_loc_data';
 
-      function resqidFooterHtml() {
-        return `
-        <div class="resqid-footer">
-          <div class="resqid-brand">
-            <div class="resqid-brand-dot"></div>
-            <span class="resqid-brand-name">RESQID</span>
-          </div>
-          <p class="resqid-tagline">Emergency Identity · coreZ Technologies</p>
-        </div>`;
+      function getCachedLocation() {
+        try {
+          const d = sessionStorage.getItem(LOC_DATA_KEY);
+          return d ? JSON.parse(d) : null;
+        } catch {
+          return null;
+        }
       }
 
-      function renderStatus({ icon, iconClass, title, message, school, extraHtml = '' }) {
-        const schoolHtml = school ? `<p class="school-footer">${esc(school.name)}</p>` : '';
+      function getPreviousDecision() {
+        try {
+          return sessionStorage.getItem(LOC_KEY);
+        } catch {
+          return null;
+        }
+      }
+
+      function saveDecision(v) {
+        try {
+          sessionStorage.setItem(LOC_KEY, v);
+        } catch {}
+      }
+
+      function saveLocationData(loc) {
+        try {
+          sessionStorage.setItem(LOC_DATA_KEY, JSON.stringify(loc));
+        } catch {}
+      }
+
+      function showLocationBanner() {
+        return new Promise(resolve => {
+          const el = document.createElement('div');
+          el.className = 'loc-banner';
+          el.innerHTML = `
+            <div class="loc-banner-icon">📍</div>
+            <div class="loc-banner-body">
+              <p class="loc-banner-title">Share your location?</p>
+              <p class="loc-banner-desc">Helps emergency responders find you faster. Only used for this scan — never stored permanently.</p>
+              <div class="loc-banner-btns">
+                <button class="loc-banner-btn allow">Allow</button>
+                <button class="loc-banner-btn deny">Skip</button>
+              </div>
+            </div>`;
+          document.body.appendChild(el);
+
+          el.querySelector('.allow').onclick = () => {
+            el.remove();
+            resolve(true);
+          };
+          el.querySelector('.deny').onclick = () => {
+            el.remove();
+            resolve(false);
+          };
+        });
+      }
+
+      async function resolveLocation() {
+        // Already have coords from this session
+        const cached = getCachedLocation();
+        if (cached) return cached;
+
+        // Already asked this session
+        const prev = getPreviousDecision();
+        if (prev === 'denied') return null;
+        if (prev === 'granted') {
+          // Try to grab coords silently (browser already permitted)
+          return new Promise(resolve => {
+            if (!navigator.geolocation) {
+              resolve(null);
+              return;
+            }
+            navigator.geolocation.getCurrentPosition(
+              pos => {
+                const loc = {
+                  latitude: pos.coords.latitude,
+                  longitude: pos.coords.longitude,
+                  accuracy: pos.coords.accuracy,
+                };
+                saveLocationData(loc);
+                resolve(loc);
+              },
+              () => resolve(null),
+              { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+            );
+          });
+        }
+
+        // First time — ask user
+        const allowed = await showLocationBanner();
+        if (!allowed) {
+          saveDecision('denied');
+          return null;
+        }
+
+        saveDecision('granted');
+
+        if (!navigator.geolocation) return null;
+
+        return new Promise(resolve => {
+          const toast = document.createElement('div');
+          toast.className = 'toast';
+          toast.innerHTML = `<div class="toast-spin"></div><span>Getting your precise location…</span>`;
+          document.body.appendChild(toast);
+
+          navigator.geolocation.getCurrentPosition(
+            pos => {
+              toast.remove();
+              const loc = {
+                latitude: pos.coords.latitude,
+                longitude: pos.coords.longitude,
+                accuracy: pos.coords.accuracy,
+              };
+              saveLocationData(loc);
+              resolve(loc);
+            },
+            () => {
+              toast.remove();
+              resolve(null);
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+          );
+        });
+      }
+
+      function buildUrl(base, loc) {
+        if (!loc?.latitude) return base;
+        const sep = base.includes('?') ? '&' : '?';
+        return `${base}${sep}lat=${loc.latitude}&lng=${loc.longitude}&acc=${loc.accuracy || 0}`;
+      }
+
+      /* ── Emergency Services section ───────────────────────────────────── */
+      // Indian emergency numbers only — what a first responder actually needs
+      function renderEmergencyServices() {
+        const services = [
+          { cls: 'svc-police', icon: '🚔', label: 'Police', num: '100', tel: '100' },
+          { cls: 'svc-ambulance', icon: '🚑', label: 'Ambulance', num: '108', tel: '108' },
+          { cls: 'svc-fire', icon: '🚒', label: 'Fire', num: '101', tel: '101' },
+        ];
         return `
-        <div class="status-page">
-          <div class="status-icon ${iconClass}">${icon}</div>
-          <p class="status-title">${esc(title)}</p>
-          <p class="status-msg">${esc(message)}</p>
-          ${extraHtml}
-          ${schoolHtml}
-          ${resqidFooterHtml()}
-        </div>`;
+          <div class="card">
+            <div class="card-header">
+              <div class="card-header-icon" style="background:rgba(239,68,68,0.1)">🚨</div>
+              <span class="card-header-title">Emergency Services</span>
+            </div>
+            <div class="emer-services-grid">
+              ${services
+                .map(
+                  s => `
+                <a href="tel:${s.tel}" class="emer-service-btn ${s.cls}">
+                  <div class="emer-service-icon">${s.icon}</div>
+                  <span class="emer-service-label">${s.label}</span>
+                  <span class="emer-service-number">${s.num}</span>
+                </a>`
+                )
+                .join('')}
+            </div>
+          </div>`;
+      }
+
+      /* ── Renderers ────────────────────────────────────────────────────── */
+      function resqidFooterHtml() {
+        return `
+          <div class="resqid-footer">
+            <div class="resqid-brand">
+              <div class="resqid-brand-dot"></div>
+              <span class="resqid-brand-name">RESQID</span>
+            </div>
+            <p class="resqid-tagline">Emergency Identity · coreZ Technologies</p>
+          </div>`;
+      }
+
+      function renderStatus({ icon, iconClass, title, message, school }) {
+        const schoolHtml = school ? `<p class="status-school">${esc(school.name)}</p>` : '';
+        return `
+          <div class="status-page">
+            <div class="status-icon ${iconClass}">${icon}</div>
+            <p class="status-title">${esc(title)}</p>
+            <p class="status-msg">${esc(message)}</p>
+            ${schoolHtml}
+            ${resqidFooterHtml()}
+          </div>`;
       }
 
       function renderSchoolStrip(school) {
         if (!school) return '';
         const logoHtml = school.logo_url
-          ? `<img class="school-logo" src="${esc(school.logo_url)}" alt="" onerror="this.style.display='none'; this.nextElementSibling?.style.removeProperty('display')" />`
+          ? `<img class="school-logo" src="${esc(school.logo_url)}" alt="" onerror="this.style.display='none';this.nextElementSibling?.style.removeProperty('display')" />`
           : '';
-        const placeholderHtml = `<div class="school-logo-placeholder"${school.logo_url ? ' style="display:none"' : ''}>${esc((school.name || 'S')[0])}</div>`;
+        const phHtml = `<div class="school-logo-placeholder"${school.logo_url ? ' style="display:none"' : ''}>${esc((school.name || 'S')[0])}</div>`;
         const addrHtml = school.address ? `<p class="school-addr">${esc(school.address)}</p>` : '';
         return `
-        <div class="school-strip">
-          ${logoHtml}
-          ${placeholderHtml}
-          <div>
-            <p class="school-name">${esc(school.name)}</p>
-            ${addrHtml}
-          </div>
-        </div>`;
+          <div class="school-strip">
+            ${logoHtml}${phHtml}
+            <div>
+              <p class="school-name">${esc(school.name)}</p>
+              ${addrHtml}
+            </div>
+          </div>`;
       }
 
       function renderContactActions(contact, token) {
         let html = '';
-        if (contact.call_enabled) {
-          html += `<a class="action-btn btn-call"
-          href="/s/call/${esc(contact.id)}/${esc(token)}"
-          title="Call ${esc(contact.name)}">📞</a>`;
-        }
-        if (contact.whatsapp_enabled) {
-          html += `<a class="action-btn btn-whatsapp"
-          href="/s/wa/${esc(contact.id)}/${esc(token)}"
-          title="WhatsApp ${esc(contact.name)}">💬</a>`;
-        }
+        if (contact.call_enabled)
+          html += `<button class="action-btn btn-call" onclick="window.location.href='/s/call/${esc(contact.id)}/${esc(token)}'" title="Call ${esc(contact.name)}">📞</button>`;
+        if (contact.whatsapp_enabled)
+          html += `<button class="action-btn btn-whatsapp" onclick="window.location.href='/s/wa/${esc(contact.id)}/${esc(token)}'" title="WhatsApp ${esc(contact.name)}">💬</button>`;
         return html ? `<div class="contact-actions">${html}</div>` : '';
       }
 
       function renderContacts(contacts, token) {
-        if (!contacts || contacts.length === 0) {
-          return `<div class="empty-row">No emergency contacts listed</div>`;
-        }
+        if (!contacts?.length) return `<div class="empty-row">No emergency contacts listed</div>`;
         return contacts
           .map(
             c => `
-        <div class="contact-item">
-          <div class="contact-avatar">${esc(initials(c.name))}</div>
-          <div class="contact-info">
-            <p class="contact-name">${esc(c.name)}</p>
-            <p class="contact-rel">${esc(c.relationship || 'Contact')}</p>
-          </div>
-          ${renderContactActions(c, token)}
-        </div>`
+          <div class="contact-item">
+            <div class="contact-avatar">${esc(initials(c.name))}</div>
+            <div class="contact-info">
+              <p class="contact-name">${esc(c.name)}</p>
+              <p class="contact-rel">${esc(c.relationship || 'Contact')}</p>
+            </div>
+            ${renderContactActions(c, token)}
+          </div>`
           )
           .join('');
       }
@@ -882,21 +1196,22 @@
           .map(s => s.trim())
           .filter(Boolean);
         if (!items.length) return '';
-        return `<div>
-        <p class="info-label" style="padding:12px 16px 6px;display:block">${esc(label)}</p>
-        <div class="chip-wrap">
-          ${items.map(i => `<span class="alert-chip ${chipClass}">⚠ ${esc(i)}</span>`).join('')}
-        </div>
-      </div>`;
+        return `
+          <div>
+            <span class="chip-section-label">${esc(label)}</span>
+            <div class="chip-wrap">
+              ${items.map(i => `<span class="alert-chip ${chipClass}">⚠ ${esc(i)}</span>`).join('')}
+            </div>
+          </div>`;
       }
 
       function renderActiveProfile(data, token) {
         const p = data.profile;
         const school = data.school;
-        const visibility = p.visibility;
+        const visibility = data.visibility || p.visibility || 'PUBLIC';
 
         const avatarHtml = p.photo_url
-          ? `<img src="${esc(p.photo_url)}" alt="${esc(p.name)}" onerror="this.style.display='none'; this.nextElementSibling?.style.removeProperty('display')" /><div class="avatar-initials" style="display:none">${esc(initials(p.name || '?'))}</div>`
+          ? `<img src="${esc(p.photo_url)}" alt="${esc(p.name)}" onerror="this.style.display='none';this.nextElementSibling?.style.removeProperty('display')" /><div class="avatar-initials" style="display:none">${esc(initials(p.name || '?'))}</div>`
           : `<div class="avatar-initials">${esc(initials(p.name || '?'))}</div>`;
 
         const chips = [
@@ -916,23 +1231,21 @@
 
         const schoolCallHtml = school?.phone
           ? `<div class="school-call-strip">
-            <div class="school-call-info">
-              <p class="school-call-name">${esc(school.name)}</p>
-              <p class="school-call-sub">School helpline</p>
-            </div>
-            <a class="call-now-btn blue" href="/s/school-call/${esc(token)}">
-              📞 Call School
-            </a>
-          </div>`
+               <div class="school-call-info">
+                 <p class="school-call-name">${esc(school.name)}</p>
+                 <p class="school-call-sub">School helpline</p>
+               </div>
+               <a class="call-now-btn blue" href="/s/school-call/${esc(token)}">📞 Call School</a>
+             </div>`
           : `<div class="school-call-strip">
-            <div class="school-call-info">
-              <p class="school-call-name">${esc(school?.name || '')}</p>
-            </div>
-          </div>`;
+               <div class="school-call-info">
+                 <p class="school-call-name">${esc(school?.name || '')}</p>
+               </div>
+             </div>`;
 
-        let medicalHtml = '';
-        let contactsHtml = '';
-        let visibilityNote = '';
+        let medicalHtml = '',
+          contactsHtml = '',
+          visibilityNote = '';
 
         if (visibility === 'HIDDEN') {
           visibilityNote = `<div class="hidden-note">🔒 Detailed profile is restricted by the family.</div>`;
@@ -940,37 +1253,33 @@
           visibilityNote = `<div class="minimal-note">⚠ Only primary contact is shown — profile restricted by family.</div>`;
           if (p.primary_contact) {
             contactsHtml = `
-            <div class="card">
-              <div class="card-header">
-                <div class="card-header-icon" style="background:rgba(239,68,68,0.1)">🆘</div>
-                <span class="card-header-title">Emergency Contact</span>
-              </div>
-              ${renderContacts([{ ...p.primary_contact, id: p.primary_contact.id || 'primary', call_enabled: p.primary_contact.call_enabled, whatsapp_enabled: p.primary_contact.whatsapp_enabled }], token)}
-            </div>`;
+              <div class="card">
+                <div class="card-header">
+                  <div class="card-header-icon" style="background:rgba(239,68,68,0.1)">🆘</div>
+                  <span class="card-header-title">Emergency Contact</span>
+                </div>
+                ${renderContacts([{ ...p.primary_contact, id: p.primary_contact.id || 'primary' }], token)}
+              </div>`;
           }
         } else {
           const allergyChips = renderMedicalChips('Allergies', p.allergies, 'chip-red');
           const conditionChips = renderMedicalChips('Conditions', p.conditions, 'chip-amber');
           const medChips = renderMedicalChips('Medications', p.medications, 'chip-blue');
-
           const hasMedical =
             p.blood_group || p.allergies || p.conditions || p.medications || p.doctor || p.notes;
 
           if (hasMedical) {
             const doctorHtml = p.doctor
-              ? `<div class="divider"></div>
-               <div class="doctor-row">
-                 <div class="doctor-icon">🩺</div>
-                 <div class="doctor-info">
-                   <p class="doctor-name">${esc(p.doctor.name)}</p>
-                   <p class="doctor-label">Doctor / Physician</p>
-                 </div>
-                 ${
-                   p.doctor.phone
-                     ? `<a class="call-now-btn green" href="/s/doctor-call/${esc(token)}">📞 Call</a>`
-                     : ''
-                 }
-               </div>`
+              ? `
+              <div class="divider"></div>
+              <div class="doctor-row">
+                <div class="doctor-icon">🩺</div>
+                <div class="doctor-info">
+                  <p class="doctor-name">${esc(p.doctor.name)}</p>
+                  <p class="doctor-label">Doctor / Physician</p>
+                </div>
+                ${p.doctor.phone ? `<a class="call-now-btn green" href="/s/doctor-call/${esc(token)}">📞 Call</a>` : ''}
+              </div>`
               : '';
 
             const notesHtml = p.notes
@@ -978,74 +1287,72 @@
               : '';
 
             medicalHtml = `
-            <div class="card">
-              <div class="card-header">
-                <div class="card-header-icon" style="background:rgba(239,68,68,0.1)">🩺</div>
-                <span class="card-header-title">Medical Information</span>
-              </div>
-              ${allergyChips}
-              ${conditionChips}
-              ${medChips}
-              ${!allergyChips && !conditionChips && !medChips ? '<div class="empty-row">No medical alerts</div>' : ''}
-              ${doctorHtml}
-              ${notesHtml}
-            </div>`;
+              <div class="card">
+                <div class="card-header">
+                  <div class="card-header-icon" style="background:rgba(239,68,68,0.1)">🩺</div>
+                  <span class="card-header-title">Medical Information</span>
+                </div>
+                ${allergyChips}${conditionChips}${medChips}
+                ${!allergyChips && !conditionChips && !medChips ? '<div class="empty-row">No medical alerts</div>' : ''}
+                ${doctorHtml}${notesHtml}
+              </div>`;
           }
 
-          const contacts = p.contacts || [];
           contactsHtml = `
-          <div class="card">
-            <div class="card-header">
-              <div class="card-header-icon" style="background:rgba(239,68,68,0.1)">🆘</div>
-              <span class="card-header-title">Emergency Contacts</span>
-            </div>
-            ${renderContacts(contacts, token)}
-          </div>`;
+            <div class="card">
+              <div class="card-header">
+                <div class="card-header-icon" style="background:rgba(239,68,68,0.1)">🆘</div>
+                <span class="card-header-title">Emergency Contacts</span>
+              </div>
+              ${renderContacts(p.contacts || [], token)}
+            </div>`;
         }
 
         return `
-        <div class="emergency-header">
-          <div class="emer-strip">
-            <div class="emer-dot"></div>
-            <span>Emergency ID Card</span>
+          <div class="emergency-header">
+            <div class="emer-strip">
+              <div class="emer-dot"></div>
+              <span>Emergency ID Card</span>
+            </div>
+            <div class="profile-hero">
+              <div class="avatar-wrap">${avatarHtml}</div>
+              <div class="profile-info">
+                <p class="profile-name">${esc(p.name || 'Student')}</p>
+                <div class="profile-meta">${chips}</div>
+                ${bloodHtml}
+              </div>
+            </div>
+            ${renderSchoolStrip(school)}
           </div>
-          <div class="profile-hero">
-            <div class="avatar-wrap">${avatarHtml}</div>
-            <div class="profile-info">
-              <p class="profile-name">${esc(p.name || 'Student')}</p>
-              <div class="profile-meta">${chips}</div>
-              ${bloodHtml}
+          <div class="content">
+            ${visibilityNote}
+            ${renderEmergencyServices()}
+            ${medicalHtml}
+            ${contactsHtml}
+            <div class="card">
+              <div class="card-header">
+                <div class="card-header-icon" style="background:rgba(59,130,246,0.1)">🏫</div>
+                <span class="card-header-title">School Contact</span>
+              </div>
+              ${schoolCallHtml}
             </div>
           </div>
-          ${renderSchoolStrip(school)}
-        </div>
-
-        <div class="content">
-          ${visibilityNote}
-          ${medicalHtml}
-          ${contactsHtml}
-
-          <div class="card">
-            <div class="card-header">
-              <div class="card-header-icon" style="background:rgba(59,130,246,0.1)">🏫</div>
-              <span class="card-header-title">School Contact</span>
-            </div>
-            ${schoolCallHtml}
-          </div>
-        </div>
-
-        ${resqidFooterHtml()}`;
+          ${resqidFooterHtml()}`;
       }
 
-      // ── Main ─────────────────────────────────────────────────────────────────
+      /* ── Main ─────────────────────────────────────────────────────────── */
       async function main() {
         const token = getToken();
         const app = document.getElementById('app');
         const loader = document.getElementById('loading');
 
-        if (!token) {
+        const hide = () => {
           loader.style.opacity = '0';
           setTimeout(() => (loader.style.display = 'none'), 400);
+        };
+
+        if (!token) {
+          hide();
           app.innerHTML = renderStatus({
             icon: '❌',
             iconClass: 'error',
@@ -1056,48 +1363,44 @@
           return;
         }
 
+        const location = await resolveLocation();
+
         let data;
         try {
-          const res = await fetch(`/s/${encodeURIComponent(token)}`, {
+          const res = await fetch(buildUrl(`/s/${encodeURIComponent(token)}`, location), {
             method: 'GET',
             headers: { Accept: 'application/json' },
             cache: 'no-store',
           });
-
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           data = await res.json();
-        } catch (err) {
-          loader.style.opacity = '0';
-          setTimeout(() => (loader.style.display = 'none'), 400);
+        } catch {
+          hide();
           app.innerHTML = renderStatus({
             icon: '📶',
             iconClass: 'warn',
             title: 'Connection Error',
-            message:
-              'Could not reach the server. Please check your internet connection and try again.',
+            message: 'Could not reach the server. Check your internet connection and try again.',
           });
           app.classList.add('visible');
           return;
         }
 
-        loader.style.opacity = '0';
-        setTimeout(() => (loader.style.display = 'none'), 400);
+        hide();
 
         switch (data.state) {
           case 'ACTIVE':
             app.innerHTML = renderActiveProfile(data, token);
             break;
-
           case 'INACTIVE':
             app.innerHTML = renderStatus({
               icon: '🚫',
               iconClass: 'error',
               title: 'Card Inactive',
-              message: data.message || 'This card is no longer active. Please contact the school.',
+              message: data.message || 'This card is no longer active. Contact the school.',
               school: data.school,
             });
             break;
-
           case 'UNREGISTERED':
             app.innerHTML = renderStatus({
               icon: '📋',
@@ -1107,7 +1410,6 @@
               school: data.school,
             });
             break;
-
           case 'ISSUED':
             app.innerHTML = renderStatus({
               icon: '⏳',
@@ -1117,8 +1419,6 @@
               school: data.school,
             });
             break;
-
-          case 'INVALID':
           default:
             app.innerHTML = renderStatus({
               icon: '❌',
@@ -1130,7 +1430,6 @@
         }
 
         app.classList.add('visible');
-        data = null;
       }
 
       main();

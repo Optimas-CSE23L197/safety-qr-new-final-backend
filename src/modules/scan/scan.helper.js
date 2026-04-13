@@ -78,6 +78,20 @@ export const calculateResponseTime = startTime => {
 // @param {object} params
 // @returns {object} — ready for enqueueScanLog / writeScanLog
 // =============================================================================
+// =============================================================================
+// formatScanResponse
+// Strips internal cache metadata fields before sending to client.
+// Call this on every cached payload before res.json().
+//
+// @param {object} cachedPayload
+// @returns {object} — safe for wire
+// =============================================================================
+export const formatScanResponse = cachedPayload => {
+  // eslint-disable-next-line no-unused-vars
+  const { _schoolId, _parentTokens, _settings, ...safePayload } = cachedPayload;
+  return safePayload;
+};
+
 export const buildScanLogPayload = ({
   tokenId,
   schoolId,
@@ -90,6 +104,7 @@ export const buildScanLogPayload = ({
   startTime,
   latitude = null,
   longitude = null,
+  accuracy = null,
 }) => ({
   token_id: tokenId,
   school_id: schoolId,
@@ -104,24 +119,6 @@ export const buildScanLogPayload = ({
   scanned_at: new Date().toISOString(),
   latitude: typeof latitude === 'number' && isFinite(latitude) ? latitude : null,
   longitude: typeof longitude === 'number' && isFinite(longitude) ? longitude : null,
-  // FIX: Only true when we have valid finite coordinates — NaN not accepted
-  location_derived:
-    typeof latitude === 'number' &&
-    isFinite(latitude) &&
-    typeof longitude === 'number' &&
-    isFinite(longitude),
+  accuracy: typeof accuracy === 'number' && isFinite(accuracy) ? accuracy : null,
+  location_derived: !!(latitude && longitude),
 });
-
-// =============================================================================
-// formatScanResponse
-// Strips internal cache metadata fields before sending to client.
-// Call this on every cached payload before res.json().
-//
-// @param {object} cachedPayload
-// @returns {object} — safe for wire
-// =============================================================================
-export const formatScanResponse = cachedPayload => {
-  // eslint-disable-next-line no-unused-vars
-  const { _schoolId, _parentTokens, _settings, ...safePayload } = cachedPayload;
-  return safePayload;
-};

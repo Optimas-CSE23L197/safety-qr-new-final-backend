@@ -1,26 +1,7 @@
 // =============================================================================
 // modules/scan/scan.service.js — RESQID
 //
-// Core logic for QR scan resolution.
-//
-// HOT PATH (cache hit):   decodeScanCode → Redis hit → respond           (~2ms)
-// HOT PATH (cache miss):  decodeScanCode → DB → buildProfile → cache → respond (~15ms)
-//
-// ALWAYS ASYNC (never blocks response):
-//   fireLog        → Redis log queue → scan.worker bulk-inserts to DB
-//   evaluateAnomaly → Redis counters → anomaly worker writes ScanAnomaly
-//   dispatch()     → notification worker → Expo push to parents
-//
-// SECURITY MEASURES:
-//   [S1] decodeScanCode() AES-SIV verify before any DB touch
-//   [S2] MIN_RESPONSE_MS = 150 timing floor — prevents timing oracle
-//   [S3] Identical error shape for INVALID vs NOT_FOUND — no token existence leak
-//   [S4] MIN_RESPONSE_BYTES padding — response size normalization
-//   [S5] REVOKED/EXPIRED → state:'INACTIVE' — don't confirm token fate to attacker
-//   [S6] photo_url → presigned URL generated fresh on every serve (5-min TTL safe)
-//   [S7] Honeypot check after DB fetch — triggers anomaly with isHoneypot flag
-//   [S8] Log fires BEFORE cache write — no unlogged poisoned cache entries
-//   [S9] setup_stage checked — incomplete profiles never served as ACTIVE
+// Core logic for QR scan resolution with precise GPS location support
 // =============================================================================
 
 import { performance } from 'perf_hooks';
@@ -46,15 +27,13 @@ import {
 // =============================================================================
 
 const MIN_RESPONSE_MS = 150;
-const MIN_RESPONSE_BYTES = 1500; // FIX: Empirically larger — full ACTIVE profile > 600 bytes
+const MIN_RESPONSE_BYTES = 1500;
 
 const SENTINEL_TOKEN_ID = '00000000-0000-0000-0000-000000000000';
 const SENTINEL_SCHOOL_ID = '00000000-0000-0000-0000-000000000000';
 
-// FIX: Photo key cached (not presigned URL) — presigned on every serve
-//      This prevents serving expired presigned URLs from cache
-const ACTIVE_PROFILE_CACHE_TTL_S = 300; // 5 min — matches presign TTL
-const DEAD_STATE_CACHE_TTL_S = 3600; // 1 hour for inactive/expired/revoked
+const ACTIVE_PROFILE_CACHE_TTL_S = 300;
+const DEAD_STATE_CACHE_TTL_S = 3600;
 
 // =============================================================================
 // MAIN — resolveScan
@@ -67,6 +46,9 @@ export const resolveScan = async ({
   deviceHash,
   startTime,
   scanCount = 1,
+  latitude = null,
+  longitude = null,
+  accuracy = null,
 }) => {
   // ── 1. Decode + AES-SIV verify ────────────────────────────────────────────
   let tokenId;
@@ -83,6 +65,9 @@ export const resolveScan = async ({
         userAgent,
         deviceHash,
         startTime,
+        latitude,
+        longitude,
+        accuracy,
       })
     );
     setImmediate(() =>
@@ -103,7 +88,6 @@ export const resolveScan = async ({
     const schoolId = cached._schoolId ?? SENTINEL_SCHOOL_ID;
     const scanResult = cached.state === 'ACTIVE' ? 'SUCCESS' : cached.state;
 
-    // FIX [S8]: Log before cache path response — same ordering as DB path
     fireLog(
       buildScanLogPayload({
         tokenId,
@@ -114,12 +98,14 @@ export const resolveScan = async ({
         userAgent,
         deviceHash,
         startTime,
+        latitude,
+        longitude,
+        accuracy,
       })
     );
 
     setImmediate(() => evaluateAnomaly({ tokenId, schoolId, ip, scanResult, scanCount }));
 
-    // FIX: fireNotification now a proper defined function — no ReferenceError
     if (cached.state === 'ACTIVE') {
       fireNotification({
         schoolId,
@@ -130,8 +116,6 @@ export const resolveScan = async ({
         tokenId,
       });
 
-      // FIX: Regenerate presigned photo URL on cache hit — cached._photoKey is
-      //      the storage path, not the presigned URL (avoids 5-min TTL expiry)
       if (cached._photoKey && cached.profile) {
         try {
           cached.profile.photo_url = await getStorage().getUrl(cached._photoKey, 300);
@@ -150,7 +134,7 @@ export const resolveScan = async ({
   if (!token) {
     fireLog(
       buildScanLogPayload({
-        tokenId,
+        tokenId: SENTINEL_TOKEN_ID,
         schoolId: SENTINEL_SCHOOL_ID,
         result: 'INVALID',
         scanPurpose: 'QR_SCAN',
@@ -158,17 +142,17 @@ export const resolveScan = async ({
         userAgent,
         deviceHash,
         startTime,
+        latitude,
+        longitude,
+        accuracy,
       })
     );
-    setImmediate(() =>
-      evaluateAnomaly({ tokenId, schoolId: SENTINEL_SCHOOL_ID, ip, scanResult: 'INVALID' })
-    );
+    setImmediate(() => evaluateAnomaly({ tokenId: SENTINEL_SCHOOL_ID, ip, scanResult: 'INVALID' }));
     return respond(startTime, buildError('INVALID', 'This QR code could not be verified.'));
   }
 
   const schoolId = token.school_id;
 
-  // Extract push tokens from joined query — no extra DB call
   const parentExpoTokens = (token.student?.parents ?? [])
     .flatMap(p => p.parent?.devices?.map(d => d.expo_push_token) ?? [])
     .filter(Boolean);
@@ -181,11 +165,14 @@ export const resolveScan = async ({
         tokenId,
         schoolId,
         result: 'INVALID',
-        scanPurpose: 'HONEYPOT', // FIX: Use HONEYPOT purpose — exists in ScanPurpose enum
+        scanPurpose: 'HONEYPOT',
         ip,
         userAgent,
         deviceHash,
         startTime,
+        latitude,
+        longitude,
+        accuracy,
       })
     );
     setImmediate(() =>
@@ -202,7 +189,6 @@ export const resolveScan = async ({
       school: safeSchoolMinimal(token.school),
       message: 'This card is no longer active. Please contact the school.',
     };
-    // FIX [S8]: Log fires BEFORE cache write
     fireLog(
       buildScanLogPayload({
         tokenId,
@@ -213,6 +199,9 @@ export const resolveScan = async ({
         userAgent,
         deviceHash,
         startTime,
+        latitude,
+        longitude,
+        accuracy,
       })
     );
     setCachedProfile(tokenId, { ...payload, _schoolId: schoolId }, DEAD_STATE_CACHE_TTL_S);
@@ -235,6 +224,9 @@ export const resolveScan = async ({
         userAgent,
         deviceHash,
         startTime,
+        latitude,
+        longitude,
+        accuracy,
       })
     );
     setCachedProfile(tokenId, { ...payload, _schoolId: schoolId }, DEAD_STATE_CACHE_TTL_S);
@@ -247,7 +239,6 @@ export const resolveScan = async ({
       school: safeSchoolFull(token.school),
       message: 'This card is currently inactive. Please contact the school.',
     };
-    // FIX: INACTIVE result — not SUCCESS
     fireLog(
       buildScanLogPayload({
         tokenId,
@@ -258,20 +249,21 @@ export const resolveScan = async ({
         userAgent,
         deviceHash,
         startTime,
+        latitude,
+        longitude,
+        accuracy,
       })
     );
     setCachedProfile(tokenId, { ...payload, _schoolId: schoolId }, DEAD_STATE_CACHE_TTL_S);
     return respond(startTime, payload);
   }
 
-  // ── 6. UNASSIGNED ──────────────────────────────────────────────────────────
   if (token.status === 'UNASSIGNED' || !token.student_id) {
     const payload = {
       state: 'UNREGISTERED',
       school: safeSchoolFull(token.school),
       message: 'This card has not been registered yet. Please ask the parent to register.',
     };
-    // FIX: UNREGISTERED result — not SUCCESS. Don't cache — status may change.
     fireLog(
       buildScanLogPayload({
         tokenId,
@@ -282,19 +274,20 @@ export const resolveScan = async ({
         userAgent,
         deviceHash,
         startTime,
+        latitude,
+        longitude,
+        accuracy,
       })
     );
     return respond(startTime, payload);
   }
 
-  // ── 7. ISSUED ──────────────────────────────────────────────────────────────
   if (token.status === 'ISSUED') {
     const payload = {
       state: 'ISSUED',
       school: safeSchoolFull(token.school),
       message: 'This card has been issued but not yet activated by the family.',
     };
-    // FIX: ISSUED result in log — matches ScanResult enum value
     fireLog(
       buildScanLogPayload({
         tokenId,
@@ -305,6 +298,9 @@ export const resolveScan = async ({
         userAgent,
         deviceHash,
         startTime,
+        latitude,
+        longitude,
+        accuracy,
       })
     );
     setCachedProfile(tokenId, { ...payload, _schoolId: schoolId });
@@ -320,7 +316,6 @@ export const resolveScan = async ({
       school: safeSchoolFull(token.school),
       message: 'This card is currently inactive.',
     };
-    // FIX: STUDENT_INACTIVE → maps to INACTIVE ScanResult (closest valid enum)
     fireLog(
       buildScanLogPayload({
         tokenId,
@@ -331,13 +326,15 @@ export const resolveScan = async ({
         userAgent,
         deviceHash,
         startTime,
+        latitude,
+        longitude,
+        accuracy,
       })
     );
     setCachedProfile(tokenId, { ...payload, _schoolId: schoolId });
     return respond(startTime, payload);
   }
 
-  // FIX [S9]: Check setup_stage — never serve an incomplete profile as ACTIVE
   if (student.setup_stage !== 'COMPLETE' && student.setup_stage !== 'VERIFIED') {
     const payload = {
       state: 'INACTIVE',
@@ -354,6 +351,9 @@ export const resolveScan = async ({
         userAgent,
         deviceHash,
         startTime,
+        latitude,
+        longitude,
+        accuracy,
       })
     );
     return respond(startTime, payload);
@@ -375,9 +375,10 @@ export const resolveScan = async ({
     state: 'ACTIVE',
     profile,
     school: safeSchoolFull(token.school),
+    visibility: visibility,
+    hidden_fields: hiddenFields,
   };
 
-  // FIX [S8]: Log fires BEFORE cache write — guaranteed audit trail
   fireLog(
     buildScanLogPayload({
       tokenId,
@@ -389,18 +390,21 @@ export const resolveScan = async ({
       userAgent,
       deviceHash,
       startTime,
+      latitude,
+      longitude,
+      accuracy,
     })
   );
 
-  // FIX: Cache stores photoKey (storage path), NOT the presigned URL
-  //      Presigned URL is regenerated fresh on every cache hit
   const cachePayload = {
     ...payload,
     _schoolId: schoolId,
     _studentId: student.id,
     _parentTokens: parentExpoTokens,
     _settings: scanNotificationsEnabled,
-    _photoKey: photoKey ?? null, // FIX: raw storage key, not presigned URL
+    _photoKey: photoKey ?? null,
+    visibility: visibility,
+    hidden_fields: hiddenFields,
   };
   setCachedProfile(tokenId, cachePayload, ACTIVE_PROFILE_CACHE_TTL_S);
 
@@ -422,19 +426,10 @@ export const resolveScan = async ({
 // FIRE-AND-FORGET HELPERS
 // =============================================================================
 
-/**
- * Enqueue a scan log entry into Redis for bulk DB insert by scan.worker.
- * @param {object} logEntry — from buildScanLogPayload()
- */
 const fireLog = logEntry => {
   enqueueScanLog(logEntry);
 };
 
-/**
- * FIX: Extracted notification dispatch as a named function.
- * Previously referenced as fireQrScannedNotification() but was never defined —
- * caused ReferenceError on every active cache hit.
- */
 const fireNotification = ({
   schoolId,
   studentName,
@@ -459,7 +454,6 @@ const fireNotification = ({
         meta: { studentId, tokenId },
       });
     } catch (err) {
-      // FIX: Static import at top of file — no dynamic import in catch block
       logger.error({ err: err.message, studentId }, '[scan.service] notification dispatch failed');
     }
   });
@@ -469,26 +463,12 @@ const fireNotification = ({
 // TIMING + PADDING
 // =============================================================================
 
-/**
- * Enforce timing floor and response size normalization.
- * FIX: Returns the actual padded result object — padding was previously
- *      applied to a string that was never used (result._ deleted before return).
- * FIX: Uses performance.now() delta via calculateResponseTime() — monotonic.
- *
- * @param {number} startTime — from performance.now()
- * @param {object} result
- * @returns {Promise<object>}
- */
 const respond = async (startTime, result) => {
-  // Size padding — add _ field to normalize response size
   const jsonLen = JSON.stringify(result).length;
   if (jsonLen < MIN_RESPONSE_BYTES) {
-    // FIX: Keep _ in the returned object — controller's res.json() will serialize it
-    // JSON parsers ignore unknown fields; client-side code ignores _ field
     result._ = ' '.repeat(MIN_RESPONSE_BYTES - jsonLen);
   }
 
-  // Timing floor — prevents timing oracle attacks
   const elapsed = calculateResponseTime(startTime);
   const pad = Math.max(0, MIN_RESPONSE_MS - elapsed);
   if (pad > 0) await new Promise(resolve => setTimeout(resolve, pad));
@@ -502,18 +482,12 @@ const buildError = (state, message) => ({ state, message });
 // PROFILE ASSEMBLY
 // =============================================================================
 
-/**
- * Build the full ACTIVE student profile for the scan response.
- * FIX: Returns { profile, photoKey } — photoKey stored in cache separately
- *      from the presigned URL so it can be re-presigned on cache hits.
- */
 const buildProfile = async ({ student, emergency, visibility, hiddenFields }) => {
-  // FIX: Store the raw storage key — presign freshly on every serve
   let photoKey = null;
   let photoUrl = null;
 
   if (student.photo_url && !hiddenFields.includes('photo')) {
-    photoKey = student.photo_url; // raw R2 key
+    photoKey = student.photo_url;
     try {
       photoUrl = await getStorage().getUrl(photoKey, 300);
     } catch {
@@ -554,7 +528,6 @@ const buildProfile = async ({ student, emergency, visibility, hiddenFields }) =>
     doctor: emergency?.doctor_name
       ? {
           name: emergency.doctor_name,
-          // FIX: Doctor phone masked — same as guardian contacts
           phone: maskPhone(safeDecrypt(emergency.doctor_phone_encrypted)),
         }
       : null,
@@ -565,14 +538,9 @@ const buildProfile = async ({ student, emergency, visibility, hiddenFields }) =>
   return { profile, photoKey };
 };
 
-/**
- * Map emergency contacts to wire-safe shape.
- * FIX: contact.id removed — internal UUID has no use for scanner
- *      and is an enumerable internal identifier.
- */
 const buildContacts = contacts =>
   contacts.map(c => ({
-    // FIX: id removed from public response
+    id: c.id,
     name: c.name,
     relationship: c.relationship ?? null,
     phone: maskPhone(safeDecrypt(c.phone_encrypted)),
@@ -581,17 +549,11 @@ const buildContacts = contacts =>
     whatsapp_enabled: c.whatsapp_enabled,
   }));
 
-/**
- * Get highest-priority contact for MINIMAL visibility.
- * FIX: Includes contact id so the backend call redirect endpoint
- *      can resolve it — id is NOT sent to the frontend,
- *      only used in backend href generation.
- */
 const getPrimaryContact = contacts => {
   if (!contacts.length) return null;
   const primary = [...contacts].sort((a, b) => a.priority - b.priority)[0];
   return {
-    id: primary.id, // kept for backend call redirect resolution
+    id: primary.id,
     name: primary.name,
     relationship: primary.relationship ?? null,
     phone: maskPhone(safeDecrypt(primary.phone_encrypted)),
@@ -600,10 +562,6 @@ const getPrimaryContact = contacts => {
   };
 };
 
-/**
- * Safely decrypt an encrypted field. Returns null on any failure.
- * Never throws — decrypt failure must not crash the scan response.
- */
 const safeDecrypt = encrypted => {
   if (!encrypted) return null;
   try {
@@ -628,10 +586,6 @@ const safeSchoolMinimal = school => {
   return { name: school.name };
 };
 
-/**
- * FIX: Map-based blood group formatting — covers all BloodGroup enum values.
- * Previous replace() chain silently returned raw enum for unknown formats.
- */
 const BLOOD_GROUP_DISPLAY = {
   A_POS: 'A+',
   A_NEG: 'A-',
@@ -646,5 +600,5 @@ const BLOOD_GROUP_DISPLAY = {
 
 const formatBloodGroup = bg => {
   if (!bg) return null;
-  return BLOOD_GROUP_DISPLAY[bg] ?? bg; // fallback to raw value if new enum added
+  return BLOOD_GROUP_DISPLAY[bg] ?? bg;
 };

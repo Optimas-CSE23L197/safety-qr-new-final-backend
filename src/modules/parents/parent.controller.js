@@ -79,10 +79,13 @@ export async function updateVisibility(req, res) {
   const parentId = requireOwnParent(req, res);
   if (!parentId) return;
 
+  console.log('[updateVisibility] req.validatedBody:', req.validatedBody);
+
   try {
     const result = await service.updateVisibility(parentId, req.validatedBody);
     return res.status(200).json({ success: true, data: result });
   } catch (err) {
+    console.error('[updateVisibility] error:', err);
     return handleError(res, err, { fn: 'updateVisibility', parentId });
   }
 }
@@ -340,5 +343,48 @@ export async function setActiveStudent(req, res) {
     return res.status(200).json({ success: true, data: result });
   } catch (err) {
     return handleError(res, err, { fn: 'setActiveStudent', parentId });
+  }
+}
+
+// ─── POST /me/unlink-child/init ───────────────────────────────────────────────
+export async function unlinkChildInit(req, res) {
+  const parentId = requireOwnParent(req, res);
+  if (!parentId) return;
+
+  try {
+    console.log('[unlinkChildInit] Starting for parent:', parentId);
+    const { student_id } = req.validatedBody;
+    console.log('[unlinkChildInit] Student ID:', student_id);
+    const result = await service.unlinkChildInit({
+      parentId,
+      studentId: student_id,
+      ipAddress: extractIp(req),
+    });
+    console.log('[unlinkChildInit] Success:', result);
+    return res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    console.error('[unlinkChildInit] ERROR:', err);
+    console.error('[unlinkChildInit] Stack:', err.stack);
+    return handleError(res, err, { fn: 'unlinkChildInit', parentId });
+  }
+}
+
+// ─── POST /me/unlink-child/verify ─────────────────────────────────────────────
+export async function unlinkChildVerify(req, res) {
+  const parentId = requireOwnParent(req, res);
+  if (!parentId) return;
+
+  try {
+    const { student_id, otp, nonce } = req.validatedBody;
+    const result = await service.unlinkChildVerify({
+      parentId,
+      studentId: student_id,
+      otp,
+      nonce,
+      ipAddress: extractIp(req),
+    });
+    return res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    return handleError(res, err, { fn: 'unlinkChildVerify', parentId });
   }
 }

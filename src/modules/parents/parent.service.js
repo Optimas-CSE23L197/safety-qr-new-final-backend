@@ -11,7 +11,7 @@ import { logger } from '#config/logger.js';
 
 // ─── CORRECT IMPORTS (matching your project structure) ────────────────────────
 import { cacheGet, cacheSet, cacheDel } from '#shared/cache/cache.js';
-import { hashOtp } from '#services/otp.service.js';
+import { generateOtp, hashOtp } from '#services/otp.service.js';
 import { getSms } from '#infrastructure/sms/sms.index.js';
 import { getEmail } from '#infrastructure/email/email.index.js';
 
@@ -283,14 +283,21 @@ export async function updateProfile(parentId, body) {
 
 // ─── PATCH /me/visibility ────────────────────────────────────────────────────
 export async function updateVisibility(parentId, body) {
-  await repo.updateCardVisibility({ parentId, ...body });
+  const { student_id, visibility, hidden_fields } = body;
+
+  await repo.updateCardVisibility({
+    parentId,
+    student_id,
+    visibility,
+    hidden_fields,
+  });
 
   writeAuditLog({
     actorId: parentId,
     actorType: 'PARENT_USER',
     action: 'CARD_VISIBILITY_UPDATE',
     entity: 'CardVisibility',
-    entityId: body.student_id,
+    entityId: student_id,
   });
 
   await invalidateParentHome(parentId);
@@ -706,3 +713,174 @@ export async function setActiveStudent(parentId, studentId) {
 
 // ─── Exports ─────────────────────────────────────────────────────────────────
 export { invalidateParentHome };
+
+// ─── POST /me/unlink-child/init ──────────────────────────────────────────────
+export async function unlinkChildInit({ parentId, studentId, ipAddress }) {
+  console.log('[unlinkChildInit Service] Start');
+
+  // Verify student is linked to this parent
+  const link = await repo.findParentStudentLink(parentId, studentId);
+  console.log('[unlinkChildInit Service] Link found:', link);
+
+  if (!link) {
+    throw new ApiError('Student not linked to this account', 404);
+  }
+
+  // Get parent's phone
+  const parent = await repo.findParentPhone(parentId);
+  console.log('[unlinkChildInit Service] Parent:', parent);
+
+  if (!parent?.phone) {
+    throw new ApiError('Parent phone not found', 400);
+  }
+
+  const decryptedPhone = safeDecrypt(parent.phone);
+  console.log('[unlinkChildInit Service] Decrypted phone:', decryptedPhone);
+
+  if (!decryptedPhone) {
+    throw new ApiError('Unable to verify phone', 400);
+  }
+
+  // Rate limit
+  const rateKey = `unlink:rate:${parentId}`;
+  const attempts = await redis.incr(rateKey);
+  if (attempts === 1) await redis.expire(rateKey, 3600);
+  if (attempts > 3) {
+    throw new ApiError('Too many attempts. Try after 1 hour.', 429);
+  }
+
+  // Generate OTP and nonce
+  const otp = generateOtp();
+  const nonce = crypto.randomBytes(32).toString('hex');
+  const hashedOtp = hashOtp(otp);
+
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[DEV Unlink OTP]', otp);
+  }
+
+  const otpData = {
+    hash: hashedOtp,
+    parentId,
+    studentId,
+    attempts: 0,
+  };
+
+  await Promise.all([
+    redis.setex(`otp:unlink:${nonce}`, 300, JSON.stringify(otpData)),
+    redis.setex(`otp:attempts:unlink:${parentId}`, 300, '0'),
+  ]);
+
+  // Send OTP via SMS
+  await sendSms(
+    decryptedPhone,
+    `RESQID: Use OTP ${otp} to remove child from your account. Valid for 5 minutes.`
+  );
+
+  writeAuditLog({
+    actorId: parentId,
+    actorType: 'PARENT_USER',
+    action: 'UNLINK_CHILD_INIT',
+    entity: 'Student',
+    entityId: studentId,
+    ip: ipAddress,
+  });
+
+  return {
+    nonce,
+    expiresIn: 300,
+    masked_phone: maskPhone(decryptedPhone),
+  };
+}
+
+// ─── POST /me/unlink-child/verify ────────────────────────────────────────────
+export async function unlinkChildVerify({ parentId, studentId, otp, nonce, ipAddress }) {
+  // Get OTP data
+  const storedData = await redis.get(`otp:unlink:${nonce}`);
+  if (!storedData) {
+    throw new ApiError('Session expired. Please start again.', 400);
+  }
+
+  const otpData = JSON.parse(storedData);
+
+  // Verify OTP
+  const inputHash = hashOtp(otp);
+  const storedBuf = Buffer.from(otpData.hash, 'hex');
+  const inputBuf = Buffer.from(inputHash, 'hex');
+  const isValid =
+    storedBuf.length === inputBuf.length && crypto.timingSafeEqual(storedBuf, inputBuf);
+
+  if (!isValid) {
+    const attemptsKey = `otp:attempts:unlink:${parentId}`;
+    const attempts = await redis.incr(attemptsKey);
+    if (attempts >= 5) {
+      await redis.del(`otp:unlink:${nonce}`);
+      throw new ApiError('Too many invalid attempts. Please start again.', 400);
+    }
+    throw new ApiError('Invalid OTP', 400);
+  }
+
+  // Verify student is still linked
+  const link = await repo.findParentStudentLink(parentId, studentId);
+  if (!link) {
+    throw new ApiError('Student not linked to this account', 404);
+  }
+
+  // Get student name for notification
+  const student = await repo.findStudentById(studentId);
+  const studentName = student
+    ? `${student.first_name || ''} ${student.last_name || ''}`.trim()
+    : 'Child';
+
+  // Remove the link
+  await repo.deleteParentStudentLink(parentId, studentId);
+
+  // Deactivate token
+  await repo.deactivateTokenForStudent(studentId);
+
+  // Update active student if needed
+  const remainingCount = await repo.getRemainingChildrenCount(parentId);
+  let newActiveStudentId = null;
+
+  if (remainingCount > 0) {
+    const remainingChildren = await prisma.parentStudent.findMany({
+      where: { parent_id: parentId },
+      take: 1,
+      select: { student_id: true },
+    });
+    newActiveStudentId = remainingChildren[0]?.student_id || null;
+    await repo.updateParentActiveStudent(parentId, newActiveStudentId);
+  }
+
+  // Clean up Redis
+  await redis.del(`otp:unlink:${nonce}`);
+  await redis.del(`otp:attempts:unlink:${parentId}`);
+
+  // Send email notification
+  const parent = await repo.findParentPhone(parentId);
+  if (parent?.email) {
+    await sendEmail({
+      to: parent.email,
+      subject: '👋 Child Removed from RESQID',
+      html: `<div>${studentName} has been removed from your RESQID account.<br>Time: ${new Date().toLocaleString()}<br>IP: ${ipAddress || 'Unknown'}</div>`,
+    }).catch(() => {});
+  }
+
+  writeAuditLog({
+    actorId: parentId,
+    actorType: 'PARENT_USER',
+    action: 'UNLINK_CHILD_VERIFY',
+    entity: 'Student',
+    entityId: studentId,
+    ip: ipAddress,
+    metadata: { studentName, remainingChildren: remainingCount },
+  });
+
+  await invalidateParentHome(parentId);
+
+  return {
+    success: true,
+    message: `${studentName} has been removed from your account`,
+    remaining_children: remainingCount,
+    active_student_id: newActiveStudentId,
+  };
+}

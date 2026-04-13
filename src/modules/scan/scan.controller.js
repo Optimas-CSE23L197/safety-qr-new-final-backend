@@ -17,12 +17,16 @@ import { logger } from '#config/logger.js';
 const DEVICE_HASH_LENGTH = 16;
 
 export const scanQr = asyncHandler(async (req, res) => {
-  const startTime = performance.now(); // FIX: monotonic clock — no NTP drift risk
-
+  const startTime = performance.now();
   const { code } = req.params;
   const ip = extractIp(req);
 
-  // FIX: Multi-header fingerprint — harder to spoof than UA alone
+  // Extract location from query params
+  const { lat, lng, acc } = req.query;
+  const latitude = lat ? parseFloat(lat) : null;
+  const longitude = lng ? parseFloat(lng) : null;
+  const accuracy = acc ? parseFloat(acc) : null;
+
   const fingerprintSource = [
     req.headers['user-agent'] ?? '',
     req.headers['accept-language'] ?? '',
@@ -36,17 +40,14 @@ export const scanQr = asyncHandler(async (req, res) => {
     .digest('hex')
     .slice(0, DEVICE_HASH_LENGTH);
 
-  // FIX: Validate scanCount — don't trust raw req value
   const rawScanCount = req.scanCount;
   const scanCount = Number.isInteger(rawScanCount) && rawScanCount > 0 ? rawScanCount : 1;
 
-  // FIX: Entry log for traceability — captured before service call
   logger.debug(
-    { code: code?.slice(0, 8) + '…', ip, deviceHash },
+    { code: code?.slice(0, 8) + '…', ip, deviceHash, latitude, longitude, accuracy },
     '[scan.controller] incoming scan'
   );
 
-  // FIX: Set security headers here — Cache-Control critical for emergency data
   res.set({
     'Cache-Control': 'no-store, no-cache, must-revalidate, private',
     'X-Content-Type-Options': 'nosniff',
@@ -61,9 +62,11 @@ export const scanQr = asyncHandler(async (req, res) => {
     deviceHash,
     startTime,
     scanCount,
+    latitude,
+    longitude,
+    accuracy,
   });
 
-  // FIX: Map result state to correct HTTP status code
   const statusMap = {
     ACTIVE: 200,
     INACTIVE: 200,

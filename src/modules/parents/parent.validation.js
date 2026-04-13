@@ -545,3 +545,41 @@ export function validateSetActiveStudent(req, res, next) {
   req.validatedBody = result.data;
   next();
 }
+
+// ─── POST /me/unlink-child/init ──────────────────────────────────────────────
+const unlinkChildInitSchema = z.object({
+  student_id: z.string().regex(UUID_REGEX, 'Invalid student ID'),
+});
+
+export function validateUnlinkChildInit(req, res, next) {
+  const result = unlinkChildInitSchema.safeParse(req.body);
+  if (!result.success) {
+    return res.status(400).json({
+      success: false,
+      code: 'VALIDATION_ERROR',
+      errors: result.error.flatten().fieldErrors,
+    });
+  }
+  req.validatedBody = result.data;
+  next();
+}
+
+// ─── POST /me/unlink-child/verify ────────────────────────────────────────────
+const unlinkChildVerifySchema = z.object({
+  student_id: z.string().regex(UUID_REGEX, 'Invalid student ID'),
+  otp: z.string().length(6, 'OTP must be 6 digits'),
+  nonce: z.string().min(10, 'Invalid session'),
+});
+
+export function validateUnlinkChildVerify(req, res, next) {
+  const result = unlinkChildVerifySchema.safeParse(req.body);
+  if (!result.success) {
+    return res.status(400).json({
+      success: false,
+      code: 'VALIDATION_ERROR',
+      errors: result.error.flatten().fieldErrors,
+    });
+  }
+  req.validatedBody = result.data;
+  next();
+}
