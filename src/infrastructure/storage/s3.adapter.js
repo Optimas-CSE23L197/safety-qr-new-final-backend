@@ -137,6 +137,39 @@ export class S3Adapter extends StorageProvider {
   async uploadStream(stream, key, options = {}) {
     return this.upload(stream, key, options);
   }
+
+  // Add to s3.adapter.js after getUrl() method
+
+  async getPresignedUploadUrl(key, options = {}) {
+    const {
+      contentType = 'application/octet-stream',
+      expiresIn = 300, // 5 minutes
+      cacheControl = 'public, max-age=31536000, immutable',
+    } = options;
+
+    try {
+      const command = new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        ContentType: contentType,
+        CacheControl: cacheControl,
+      });
+
+      const uploadUrl = await getSignedUrl(this.s3, command, { expiresIn });
+
+      const publicUrl = this.cdnDomain
+        ? `https://${this.cdnDomain}/${key}`
+        : `${this.endpoint}/${this.bucket}/${key}`;
+
+      return { uploadUrl, publicUrl, key, expiresIn };
+    } catch (err) {
+      logger.error(
+        { err: err.message, key },
+        `[Storage] Failed to generate upload URL for "${key}"`
+      );
+      throw err;
+    }
+  }
 }
 
 export default S3Adapter;

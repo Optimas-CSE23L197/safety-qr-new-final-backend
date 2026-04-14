@@ -40,6 +40,8 @@ const MULTIPART_PREFIXES = [
   '/api/school-admin/students/photo',
   '/api/school-admin/template/logo',
   '/api/super-admin/schools/logo',
+  '/api/parents/me/students', // Student photo upload URLs
+  '/api/parents/me/avatar', // Parent avatar upload URLs
 ];
 
 // ─── Core Middleware ──────────────────────────────────────────────────────────

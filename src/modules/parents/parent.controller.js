@@ -12,6 +12,7 @@ import { hashForLookup } from '#shared/security/encryption.js';
 import { generateOtp, hashOtp } from '#services/otp.service.js';
 import { redis } from '#config/redis.js';
 import { prisma } from '#config/prisma.js';
+import * as uploadService from '#services/upload.service.js';
 // import { sendSms } from '#integrations/sms/sms.service.js';
 
 // ─── Error helper ─────────────────────────────────────────────────────────────
@@ -386,5 +387,83 @@ export async function unlinkChildVerify(req, res) {
     return res.status(200).json({ success: true, data: result });
   } catch (err) {
     return handleError(res, err, { fn: 'unlinkChildVerify', parentId });
+  }
+}
+
+// ─── POST /me/students/:studentId/photo/upload-url ──────────────────────────
+export async function generateStudentPhotoUploadUrl(req, res) {
+  const parentId = requireOwnParent(req, res);
+  if (!parentId) return;
+
+  try {
+    const { studentId } = req.params;
+    const { contentType, fileSize } = req.validatedBody;
+
+    const result = await uploadService.generateStudentPhotoUploadUrl(
+      parentId,
+      studentId,
+      contentType,
+      fileSize
+    );
+
+    return res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    return handleError(res, err, { fn: 'generateStudentPhotoUploadUrl', parentId });
+  }
+}
+
+// ─── POST /me/students/:studentId/photo/confirm ─────────────────────────────
+export async function confirmStudentPhotoUpload(req, res) {
+  const parentId = requireOwnParent(req, res);
+  if (!parentId) return;
+
+  try {
+    const { studentId } = req.params;
+    const { key, nonce } = req.validatedBody;
+
+    const result = await uploadService.confirmStudentPhotoUpload(parentId, studentId, key, nonce);
+
+    return res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    return handleError(res, err, { fn: 'confirmStudentPhotoUpload', parentId });
+  }
+}
+
+// ─── POST /me/avatar/upload-url ─────────────────────────────────────────────
+export async function generateAvatarUploadUrl(req, res) {
+  const parentId = requireOwnParent(req, res);
+  if (!parentId) return;
+
+  try {
+    const { contentType, fileSize } = req.validatedBody;
+
+    const result = await uploadService.generateParentAvatarUploadUrl(
+      parentId,
+      contentType,
+      fileSize
+    );
+
+    return res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    return handleError(res, err, { fn: 'generateAvatarUploadUrl', parentId });
+  }
+}
+
+// ─── POST /me/avatar/confirm ────────────────────────────────────────────────
+export async function confirmAvatarUpload(req, res) {
+  const parentId = requireOwnParent(req, res);
+  if (!parentId) return;
+
+  try {
+    const { key, nonce } = req.validatedBody;
+
+    const result = await uploadService.confirmParentAvatarUpload(parentId, key, nonce);
+
+    // Update parent avatar_url in database
+    await service.updateParentAvatar(parentId, result.avatarUrl);
+
+    return res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    return handleError(res, err, { fn: 'confirmAvatarUpload', parentId });
   }
 }

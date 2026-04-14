@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { S3Adapter } from './s3.adapter.js';
 import { StorageProvider } from './storage.provider.js';
 
@@ -14,6 +15,18 @@ export const StoragePath = {
   studentCard: studentId => `students/${studentId}/card-design.png`,
   orderInvoice: (orderId, type) => `orders/${orderId}/${type}-invoice.pdf`,
   schoolBulkExport: (schoolId, orderId) => `schools/${schoolId}/bulk-export/batch-${orderId}.pdf`,
+  // NEW: Parent and student photo uploads
+  studentPhoto: studentId => {
+    const timestamp = Date.now();
+    const random = crypto.randomBytes(8).toString('hex');
+    return `students/${studentId}/photo/${timestamp}-${random}.webp`;
+  },
+
+  parentAvatar: parentId => {
+    const timestamp = Date.now();
+    const random = crypto.randomBytes(8).toString('hex');
+    return `parents/${parentId}/avatar/${timestamp}-${random}.webp`;
+  },
 };
 
 // ---------------------------------------------------------------------------

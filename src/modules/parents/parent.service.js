@@ -313,7 +313,12 @@ export async function updateNotifications(parentId, prefs) {
 
 // ─── PATCH /me/location-consent ──────────────────────────────────────────────
 export async function updateLocationConsent(parentId, body) {
-  await repo.updateLocationConsent({ parentId, ...body });
+  // 🟢 FIX: Map student_id to studentId for repository
+  await repo.updateLocationConsent({
+    parentId,
+    studentId: body.student_id, // ← Map the field name
+    enabled: body.enabled,
+  });
   await invalidateParentHome(parentId);
   return { cache_invalidated: true };
 }
@@ -792,7 +797,8 @@ export async function unlinkChildInit({ parentId, studentId, ipAddress }) {
   };
 }
 
-// ─── POST /me/unlink-child/verify ────────────────────────────────────────────
+// unlinkChildVerify function
+
 export async function unlinkChildVerify({ parentId, studentId, otp, nonce, ipAddress }) {
   // Get OTP data
   const storedData = await redis.get(`otp:unlink:${nonce}`);
@@ -837,18 +843,27 @@ export async function unlinkChildVerify({ parentId, studentId, otp, nonce, ipAdd
   // Deactivate token
   await repo.deactivateTokenForStudent(studentId);
 
-  // Update active student if needed
+  // Check remaining children and update active student
   const remainingCount = await repo.getRemainingChildrenCount(parentId);
   let newActiveStudentId = null;
 
-  if (remainingCount > 0) {
+  if (remainingCount === 0) {
+    // Clear active student when no children left
+    await prisma.parentUser.update({
+      where: { id: parentId },
+      data: { active_student_id: null },
+    });
+  } else {
+    // Set to first remaining child
     const remainingChildren = await prisma.parentStudent.findMany({
       where: { parent_id: parentId },
       take: 1,
       select: { student_id: true },
     });
     newActiveStudentId = remainingChildren[0]?.student_id || null;
-    await repo.updateParentActiveStudent(parentId, newActiveStudentId);
+    if (newActiveStudentId) {
+      await repo.updateParentActiveStudent(parentId, newActiveStudentId);
+    }
   }
 
   // Clean up Redis
@@ -883,4 +898,25 @@ export async function unlinkChildVerify({ parentId, studentId, otp, nonce, ipAdd
     remaining_children: remainingCount,
     active_student_id: newActiveStudentId,
   };
+}
+
+// Add after existing exports
+
+export async function updateParentAvatar(parentId, avatarUrl) {
+  await prisma.parentUser.update({
+    where: { id: parentId },
+    data: { avatar_url: avatarUrl },
+  });
+
+  await invalidateParentHome(parentId);
+
+  writeAuditLog({
+    actorId: parentId,
+    actorType: 'PARENT_USER',
+    action: 'AVATAR_UPDATED',
+    entity: 'ParentUser',
+    entityId: parentId,
+  });
+
+  return { avatar_url: avatarUrl };
 }

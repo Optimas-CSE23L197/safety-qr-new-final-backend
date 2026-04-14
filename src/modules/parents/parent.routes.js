@@ -30,6 +30,10 @@ import {
   getChildrenList,
   unlinkChildInit,
   unlinkChildVerify,
+  generateStudentPhotoUploadUrl,
+  confirmStudentPhotoUpload,
+  generateAvatarUploadUrl,
+  confirmAvatarUpload,
 } from './parent.controller.js';
 
 import {
@@ -51,6 +55,8 @@ import {
   validateSetActiveStudent,
   validateUnlinkChildInit,
   validateUnlinkChildVerify,
+  validateGenerateUploadUrl,
+  validateConfirmUpload,
 } from './parent.validation.js';
 
 const router = Router();
@@ -112,5 +118,24 @@ router.post('/device-token', validateRegisterDeviceToken, registerDeviceToken);
 // ── Unlink child (remove child from parent account) ──────────────────────────
 router.post('/me/unlink-child/init', validateUnlinkChildInit, unlinkChildInit);
 router.post('/me/unlink-child/verify', validateUnlinkChildVerify, unlinkChildVerify);
+
+// photo upload
+// ── Photo Upload (Student) ──────────────────────────────────────────────────
+router.post(
+  '/me/students/:studentId/photo/upload-url',
+  validateGenerateUploadUrl,
+  generateStudentPhotoUploadUrl
+);
+
+router.post(
+  '/me/students/:studentId/photo/confirm',
+  validateConfirmUpload,
+  confirmStudentPhotoUpload
+);
+
+// ── Photo Upload (Parent Avatar) ────────────────────────────────────────────
+router.post('/me/avatar/upload-url', validateGenerateUploadUrl, generateAvatarUploadUrl);
+
+router.post('/me/avatar/confirm', validateConfirmUpload, confirmAvatarUpload);
 
 export default router;

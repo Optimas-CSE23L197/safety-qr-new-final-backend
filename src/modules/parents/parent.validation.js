@@ -583,3 +583,51 @@ export function validateUnlinkChildVerify(req, res, next) {
   req.validatedBody = result.data;
   next();
 }
+
+// =============================================================================
+// NEW VALIDATION: Photo Upload (add to existing parent.validation.js)
+// =============================================================================
+
+// ─── POST /me/students/:studentId/photo/upload-url ──────────────────────────
+const generateUploadUrlSchema = z.object({
+  contentType: z.enum(['image/jpeg', 'image/png', 'image/webp'], {
+    errorMap: () => ({ message: 'contentType must be image/jpeg, image/png, or image/webp' }),
+  }),
+  fileSize: z
+    .number()
+    .int()
+    .positive()
+    .max(5 * 1024 * 1024, 'File size exceeds 5MB limit'),
+});
+
+export function validateGenerateUploadUrl(req, res, next) {
+  const result = generateUploadUrlSchema.safeParse(req.body);
+  if (!result.success) {
+    return res.status(400).json({
+      success: false,
+      code: 'VALIDATION_ERROR',
+      errors: result.error.flatten().fieldErrors,
+    });
+  }
+  req.validatedBody = result.data;
+  next();
+}
+
+// ─── POST /me/students/:studentId/photo/confirm ─────────────────────────────
+const confirmUploadSchema = z.object({
+  key: z.string().min(10, 'Invalid file key'),
+  nonce: z.string().min(10, 'Invalid nonce'),
+});
+
+export function validateConfirmUpload(req, res, next) {
+  const result = confirmUploadSchema.safeParse(req.body);
+  if (!result.success) {
+    return res.status(400).json({
+      success: false,
+      code: 'VALIDATION_ERROR',
+      errors: result.error.flatten().fieldErrors,
+    });
+  }
+  req.validatedBody = result.data;
+  next();
+}

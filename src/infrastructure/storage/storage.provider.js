@@ -26,6 +26,10 @@ export class StorageProvider {
   async list(prefix, options = {}) {
     throw new Error('StorageProvider.list() is not implemented.');
   }
+
+  async getPresignedUploadUrl(key, options = {}) {
+    throw new Error('StorageProvider.getPresignedUploadUrl() is not implemented.');
+  }
 }
 
 export default StorageProvider;
