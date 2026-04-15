@@ -227,6 +227,8 @@ export async function getScanHistory(parentId, query) {
 export async function updateProfile(parentId, body) {
   const { student_id, student, emergency, contacts } = body;
 
+  console.log('[updateProfile] Received student payload:', student);
+
   const studentName = await getStudentName(student_id);
   const parentInfo = await getParentContactInfo(parentId);
 

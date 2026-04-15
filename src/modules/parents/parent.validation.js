@@ -164,6 +164,7 @@ const updateProfileSchema = z.object({
         .max(30)
         .transform(v => v.trim())
         .optional(),
+      photo_url: z.string().max(500).optional(),
     })
     .optional(),
   emergency: z

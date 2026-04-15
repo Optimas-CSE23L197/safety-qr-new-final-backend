@@ -106,6 +106,9 @@ export const resolveScan = async ({
 
     setImmediate(() => evaluateAnomaly({ tokenId, schoolId, ip, scanResult, scanCount }));
 
+    // 🟢 FIX: Clone cached payload before mutating
+    const responsePayload = formatScanResponse(cached);
+
     if (cached.state === 'ACTIVE') {
       fireNotification({
         schoolId,
@@ -116,16 +119,21 @@ export const resolveScan = async ({
         tokenId,
       });
 
-      if (cached._photoKey && cached.profile) {
+      // 🟢 FIX: Generate fresh signed URL for photo on every request
+      if (cached._photoKey && responsePayload.profile) {
         try {
-          cached.profile.photo_url = await getStorage().getUrl(cached._photoKey, 300);
-        } catch {
-          cached.profile.photo_url = null;
+          responsePayload.profile.photo_url = await getStorage().getUrl(cached._photoKey, 300);
+        } catch (err) {
+          logger.warn(
+            { err: err.message, key: cached._photoKey },
+            '[scan.service] Failed to generate photo URL'
+          );
+          responsePayload.profile.photo_url = null;
         }
       }
     }
 
-    return respond(startTime, formatScanResponse(cached));
+    return respond(startTime, responsePayload);
   }
 
   // ── 3. DB query ────────────────────────────────────────────────────────────
@@ -490,7 +498,11 @@ const buildProfile = async ({ student, emergency, visibility, hiddenFields }) =>
     photoKey = student.photo_url;
     try {
       photoUrl = await getStorage().getUrl(photoKey, 300);
-    } catch {
+    } catch (err) {
+      logger.warn(
+        { err: err.message, key: photoKey },
+        '[scan.service] Failed to generate photo URL'
+      );
       photoUrl = null;
     }
   }

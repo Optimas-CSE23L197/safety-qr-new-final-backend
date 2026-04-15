@@ -74,7 +74,7 @@ export async function generateStudentPhotoUploadUrl(parentId, studentId, content
   validateFileUpload(contentType, fileSize);
   await checkRateLimit(`parent:${parentId}`);
 
-  // 🟢 ADD: Verify parent owns this student
+  // Verify parent owns this student
   const link = await prisma.parentStudent.findFirst({
     where: { parent_id: parentId, student_id: studentId },
   });
@@ -83,7 +83,6 @@ export async function generateStudentPhotoUploadUrl(parentId, studentId, content
     throw ApiError.forbidden('Student not linked to this parent');
   }
 
-  // Verify parent owns student (handled in controller, but double-check here)
   const storage = getStorage();
 
   // Generate unique file path
@@ -155,8 +154,9 @@ export async function confirmStudentPhotoUpload(parentId, studentId, key, nonce)
 
   logger.info({ parentId, studentId, key }, 'Confirmed student photo upload');
 
+  // Return the R2 object KEY, not the public URL
   return {
-    photoUrl: intent.publicUrl,
+    photoUrl: key,
     verified: true,
   };
 }
@@ -237,8 +237,9 @@ export async function confirmParentAvatarUpload(parentId, key, nonce) {
 
   logger.info({ parentId, key }, 'Confirmed parent avatar upload');
 
+  // Return the R2 object KEY, not the public URL
   return {
-    avatarUrl: intent.publicUrl,
+    avatarUrl: key,
     verified: true,
   };
 }

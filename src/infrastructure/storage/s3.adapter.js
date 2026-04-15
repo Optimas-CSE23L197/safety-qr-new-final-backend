@@ -17,7 +17,10 @@ export class S3Adapter extends StorageProvider {
     this.endpoint = config.ENDPOINT ?? process.env.AWS_S3_ENDPOINT;
     this.region = config.REGION ?? process.env.AWS_REGION ?? 'auto';
     this.bucket = config.BUCKET ?? process.env.AWS_S3_BUCKET;
-    this.cdnDomain = config.CDN_DOMAIN ?? process.env.AWS_CDN_DOMAIN ?? null;
+    this.cdnDomain = config.CDN_DOMAIN ?? process.env.AWS_CDN_DOMAIN ?? 'assets.getresqid.in';
+
+    // 🟢 FIX: Remove bucket name from endpoint if present (R2 requirement)
+    const cleanEndpoint = this.endpoint?.replace(/\/$/, '').replace(`/${this.bucket}`, '');
 
     this.s3 = new S3Client({
       region: this.region,
@@ -25,8 +28,8 @@ export class S3Adapter extends StorageProvider {
         accessKeyId: config.ACCESS_KEY_ID ?? process.env.AWS_ACCESS_KEY_ID,
         secretAccessKey: config.SECRET_ACCESS_KEY ?? process.env.AWS_SECRET_ACCESS_KEY,
       },
-      ...(this.endpoint ? { endpoint: this.endpoint } : {}),
-      forcePathStyle: true, // required for R2
+      ...(cleanEndpoint ? { endpoint: cleanEndpoint } : {}),
+      forcePathStyle: true,
     });
   }
 
@@ -43,12 +46,7 @@ export class S3Adapter extends StorageProvider {
         })
       );
 
-      // In upload method - update location URL construction
-      const location = this.cdnDomain
-        ? `https://${this.cdnDomain}/${key}`
-        : this.endpoint
-          ? `https://${this.endpoint}/${this.bucket}/${key}`
-          : `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}`;
+      const location = `https://${this.cdnDomain}/${key}`;
 
       logger.info({ key, location }, `[Storage] Uploaded "${key}"`);
       return { success: true, key, location };
@@ -82,14 +80,10 @@ export class S3Adapter extends StorageProvider {
     }
   }
 
-  // In getUrl method - replace the AWS-style fallback with R2-style
   async getUrl(key, expiresIn = 3600) {
     try {
       if (this.cdnDomain) {
         return `https://${this.cdnDomain}/${key}`;
-      }
-      if (this.endpoint) {
-        return `https://${this.endpoint}/${this.bucket}/${key}`;
       }
       return getSignedUrl(this.s3, new GetObjectCommand({ Bucket: this.bucket, Key: key }), {
         expiresIn,
@@ -138,12 +132,10 @@ export class S3Adapter extends StorageProvider {
     return this.upload(stream, key, options);
   }
 
-  // Add to s3.adapter.js after getUrl() method
-
   async getPresignedUploadUrl(key, options = {}) {
     const {
       contentType = 'application/octet-stream',
-      expiresIn = 300, // 5 minutes
+      expiresIn = 300,
       cacheControl = 'public, max-age=31536000, immutable',
     } = options;
 
@@ -157,9 +149,7 @@ export class S3Adapter extends StorageProvider {
 
       const uploadUrl = await getSignedUrl(this.s3, command, { expiresIn });
 
-      const publicUrl = this.cdnDomain
-        ? `https://${this.cdnDomain}/${key}`
-        : `${this.endpoint}/${this.bucket}/${key}`;
+      const publicUrl = `https://${this.cdnDomain}/${key}`;
 
       return { uploadUrl, publicUrl, key, expiresIn };
     } catch (err) {
