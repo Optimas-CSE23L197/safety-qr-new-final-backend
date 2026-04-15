@@ -8,7 +8,7 @@ logs/*.log*
 
 .env
 .env.example
-
+logs/
 
 # soumya
 env.txt

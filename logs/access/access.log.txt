@@ -1,2 +1,0 @@
-C:\A_FullStack_Projects\safety-qr\new_final_backend\logs\access\20260323-0000-01-access.log
-C:\A_FullStack_Projects\safety-qr\new_final_backend\logs\access\20260325-0000-01-access.log
