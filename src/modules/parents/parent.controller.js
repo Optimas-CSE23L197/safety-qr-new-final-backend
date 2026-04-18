@@ -261,6 +261,7 @@ export async function sendPhoneChangeOtp(req, res) {
     }
 
     const otp = generateOtp();
+    console.log('[DEV PHONE CHANGE OTP]:', otp);
     const hashed = hashOtp(otp);
 
     await redis.setex(

@@ -1,5 +1,5 @@
 // =============================================================================
-// modules/parents/parent.service.js — RESQID (FIXED IMPORTS)
+// modules/parents/parent.service.js — RESQID
 // =============================================================================
 
 import crypto from 'crypto';
@@ -9,13 +9,13 @@ import { prisma } from '#config/prisma.js';
 import { redis } from '#config/redis.js';
 import { logger } from '#config/logger.js';
 
-// ─── CORRECT IMPORTS (matching your project structure) ────────────────────────
 import { cacheGet, cacheSet, cacheDel } from '#shared/cache/cache.js';
 import { generateOtp, hashOtp } from '#services/otp.service.js';
 import { getSms } from '#infrastructure/sms/sms.index.js';
 import { getEmail } from '#infrastructure/email/email.index.js';
 
-// ─── ApiError class ───────────────────────────────────────────────────────────
+// ─── ApiError ─────────────────────────────────────────────────────────────────
+
 class ApiError extends Error {
   constructor(message, statusCode = 400, code = 'ERROR') {
     super(message);
@@ -24,23 +24,22 @@ class ApiError extends Error {
   }
 }
 
-// ─── Audit logger stub (replace with real import if exists) ───────────────────
+// ─── Audit logger ─────────────────────────────────────────────────────────────
+
 const writeAuditLog = data => {
   logger.info({ ...data }, 'AUDIT');
 };
 
-// ─── Cache helpers using your actual cache functions ──────────────────────────
+// ─── Cache helpers ────────────────────────────────────────────────────────────
+
 const HOME_KEY = id => `parent:home:${id}`;
 const HOME_TTL = 5 * 60; // 5 minutes
 
 async function cacheAside(key, ttl, fetchFn) {
   const cached = await cacheGet(key);
   if (cached !== null) return cached;
-
   const data = await fetchFn();
-  if (data !== null && data !== undefined) {
-    await cacheSet(key, data, ttl);
-  }
+  if (data !== null && data !== undefined) await cacheSet(key, data, ttl);
   return data;
 }
 
@@ -49,6 +48,7 @@ async function invalidateParentHome(parentId) {
 }
 
 // ─── Notification helpers ─────────────────────────────────────────────────────
+
 async function sendSms(phone, message) {
   try {
     const sms = getSms();
@@ -67,13 +67,13 @@ async function sendEmail({ to, subject, html }) {
   }
 }
 
-// ─── Helper to get parent contact info ───────────────────────────────────────
+// ─── Shared helpers ───────────────────────────────────────────────────────────
+
 async function getParentContactInfo(parentId) {
-  const parent = await prisma.parentUser.findUnique({
+  return prisma.parentUser.findUnique({
     where: { id: parentId },
     select: { email: true, phone: true, name: true },
   });
-  return parent;
 }
 
 async function getStudentName(studentId) {
@@ -86,14 +86,13 @@ async function getStudentName(studentId) {
 }
 
 async function getCardDetails(cardId) {
-  const card = await prisma.card.findUnique({
+  return prisma.card.findUnique({
     where: { id: cardId },
     select: {
       card_number: true,
       student: { select: { first_name: true, last_name: true } },
     },
   });
-  return card;
 }
 
 function maskPhone(phone) {
@@ -103,7 +102,6 @@ function maskPhone(phone) {
   return `${prefix}****${last4}`;
 }
 
-// ─── Safe decrypt ─────────────────────────────────────────────────────────────
 function safeDecrypt(encrypted) {
   if (!encrypted) return null;
   try {
@@ -113,7 +111,8 @@ function safeDecrypt(encrypted) {
   }
 }
 
-// ─── GET /me ─────────────────────────────────────────────────────────────────
+// ─── GET /me ──────────────────────────────────────────────────────────────────
+
 export async function getParentHomeData(parentId) {
   return cacheAside(HOME_KEY(parentId), HOME_TTL, () => fetchAndShape(parentId));
 }
@@ -140,6 +139,8 @@ async function fetchAndShape(parentId) {
       .sort((a, b) => (TOKEN_PRIORITY[a.status] ?? 9) - (TOKEN_PRIORITY[b.status] ?? 9))[0];
   };
 
+  // FIX: embed per-student last_scan, anomaly, and scan_count
+  // so the mobile client can scope these to the active student
   const students = studentLinks.map(({ student, relationship, is_primary }) => {
     const token = pickBestToken(student.tokens);
     const card = token?.cards[0] ?? null;
@@ -169,6 +170,10 @@ async function fetchAndShape(parentId) {
       emergency: student.emergency ? shapeEmergency(student.emergency) : null,
       card_visibility: student.cardVisibility ?? null,
       location_consent: student.locationConsent ?? null,
+      // FIX: per-student scan summary (populated from student-scoped repo fields)
+      last_scan: student.lastScan ?? null,
+      scan_count: student.scanCount ?? 0,
+      anomaly: student.anomaly ?? null,
     };
   });
 
@@ -178,14 +183,22 @@ async function fetchAndShape(parentId) {
     return (a.first_name ?? '').localeCompare(b.first_name ?? '');
   });
 
+  // Determine active student id
+  const activeStudentId =
+    parent.active_student_id ?? students.find(s => s.is_primary)?.id ?? students[0]?.id ?? null;
+
+  // Global last_scan / anomaly / scan_count kept for backwards compatibility
+  // but now also scoped to the active student inside the students array
   return {
     parent: {
       id: parent.id,
       name: parent.name,
       is_phone_verified: parent.is_phone_verified,
+      active_student_id: activeStudentId,
       notification_prefs: parent.notificationPrefs || {},
     },
     students,
+    // Global fields still returned (scoped to active student server-side)
     last_scan: lastScan ?? null,
     scan_count: scanCount,
     anomaly: anomaly ?? null,
@@ -218,12 +231,15 @@ function shapeEmergency(ep) {
 }
 
 // ─── GET /me/scans ────────────────────────────────────────────────────────────
+// FIX: now receives studentId and passes it to the repo for student-scoped results
+
 export async function getScanHistory(parentId, query) {
-  const { cursor, limit, filter } = query;
-  return repo.getScanHistory({ parentId, cursor, limit, filter });
+  const { student_id, cursor, limit, filter } = query;
+  return repo.getScanHistory({ parentId, studentId: student_id, cursor, limit, filter });
 }
 
 // ─── PATCH /me/profile ───────────────────────────────────────────────────────
+
 export async function updateProfile(parentId, body) {
   const { student_id, student, emergency, contacts } = body;
 
@@ -284,15 +300,11 @@ export async function updateProfile(parentId, body) {
 }
 
 // ─── PATCH /me/visibility ────────────────────────────────────────────────────
+
 export async function updateVisibility(parentId, body) {
   const { student_id, visibility, hidden_fields } = body;
 
-  await repo.updateCardVisibility({
-    parentId,
-    student_id,
-    visibility,
-    hidden_fields,
-  });
+  await repo.updateCardVisibility({ parentId, student_id, visibility, hidden_fields });
 
   writeAuditLog({
     actorId: parentId,
@@ -307,6 +319,7 @@ export async function updateVisibility(parentId, body) {
 }
 
 // ─── PATCH /me/notifications ─────────────────────────────────────────────────
+
 export async function updateNotifications(parentId, prefs) {
   await repo.updateNotificationPrefs(parentId, prefs);
   await invalidateParentHome(parentId);
@@ -314,11 +327,11 @@ export async function updateNotifications(parentId, prefs) {
 }
 
 // ─── PATCH /me/location-consent ──────────────────────────────────────────────
+
 export async function updateLocationConsent(parentId, body) {
-  // 🟢 FIX: Map student_id to studentId for repository
   await repo.updateLocationConsent({
     parentId,
-    studentId: body.student_id, // ← Map the field name
+    studentId: body.student_id,
     enabled: body.enabled,
   });
   await invalidateParentHome(parentId);
@@ -326,16 +339,14 @@ export async function updateLocationConsent(parentId, body) {
 }
 
 // ─── POST /me/lock-card ──────────────────────────────────────────────────────
+
 export async function lockCard(parentId, body) {
   const { student_id } = body;
 
   const studentName = await getStudentName(student_id);
   const parentInfo = await getParentContactInfo(parentId);
 
-  const result = await repo.lockStudentCard({
-    parentId,
-    studentId: student_id,
-  });
+  const result = await repo.lockStudentCard({ parentId, studentId: student_id });
 
   writeAuditLog({
     actorId: parentId,
@@ -358,6 +369,7 @@ export async function lockCard(parentId, body) {
 }
 
 // ─── POST /me/request-replace ────────────────────────────────────────────────
+
 export async function requestCardReplacement(parentId, body) {
   const { student_id, reason } = body;
 
@@ -393,6 +405,7 @@ export async function requestCardReplacement(parentId, body) {
 }
 
 // ─── DELETE /me ──────────────────────────────────────────────────────────────
+
 export async function deleteAccount(parentId) {
   const parentInfo = await getParentContactInfo(parentId);
 
@@ -417,43 +430,37 @@ export async function deleteAccount(parentId) {
 }
 
 // ─── GET /me/location-history ────────────────────────────────────────────────
+
 export async function getLocationHistory(parentId, query) {
   const { student_id, cursor, limit = 20, from_date, to_date } = query;
 
-  if (!student_id) {
-    throw new Error('student_id is required');
-  }
+  if (!student_id) throw new Error('student_id is required');
 
-  const fromDate = from_date ? new Date(from_date) : undefined;
-  const toDate = to_date ? new Date(to_date) : undefined;
-
-  const result = await repo.getLocationHistory({
+  return repo.getLocationHistory({
     parentId,
     studentId: student_id,
     cursor,
     limit,
-    fromDate,
-    toDate,
+    fromDate: from_date ? new Date(from_date) : undefined,
+    toDate: to_date ? new Date(to_date) : undefined,
   });
-
-  return result;
 }
 
 // ─── GET /me/anomalies ───────────────────────────────────────────────────────
+
 export async function getAnomalies(parentId, query) {
   const { cursor, limit = 20, severity, resolved } = query;
 
-  const result = await repo.getAnomalies(parentId, {
+  return repo.getAnomalies(parentId, {
     cursor,
     limit,
     severity,
     resolved: resolved === 'true' ? true : resolved === 'false' ? false : undefined,
   });
-
-  return result;
 }
 
 // ─── GET /me/cards ───────────────────────────────────────────────────────────
+
 export async function getCards(parentId) {
   const cards = await repo.getCards(parentId);
 
@@ -470,6 +477,7 @@ export async function getCards(parentId) {
 }
 
 // ─── POST /me/request-renewal ────────────────────────────────────────────────
+
 export async function requestRenewal(parentId, body) {
   const { card_id, payment_method } = body;
 
@@ -504,6 +512,7 @@ export async function requestRenewal(parentId, body) {
 }
 
 // ─── POST /me/change-phone ───────────────────────────────────────────────────
+
 export async function changePhone(parentId, newPhone, otp, ipAddress) {
   const oldParentInfo = await prisma.parentUser.findUnique({
     where: { id: parentId },
@@ -521,9 +530,7 @@ export async function changePhone(parentId, newPhone, otp, ipAddress) {
   const inputHash = hashOtp(otp);
   const storedBuf = Buffer.from(otpData.hash, 'hex');
   const inputBuf = Buffer.from(inputHash, 'hex');
-
   const valid = storedBuf.length === inputBuf.length && crypto.timingSafeEqual(storedBuf, inputBuf);
-
   if (!valid) throw new Error('Invalid OTP');
 
   const phoneIndex = hashForLookup(newPhone);
@@ -531,20 +538,12 @@ export async function changePhone(parentId, newPhone, otp, ipAddress) {
 
   await prisma.parentUser.update({
     where: { id: parentId },
-    data: {
-      phone: encryptedPhone,
-      phone_index: phoneIndex,
-      is_phone_verified: true,
-    },
+    data: { phone: encryptedPhone, phone_index: phoneIndex, is_phone_verified: true },
   });
 
   await prisma.session.updateMany({
     where: { parent_user_id: parentId, is_active: true },
-    data: {
-      is_active: false,
-      revoked_at: new Date(),
-      revoke_reason: 'PHONE_CHANGED',
-    },
+    data: { is_active: false, revoked_at: new Date(), revoke_reason: 'PHONE_CHANGED' },
   });
 
   await redis.del(`otp:phone_change:${newPhone}`);
@@ -583,12 +582,13 @@ export async function changePhone(parentId, newPhone, otp, ipAddress) {
 }
 
 // ─── POST /device-token ───────────────────────────────────────────────────────
+
 export async function registerDeviceToken(parentId, body) {
-  const device = await repo.upsertDeviceToken(parentId, body);
-  return device;
+  return repo.upsertDeviceToken(parentId, body);
 }
 
 // ─── GET /me/children ─────────────────────────────────────────────────────────
+
 export async function getChildrenList(parentId) {
   const students = await prisma.parentStudent.findMany({
     where: { parent_id: parentId },
@@ -629,6 +629,7 @@ export async function getChildrenList(parentId) {
 }
 
 // ─── POST /me/link-card ───────────────────────────────────────────────────────
+
 export async function linkCard({ parentId, cardNumber, ipAddress }) {
   const card = await repo.findCardByNumber(cardNumber);
   if (!card) throw new ApiError('Card not found', 404);
@@ -692,6 +693,7 @@ export async function linkCard({ parentId, cardNumber, ipAddress }) {
 }
 
 // ─── PATCH /me/active-student ─────────────────────────────────────────────────
+
 export async function setActiveStudent(parentId, studentId) {
   const link = await prisma.parentStudent.findFirst({
     where: { parent_id: parentId, student_id: studentId },
@@ -718,45 +720,27 @@ export async function setActiveStudent(parentId, studentId) {
   return { success: true, active_student_id: studentId };
 }
 
-// ─── Exports ─────────────────────────────────────────────────────────────────
 export { invalidateParentHome };
 
 // ─── POST /me/unlink-child/init ──────────────────────────────────────────────
+
 export async function unlinkChildInit({ parentId, studentId, ipAddress }) {
   console.log('[unlinkChildInit Service] Start');
 
-  // Verify student is linked to this parent
   const link = await repo.findParentStudentLink(parentId, studentId);
-  console.log('[unlinkChildInit Service] Link found:', link);
+  if (!link) throw new ApiError('Student not linked to this account', 404);
 
-  if (!link) {
-    throw new ApiError('Student not linked to this account', 404);
-  }
-
-  // Get parent's phone
   const parent = await repo.findParentPhone(parentId);
-  console.log('[unlinkChildInit Service] Parent:', parent);
-
-  if (!parent?.phone) {
-    throw new ApiError('Parent phone not found', 400);
-  }
+  if (!parent?.phone) throw new ApiError('Parent phone not found', 400);
 
   const decryptedPhone = safeDecrypt(parent.phone);
-  console.log('[unlinkChildInit Service] Decrypted phone:', decryptedPhone);
+  if (!decryptedPhone) throw new ApiError('Unable to verify phone', 400);
 
-  if (!decryptedPhone) {
-    throw new ApiError('Unable to verify phone', 400);
-  }
-
-  // Rate limit
   const rateKey = `unlink:rate:${parentId}`;
   const attempts = await redis.incr(rateKey);
   if (attempts === 1) await redis.expire(rateKey, 3600);
-  if (attempts > 3) {
-    throw new ApiError('Too many attempts. Try after 1 hour.', 429);
-  }
+  if (attempts > 3) throw new ApiError('Too many attempts. Try after 1 hour.', 429);
 
-  // Generate OTP and nonce
   const otp = generateOtp();
   const nonce = crypto.randomBytes(32).toString('hex');
   const hashedOtp = hashOtp(otp);
@@ -765,19 +749,13 @@ export async function unlinkChildInit({ parentId, studentId, ipAddress }) {
     console.log('[DEV Unlink OTP]', otp);
   }
 
-  const otpData = {
-    hash: hashedOtp,
-    parentId,
-    studentId,
-    attempts: 0,
-  };
+  const otpData = { hash: hashedOtp, parentId, studentId, attempts: 0 };
 
   await Promise.all([
     redis.setex(`otp:unlink:${nonce}`, 300, JSON.stringify(otpData)),
     redis.setex(`otp:attempts:unlink:${parentId}`, 300, '0'),
   ]);
 
-  // Send OTP via SMS
   await sendSms(
     decryptedPhone,
     `RESQID: Use OTP ${otp} to remove child from your account. Valid for 5 minutes.`
@@ -792,25 +770,16 @@ export async function unlinkChildInit({ parentId, studentId, ipAddress }) {
     ip: ipAddress,
   });
 
-  return {
-    nonce,
-    expiresIn: 300,
-    masked_phone: maskPhone(decryptedPhone),
-  };
+  return { nonce, expiresIn: 300, masked_phone: maskPhone(decryptedPhone) };
 }
 
-// unlinkChildVerify function
+// ─── POST /me/unlink-child/verify ────────────────────────────────────────────
 
 export async function unlinkChildVerify({ parentId, studentId, otp, nonce, ipAddress }) {
-  // Get OTP data
   const storedData = await redis.get(`otp:unlink:${nonce}`);
-  if (!storedData) {
-    throw new ApiError('Session expired. Please start again.', 400);
-  }
+  if (!storedData) throw new ApiError('Session expired. Please start again.', 400);
 
   const otpData = JSON.parse(storedData);
-
-  // Verify OTP
   const inputHash = hashOtp(otp);
   const storedBuf = Buffer.from(otpData.hash, 'hex');
   const inputBuf = Buffer.from(inputHash, 'hex');
@@ -827,36 +796,26 @@ export async function unlinkChildVerify({ parentId, studentId, otp, nonce, ipAdd
     throw new ApiError('Invalid OTP', 400);
   }
 
-  // Verify student is still linked
   const link = await repo.findParentStudentLink(parentId, studentId);
-  if (!link) {
-    throw new ApiError('Student not linked to this account', 404);
-  }
+  if (!link) throw new ApiError('Student not linked to this account', 404);
 
-  // Get student name for notification
   const student = await repo.findStudentById(studentId);
   const studentName = student
     ? `${student.first_name || ''} ${student.last_name || ''}`.trim()
     : 'Child';
 
-  // Remove the link
   await repo.deleteParentStudentLink(parentId, studentId);
-
-  // Deactivate token
   await repo.deactivateTokenForStudent(studentId);
 
-  // Check remaining children and update active student
   const remainingCount = await repo.getRemainingChildrenCount(parentId);
   let newActiveStudentId = null;
 
   if (remainingCount === 0) {
-    // Clear active student when no children left
     await prisma.parentUser.update({
       where: { id: parentId },
       data: { active_student_id: null },
     });
   } else {
-    // Set to first remaining child
     const remainingChildren = await prisma.parentStudent.findMany({
       where: { parent_id: parentId },
       take: 1,
@@ -868,11 +827,9 @@ export async function unlinkChildVerify({ parentId, studentId, otp, nonce, ipAdd
     }
   }
 
-  // Clean up Redis
   await redis.del(`otp:unlink:${nonce}`);
   await redis.del(`otp:attempts:unlink:${parentId}`);
 
-  // Send email notification
   const parent = await repo.findParentPhone(parentId);
   if (parent?.email) {
     await sendEmail({
@@ -902,7 +859,7 @@ export async function unlinkChildVerify({ parentId, studentId, otp, nonce, ipAdd
   };
 }
 
-// Add after existing exports
+// ─── Parent avatar ────────────────────────────────────────────────────────────
 
 export async function updateParentAvatar(parentId, avatarUrl) {
   await prisma.parentUser.update({

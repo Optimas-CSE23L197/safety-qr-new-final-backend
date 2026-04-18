@@ -1,14 +1,10 @@
 // =============================================================================
-// modules/parents/parent.validation.js — RESQID (FULLY FIXED)
-// ALL validation for parent endpoints in one file.
-// Every validator rejects bad input before it reaches service/DB.
+// modules/parents/parent.validation.js — RESQID
 // =============================================================================
 
 import { z } from 'zod';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-// E.164 format: + followed by 10-15 digits
 const PHONE_REGEX = /^\+[1-9]\d{9,14}$/;
 
 // ─── Shared guard ─────────────────────────────────────────────────────────────
@@ -25,47 +21,27 @@ export function requireOwnParent(req, res) {
   return req.userId;
 }
 
-// ─── Normalise phone to E.164 (dynamic country code detection) ────────────────
-// Accepts: "+919876543210", "9876543210", "09876543210"
-// Rejects: 'abc', '123', empty after normalisation
-// Detects country code from input or defaults to +91 for Indian numbers
+// ─── Phone normaliser ─────────────────────────────────────────────────────────
 
 function normalisePhone(v) {
   if (!v || v.trim() === '') return undefined;
   const t = v.trim();
-
-  // Already E.164 format
   if (t.startsWith('+')) return t;
-
-  // Remove leading zeros
   const cleaned = t.replace(/^0+/, '');
-
-  // If starts with 91 and length is 12 (including 91), assume Indian
-  if (cleaned.startsWith('91') && cleaned.length === 12) {
-    return `+${cleaned}`;
-  }
-
-  // If length is 10, assume Indian number (default to +91)
-  if (cleaned.length === 10 && /^[6-9]\d{9}$/.test(cleaned)) {
-    return `+91${cleaned}`;
-  }
-
-  // If length is 11 and starts with 0 (after cleaning), treat as Indian
-  if (cleaned.length === 11 && cleaned.startsWith('0')) {
-    return `+91${cleaned.slice(1)}`;
-  }
-
-  // Otherwise, assume already has country code without +
-  if (/^[1-9]\d{9,14}$/.test(cleaned)) {
-    return `+${cleaned}`;
-  }
-
+  if (cleaned.startsWith('91') && cleaned.length === 12) return `+${cleaned}`;
+  if (cleaned.length === 10 && /^[6-9]\d{9}$/.test(cleaned)) return `+91${cleaned}`;
+  if (cleaned.length === 11 && cleaned.startsWith('0')) return `+91${cleaned.slice(1)}`;
+  if (/^[1-9]\d{9,14}$/.test(cleaned)) return `+${cleaned}`;
   return undefined;
 }
 
 // ─── GET /me/scans ────────────────────────────────────────────────────────────
+// FIX: added student_id (required) so the query is always scoped to one child
 
 const scanHistorySchema = z.object({
+  student_id: z
+    .string({ required_error: 'student_id is required' })
+    .regex(UUID_REGEX, 'student_id must be a valid UUID'),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(50).default(20),
   filter: z.enum(['all', 'emergency', 'success', 'flagged']).default('all'),
@@ -497,12 +473,11 @@ export function validateRegisterDeviceToken(req, res, next) {
 }
 
 // =============================================================================
-// MULTI-CHILD SUPPORT — NEW VALIDATION SCHEMAS
+// MULTI-CHILD SUPPORT
 // =============================================================================
 
 // ─── POST /me/link-card ───────────────────────────────────────────────────────
-// Add a new child by scanning a new card
-// Card number format: alphanumeric with hyphens, 10-20 chars
+
 const linkCardSchema = z.object({
   card_number: z
     .string()
@@ -526,7 +501,6 @@ export function validateLinkCard(req, res, next) {
 }
 
 // ─── PATCH /me/active-student ─────────────────────────────────────────────────
-// Switch active student for parent
 
 const setActiveStudentSchema = z.object({
   student_id: z
@@ -548,6 +522,7 @@ export function validateSetActiveStudent(req, res, next) {
 }
 
 // ─── POST /me/unlink-child/init ──────────────────────────────────────────────
+
 const unlinkChildInitSchema = z.object({
   student_id: z.string().regex(UUID_REGEX, 'Invalid student ID'),
 });
@@ -566,6 +541,7 @@ export function validateUnlinkChildInit(req, res, next) {
 }
 
 // ─── POST /me/unlink-child/verify ────────────────────────────────────────────
+
 const unlinkChildVerifySchema = z.object({
   student_id: z.string().regex(UUID_REGEX, 'Invalid student ID'),
   otp: z.string().length(6, 'OTP must be 6 digits'),
@@ -585,11 +561,8 @@ export function validateUnlinkChildVerify(req, res, next) {
   next();
 }
 
-// =============================================================================
-// NEW VALIDATION: Photo Upload (add to existing parent.validation.js)
-// =============================================================================
+// ─── Photo Upload ─────────────────────────────────────────────────────────────
 
-// ─── POST /me/students/:studentId/photo/upload-url ──────────────────────────
 const generateUploadUrlSchema = z.object({
   contentType: z.enum(['image/jpeg', 'image/png', 'image/webp'], {
     errorMap: () => ({ message: 'contentType must be image/jpeg, image/png, or image/webp' }),
@@ -614,7 +587,6 @@ export function validateGenerateUploadUrl(req, res, next) {
   next();
 }
 
-// ─── POST /me/students/:studentId/photo/confirm ─────────────────────────────
 const confirmUploadSchema = z.object({
   key: z.string().min(10, 'Invalid file key'),
   nonce: z.string().min(10, 'Invalid nonce'),
