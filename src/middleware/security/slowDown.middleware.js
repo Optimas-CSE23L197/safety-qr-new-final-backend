@@ -17,26 +17,30 @@ function makeStore(prefix) {
   });
 }
 
+// ── IPv6-safe key generators ───────────────────────────────────────────────────
+// express-rate-limit v7 requires IPv6 addresses to be normalized to avoid
+// bypass via address expansion. extractIp already handles this — we just need
+// to ensure req.ip is never used directly in keyGenerator.
+
 /**
  * publicEmergencySlowDown — STRICT
  * After 3 requests in 1 min → add 1000ms delay per additional request
  * Max delay: 10 seconds — aggressive bot throttling
- * After 15 requests → block (handled by rate limiter)
  */
 export const publicEmergencySlowDown = slowDown({
   windowMs: 60 * 1000,
-  delayAfter: 3, // was 5 — stricter
-  delayMs: hits => (hits - 3) * 1000, // was 500ms — now 1s per excess
-  maxDelayMs: 10000, // was 3000ms — now 10s max
+  delayAfter: 3,
+  delayMs: hits => {
+    const delay = (hits - 3) * 1000;
+    if (delay > 0) {
+      logger.warn({ hits }, 'STRICT: Emergency endpoint slowdown triggered');
+    }
+    return delay;
+  },
+  maxDelayMs: 10000,
   store: makeStore('sd:emergency:'),
   keyGenerator: req => extractIp(req),
-  skip: req => false,
-  onLimitReached: (req, res, options) => {
-    logger.warn(
-      { ip: extractIp(req), hits: req.slowDown?.current },
-      'STRICT: Emergency endpoint slowdown limit reached'
-    );
-  },
+  skip: () => false,
 });
 
 /**
@@ -46,17 +50,17 @@ export const publicEmergencySlowDown = slowDown({
  */
 export const authSlowDown = slowDown({
   windowMs: 15 * 60 * 1000,
-  delayAfter: 2, // was 3 — stricter
-  delayMs: hits => (hits - 2) * 2000, // was 1000ms — now 2s per excess
-  maxDelayMs: 30000, // was 10000ms — now 30s
+  delayAfter: 2,
+  delayMs: hits => {
+    const delay = (hits - 2) * 2000;
+    if (delay > 0) {
+      logger.warn({ hits }, 'STRICT: Auth endpoint slowdown triggered');
+    }
+    return delay;
+  },
+  maxDelayMs: 30000,
   store: makeStore('sd:auth:'),
   keyGenerator: req => extractIp(req),
-  onLimitReached: (req, res, options) => {
-    logger.warn(
-      { ip: extractIp(req), hits: req.slowDown?.current },
-      'STRICT: Auth endpoint slowdown limit reached'
-    );
-  },
 });
 
 /**
@@ -66,56 +70,56 @@ export const authSlowDown = slowDown({
  */
 export const apiSlowDown = slowDown({
   windowMs: 60 * 1000,
-  delayAfter: 100, // was 200 — stricter
-  delayMs: hits => (hits - 100) * 500, // was 100ms — now 500ms per excess
-  maxDelayMs: 5000, // was 2000ms — now 5s
+  delayAfter: 100,
+  delayMs: hits => {
+    const delay = (hits - 100) * 500;
+    if (delay > 0) {
+      logger.warn({ hits }, 'STRICT: API slowdown triggered');
+    }
+    return delay;
+  },
+  maxDelayMs: 5000,
   store: makeStore('sd:api:'),
   keyGenerator: req => req.userId ?? extractIp(req),
-  onLimitReached: (req, res, options) => {
-    logger.warn(
-      { userId: req.userId, ip: extractIp(req), hits: req.slowDown?.current },
-      'STRICT: API slowdown limit reached'
-    );
-  },
 });
 
 /**
- * scanTokenSlowDown — NEW
+ * scanTokenSlowDown
  * Per-token progressive slowdown for QR scan endpoint
  * After 5 scans per hour → add 2s delay per excess
- * Prevents brute-force enumeration of tokens
  */
 export const scanTokenSlowDown = slowDown({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  delayAfter: 5, // after 5 scans
-  delayMs: hits => (hits - 5) * 2000, // 2s per excess
-  maxDelayMs: 30000, // max 30s delay
-  store: makeStore('sd:scan_token:'),
-  keyGenerator: req => req.params?.code?.slice(0, 20) ?? req.ip,
-  onLimitReached: (req, res, options) => {
-    logger.warn(
-      { code: req.params?.code?.slice(0, 8), hits: req.slowDown?.current },
-      'STRICT: Scan token slowdown limit reached'
-    );
+  windowMs: 60 * 60 * 1000,
+  delayAfter: 5,
+  delayMs: hits => {
+    const delay = (hits - 5) * 2000;
+    if (delay > 0) {
+      logger.warn({ hits }, 'STRICT: Scan token slowdown triggered');
+    }
+    return delay;
   },
+  maxDelayMs: 30000,
+  store: makeStore('sd:scan_token:'),
+  // req.params.code is not an IP — safe to use directly, no IPv6 concern
+  keyGenerator: req => req.params?.code?.slice(0, 20) ?? extractIp(req),
 });
 
 /**
- * ipSlowDown — NEW
+ * ipSlowDown
  * IP-based progressive slowdown for all unauthenticated endpoints
  * After 50 requests in 5 min → add 500ms delay per excess
  */
 export const ipSlowDown = slowDown({
-  windowMs: 5 * 60 * 1000, // 5 minutes
-  delayAfter: 50, // after 50 requests
-  delayMs: hits => (hits - 50) * 500,
-  maxDelayMs: 5000, // max 5s delay
+  windowMs: 5 * 60 * 1000,
+  delayAfter: 50,
+  delayMs: hits => {
+    const delay = (hits - 50) * 500;
+    if (delay > 0) {
+      logger.warn({ hits }, 'STRICT: IP slowdown triggered');
+    }
+    return delay;
+  },
+  maxDelayMs: 5000,
   store: makeStore('sd:ip:'),
   keyGenerator: req => extractIp(req),
-  onLimitReached: (req, res, options) => {
-    logger.warn(
-      { ip: extractIp(req), hits: req.slowDown?.current },
-      'STRICT: IP slowdown limit reached'
-    );
-  },
 });
