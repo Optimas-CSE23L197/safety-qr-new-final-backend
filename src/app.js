@@ -22,6 +22,7 @@ import { geoBlock } from '#middleware/security/geoBlock.middleware.js';
 
 // ── Rate Limiting & Attack Prevention ─────────────────────────────────────────
 import { apiLimiter as rateLimit } from '#middleware/security/rateLimit.middleware.js';
+import { cloudflareOnly } from '#middleware/security/cloudflare.middleware.js';
 import { apiSlowDown as slowDown } from '#middleware/security/slowDown.middleware.js';
 import { hppProtection as hpp } from '#middleware/security/hpp.middleware.js';
 import { sanitizeNoSql as sanitize } from '#middleware/sanitize.middleware.js';
@@ -60,20 +61,21 @@ const MIDDLEWARE_ORDER = [
   { priority: 7, name: 'requestSize', desc: 'Body size limits' },
   { priority: 8, name: 'ipBlock', desc: 'IP blocklist (Redis)' },
   { priority: 9, name: 'geoBlock', desc: 'Geo-restriction (India only)' },
-  { priority: 10, name: 'rateLimit', desc: 'Rate limiting' },
-  { priority: 11, name: 'slowDown', desc: 'Progressive delay' },
-  { priority: 12, name: 'hpp', desc: 'HTTP param pollution' },
-  { priority: 13, name: 'sanitize', desc: 'NoSQL injection prevention' },
-  { priority: 14, name: 'xss', desc: 'XSS payload stripping' },
-  { priority: 15, name: 'behavioralSecurity', desc: 'Behavioral scoring' },
-  { priority: 16, name: 'attackLogger', desc: 'Attack pattern detection' },
-  { priority: 17, name: 'httpLogger', desc: 'HTTP access log' },
-  { priority: 18, name: 'bodyParser', desc: 'Express JSON parser' },
-  { priority: 19, name: 'cookieParser', desc: 'Cookie parsing' }, // ✅ Added
-  { priority: 20, name: 'authenticate', desc: 'JWT verification' },
-  { priority: 21, name: 'tenantScope', desc: 'School ID injection' },
-  { priority: 22, name: 'deviceFingerprint', desc: 'Device validation' },
-  { priority: 23, name: 'auditLog', desc: 'Mutation audit trail' },
+  { priority: 10, name: 'cloudflareOnly', desc: 'Cloudflare proxy enforcement' },
+  { priority: 11, name: 'rateLimit', desc: 'Rate limiting' },
+  { priority: 12, name: 'slowDown', desc: 'Progressive delay' },
+  { priority: 13, name: 'hpp', desc: 'HTTP param pollution' },
+  { priority: 14, name: 'sanitize', desc: 'NoSQL injection prevention' },
+  { priority: 15, name: 'xss', desc: 'XSS payload stripping' },
+  { priority: 16, name: 'behavioralSecurity', desc: 'Behavioral scoring' },
+  { priority: 17, name: 'attackLogger', desc: 'Attack pattern detection' },
+  { priority: 18, name: 'httpLogger', desc: 'HTTP access log' },
+  { priority: 19, name: 'bodyParser', desc: 'Express JSON parser' },
+  { priority: 20, name: 'cookieParser', desc: 'Cookie parsing' },
+  { priority: 21, name: 'authenticate', desc: 'JWT verification' },
+  { priority: 22, name: 'tenantScope', desc: 'School ID injection' },
+  { priority: 23, name: 'deviceFingerprint', desc: 'Device validation' },
+  { priority: 24, name: 'auditLog', desc: 'Mutation audit trail' },
 ];
 
 export function printMiddlewareTable() {
@@ -137,6 +139,7 @@ export function createApp() {
   // ════════════════════════════════════════════════════════════════════════════
   app.use(ipBlock); // 8. IP blocklist check
   app.use(geoBlock); // 9. Geo-restriction
+  app.use(cloudflareOnly); // 9.5 — reject non-CF traffic before rate limiting
 
   // ════════════════════════════════════════════════════════════════════════════
   // LAYER 5: RATE LIMITING & SLOW DOWN (Traffic shaping)
@@ -162,7 +165,7 @@ export function createApp() {
   // ════════════════════════════════════════════════════════════════════════════
   app.use(express.json({ limit: ENV.MAX_BODY_SIZE ?? '1mb' })); // Parse JSON bodies
   app.use(express.urlencoded({ extended: true, limit: ENV.MAX_BODY_SIZE ?? '1mb' })); // Parse URL-encoded bodies
-  app.use(cookieParser()); // ✅ ADD THIS — Parse cookies from Cookie header
+  app.use(cookieParser()); // Parse cookies from Cookie header
   app.use(httpLogger); // 17. HTTP access log
 
   // ════════════════════════════════════════════════════════════════════════════
