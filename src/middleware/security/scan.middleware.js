@@ -4,12 +4,12 @@
 // All security middleware for the public scan endpoint.
 // Every check here runs before the controller touches crypto or DB.
 // =============================================================================
-import crypto from 'crypto';
-import { RateLimiterRedis } from 'rate-limiter-flexible';
-import { redis } from '#config/redis.js';
 import { logger } from '#config/logger.js';
+import { redis } from '#config/redis.js';
 import { isIpBlocked } from '#shared/cache/scan.cache.js';
 import { extractIp } from '#shared/network/extractIp.js';
+import crypto from 'crypto';
+import { RateLimiterRedis } from 'rate-limiter-flexible';
 
 // Whitelist internal monitoring IPs (Railway health checks, etc.)
 const trustedIpList = ['127.0.0.1', '::1'];
