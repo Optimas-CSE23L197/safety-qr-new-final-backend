@@ -435,7 +435,9 @@ export const resolveScan = async ({
 // =============================================================================
 
 const fireLog = logEntry => {
-  enqueueScanLog(logEntry);
+  enqueueScanLog(logEntry).catch(err =>
+    logger.error({ err: err.message, entry: logEntry }, '[scan.service] fireLog failed')
+  );
 };
 
 const fireNotification = ({

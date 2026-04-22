@@ -120,7 +120,7 @@ export const trackIpTokenScan = async (ip, tokenId) => {
 
 // ── Scan log queue (FIFO using rpush + lpop) ─────────────────────────────────
 
-const SCAN_LOG_QUEUE_KEY = 'scan:log_queue';
+const SCAN_LOG_QUEUE_KEY = 'resqid:scan:log_queue';
 const SCAN_LOG_QUEUE_MAX = 50000;
 
 export const enqueueScanLog = async logEntry => {
