@@ -1,72 +1,36 @@
 // =============================================================================
 // orchestrator/notifications/notification.publisher.js — RESQID
 //
-// Global notification publisher. The single entry point for all application
-// code that needs to trigger a notification.
+// Single entry point for all application code that triggers a notification.
+// Typed facade over event.publisher.publish().
 //
-// WHAT THIS IS:
-//   A typed facade over event.publisher.publish(). Services never import
-//   event.publisher directly — they import publishNotification() here.
-//   This keeps event shape construction in one place.
-//
-// WHAT THIS IS NOT:
-//   - A channel sender (SMS/push/email). Those live in channel/*.js.
-//   - A dispatcher. That lives in notification.dispatcher.js.
-//   - A queue. Routing happens inside event.publisher.js.
-//
-// USAGE (from any service or worker):
-//   import { publishNotification } from
-//     '#orchestrator/notifications/notification.publisher.js';
-//
-//   await publishNotification.orderConfirmed({
-//     schoolId, actorId: userId,
-//     payload: { orderNumber, cardCount, amount },
-//     meta: { orderId },
-//   });
-//
-// ADDING A NEW NOTIFICATION:
-//   1. Add event type to event.types.js
-//   2. Add a case to notification.dispatcher.js
-//   3. Add a template to notification.templates.js  (if needed)
-//   4. Add a publisher method here
-//   Zero other changes.
+// FIXES:
+//   - parentFcmTokens renamed to parentExpoTokens everywhere.
+//   - studentQrScanned uses parentExpoTokens (not fcmTokens).
 // =============================================================================
 
 import { publish } from '../events/event.publisher.js';
 import { EVENTS } from '../events/event.types.js';
-
-// ── Internal builder ──────────────────────────────────────────────────────────
-// Wraps publish() with a consistent actor/shape, so callers only pass
-// what's semantically meaningful to them.
 
 const _publish = (
   type,
   { schoolId = null, actorId, actorType = 'SYSTEM', payload = {}, meta = {} }
 ) => publish({ type, schoolId, actorId, actorType, payload, meta });
 
-// ── Publisher methods ─────────────────────────────────────────────────────────
-// One method per event type that triggers a notification.
-// Named after the domain action, not the event constant.
-
 export const publishNotification = {
   // ── Emergency ──────────────────────────────────────────────────────────────
 
-  /**
-   * QR card scanned in emergency mode.
-   * Routes to emergencyAlertsQueue (priority 1, isolated resources).
-   * Payload must include parentFcmTokens + parentContacts — resolved by caller.
-   */
   emergencyAlertTriggered: ({ schoolId, actorId, actorType = 'SYSTEM', payload, meta = {} }) =>
     _publish(EVENTS.EMERGENCY_ALERT_TRIGGERED, {
       schoolId,
       actorId,
       actorType,
       payload: {
-        studentName: payload.studentName, // string
-        schoolName: payload.schoolName, // string
-        scannedAt: payload.scannedAt, // ISO string
-        parentContacts: payload.parentContacts, // string[]  — phone numbers
-        parentFcmTokens: payload.parentFcmTokens ?? [], // string[]
+        studentName: payload.studentName,
+        schoolName: payload.schoolName,
+        scannedAt: payload.scannedAt,
+        parentContacts: payload.parentContacts, // string[] — phone numbers
+        parentExpoTokens: payload.parentExpoTokens ?? [], // string[] — Expo tokens
       },
       meta: { alertId: meta.alertId, studentId: meta.studentId, ...meta },
     }),
@@ -82,19 +46,14 @@ export const publishNotification = {
 
   // ── OTP ────────────────────────────────────────────────────────────────────
 
-  /**
-   * OTP events are published here for audit/logging purposes but
-   * The dispatcher has a case for USER_OTP_REQUESTED that handles the SMS
-   * if it does reach the queue (e.g., retry scenarios).
-   */
   otpRequested: ({ actorId, payload, meta = {} }) =>
     _publish(EVENTS.USER_OTP_REQUESTED, {
       actorId,
       actorType: 'USER',
       payload: {
-        phone: payload.phone, // string
-        otp: payload.otp, // string
-        namespace: payload.namespace, // 'login' | 'register'
+        phone: payload.phone,
+        otp: payload.otp,
+        namespace: payload.namespace,
         expiryMinutes: payload.expiryMinutes ?? 5,
       },
       meta,
@@ -108,9 +67,9 @@ export const publishNotification = {
       actorId,
       actorType: 'USER',
       payload: {
-        orderNumber: payload.orderNumber, // string
-        cardCount: payload.cardCount, // number
-        amount: payload.amount, // number
+        orderNumber: payload.orderNumber,
+        cardCount: payload.cardCount,
+        amount: payload.amount,
       },
       meta: { orderId: meta.orderId, ...meta },
     }),
@@ -191,7 +150,7 @@ export const publishNotification = {
         orderNumber: payload.orderNumber,
         trackingId: payload.trackingId,
         trackingUrl: payload.trackingUrl ?? null,
-        schoolPhone: payload.schoolPhone ?? null, // for SMS
+        schoolPhone: payload.schoolPhone ?? null,
       },
       meta: { orderId: meta.orderId, ...meta },
     }),
@@ -284,7 +243,7 @@ export const publishNotification = {
         expiryDate: payload.expiryDate,
         daysLeft: payload.daysLeft,
         parentPhone: payload.parentPhone ?? null,
-        parentFcmTokens: payload.parentFcmTokens ?? [],
+        parentExpoTokens: payload.parentExpoTokens ?? [], // Expo tokens
       },
       meta: { studentId: meta.studentId, ...meta },
     }),
@@ -297,9 +256,24 @@ export const publishNotification = {
       payload: {
         studentName: payload.studentName,
         location: payload.location ?? null,
-        parentExpoTokens: payload.parentExpoTokens ?? [],
+        parentExpoTokens: payload.parentExpoTokens ?? [], // Expo tokens
         notifyEnabled: payload.notifyEnabled ?? true,
       },
       meta: { studentId: meta.studentId, ...meta },
+    }),
+
+  newDeviceLogin: ({ userId, userType, payload, meta = {} }) =>
+    _publish(EVENTS.USER_DEVICE_LOGIN_NEW, {
+      actorId: userId,
+      actorType: userType,
+      payload: {
+        userId,
+        userType,
+        name: payload.name,
+        device: payload.device,
+        location: payload.location,
+        time: payload.time,
+      },
+      meta,
     }),
 };

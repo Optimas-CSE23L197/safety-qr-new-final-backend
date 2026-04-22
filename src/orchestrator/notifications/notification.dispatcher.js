@@ -1,18 +1,10 @@
 // =============================================================================
 // orchestrator/notifications/notification.dispatcher.js — RESQID
-// Event type → channel decision.
 //
-// FIXES applied on top of original:
-//   [FIX-1] EVENTS.REFUNDED → EVENTS.ORDER_REFUNDED (matches event.types.js)
-//   [FIX-2] SSE added to all order/school events for dashboard real-time updates
-//   [FIX-3] pushSSE import added from sse.service.js
-//
-// ORIGINAL fixes kept:
-//   [F-1] WhatsApp stubbed — SMS fallback used
-//   [F-2] EMERGENCY push first, then SMS
-//   [F-3] sendParallel wraps each task with notification log
-//   [F-4] latencyMs per-channel
-//   [F-5] loadSchool() lazy loader
+// Event type → channel routing.
+// Email templates use React Email components via ses.adapter.sendReactTemplate().
+// SMS/push content comes from notification.templates.js (single source of truth).
+// WhatsApp removed. Firebase/FCM removed. Expo tokens only.
 // =============================================================================
 
 import { EVENTS } from '../events/event.types.js';
@@ -21,58 +13,96 @@ import { sendEmailNotification } from './channel/email.js';
 import { sendPushNotificationChannel } from './channel/push.js';
 import { pushSSE } from '#infrastructure/sse/sse.service.js';
 import { smsTemplates, emailTemplates, pushTemplates } from './notification.templates.js';
+import { getEmail } from '#infrastructure/email/email.index.js';
 import { prisma } from '#config/prisma.js';
 import { logger } from '#config/logger.js';
 
+// ── Email send helper — handles React Email component or stub gracefully ───────
+
+/**
+ * Renders a React Email component and sends via SES.
+ * If Component is null (stub), logs a warning and skips — never throws.
+ */
+const sendReactEmail = async ({ to, tmpl, meta }) => {
+  if (!to || !tmpl) return { success: false, error: 'Missing to or template' };
+
+  if (!tmpl.Component) {
+    logger.warn(
+      { to, subject: tmpl.subject, stub: tmpl._stub ?? 'unknown' },
+      '[dispatcher] Email template Component not yet wired — skipping send'
+    );
+    return { success: false, error: 'Template not implemented yet' };
+  }
+
+  try {
+    const email = getEmail();
+    return await email.sendReactTemplate(tmpl.Component, tmpl.props, {
+      to,
+      subject: tmpl.subject,
+    });
+  } catch (err) {
+    logger.error({ err: err.message, to }, '[dispatcher] sendReactEmail failed');
+    return { success: false, error: err.message };
+  }
+};
+
 // ── Contact loaders ───────────────────────────────────────────────────────────
 
-// Add fallback for when user not found
 const loadUserContacts = async (userId, userType) => {
   if (userType === 'PARENT_USER') {
     const user = await prisma.parentUser.findUnique({
       where: { id: userId },
-      select: { email: true, devices: { where: { is_active: true }, select: { fcm_token: true } } },
+      select: {
+        email: true,
+        devices: {
+          where: { is_active: true },
+          select: { expo_push_token: true },
+        },
+      },
     });
-    return { email: user?.email ?? null, fcmTokens: user?.devices?.map(d => d.fcm_token) ?? [] };
+    return {
+      email: user?.email ?? null,
+      expoTokens: user?.devices?.map(d => d.expo_push_token).filter(Boolean) ?? [],
+    };
   }
   if (userType === 'SCHOOL_USER') {
     const user = await prisma.schoolUser.findUnique({
       where: { id: userId },
       select: { email: true },
     });
-    return { email: user?.email ?? null, fcmTokens: [] };
+    return { email: user?.email ?? null, expoTokens: [] };
   }
-  // ✅ Add fallback for SUPER_ADMIN
   if (userType === 'SUPER_ADMIN') {
     const user = await prisma.superAdmin.findUnique({
       where: { id: userId },
       select: { email: true },
     });
-    return { email: user?.email ?? null, fcmTokens: [] };
+    return { email: user?.email ?? null, expoTokens: [] };
   }
-  return { email: null, fcmTokens: [] };
+  return { email: null, expoTokens: [] };
 };
 
-const loadSchoolAdminFcmTokens = async schoolId => {
+const loadSchoolAdminExpoTokens = async schoolId => {
+  if (!schoolId) return [];
   try {
-    const admins = await prisma.schoolAdmin.findMany({
+    const users = await prisma.schoolUser.findMany({
       where: { school_id: schoolId, is_active: true },
       select: {
-        user: { select: { devices: { where: { is_active: true }, select: { fcm_token: true } } } },
+        devices: {
+          where: { is_active: true },
+          select: { expo_push_token: true },
+        },
       },
     });
-    return admins.flatMap(a => a.user?.devices?.map(d => d.fcm_token) ?? []).filter(Boolean);
+    return users.flatMap(u => u.devices?.map(d => d.expo_push_token) ?? []).filter(Boolean);
   } catch (err) {
-    logger.error({ err: err.message, schoolId }, '[dispatcher] Failed to load admin FCM tokens');
+    logger.error({ err: err.message, schoolId }, '[dispatcher] Failed to load admin Expo tokens');
     return [];
   }
 };
 
-/**
- * Load school admin userIds for SSE targeting.
- * Returns array of userId strings.
- */
 const loadSchoolAdminUserIds = async schoolId => {
+  if (!schoolId) return [];
   try {
     const users = await prisma.schoolUser.findMany({
       where: { school_id: schoolId, is_active: true },
@@ -80,22 +110,16 @@ const loadSchoolAdminUserIds = async schoolId => {
     });
     return users.map(u => u.id).filter(Boolean);
   } catch (err) {
-    logger.error(
-      { err: err.message, schoolId },
-      '[dispatcher] Failed to load admin userIds for SSE'
-    );
+    logger.error({ err: err.message, schoolId }, '[dispatcher] Failed to load admin userIds');
     return [];
   }
 };
 
 const makeSchoolLoader = schoolId => {
-  let _cached = undefined;
+  let _cached;
   return async () => {
     if (_cached !== undefined) return _cached;
-    if (!schoolId) {
-      _cached = null;
-      return null;
-    }
+    if (!schoolId) return (_cached = null);
     try {
       _cached = await prisma.school.findUnique({
         where: { id: schoolId },
@@ -113,6 +137,10 @@ const makeSchoolLoader = schoolId => {
 
 const writeNotificationLog = async ({ channel, status, latencyMs, providerRef, error, meta }) => {
   try {
+    // Redact OTP from logs
+    const isOtpEvent = meta?.eventType === 'USER_OTP_REQUESTED';
+    const safeContent = isOtpEvent ? '[REDACTED - OTP]' : (meta?.content ?? null);
+
     await prisma.notification.create({
       data: {
         channel,
@@ -123,11 +151,10 @@ const writeNotificationLog = async ({ channel, status, latencyMs, providerRef, e
         school_id: meta?.schoolId ?? null,
         order_id: meta?.orderId ?? null,
         student_id: meta?.studentId ?? null,
-        user_id: meta?.userId ?? null,
         event_type: meta?.eventType ?? null,
         recipient: meta?.recipient ?? meta?.schoolId ?? 'system',
         type: meta?.eventType ?? channel,
-        content: meta?.content ?? null,
+        content: safeContent,
         subject: meta?.subject ?? null,
       },
     });
@@ -138,7 +165,7 @@ const writeNotificationLog = async ({ channel, status, latencyMs, providerRef, e
 
 // ── Channel send helpers ──────────────────────────────────────────────────────
 
-const timedSend = async (sendFn, channel, meta) => {
+const timedSend = async (sendFn, channel, meta, extraMeta = {}) => {
   const start = Date.now();
   const r = await sendFn();
   await writeNotificationLog({
@@ -147,7 +174,7 @@ const timedSend = async (sendFn, channel, meta) => {
     latencyMs: Date.now() - start,
     providerRef: r.providerRef ?? null,
     error: r.error ?? null,
-    meta,
+    meta: { ...meta, ...extraMeta }, // MERGE extraMeta into meta
   });
   return r;
 };
@@ -162,10 +189,6 @@ const sendParallel = async (tasks, meta) => {
   return results;
 };
 
-/**
- * [FIX-2] Fire SSE to all school admins. Never throws.
- * Call this for every order/school event so the dashboard updates in real-time.
- */
 const sseToSchoolAdmins = async (schoolId, eventType, data) => {
   if (!schoolId) return;
   try {
@@ -193,17 +216,18 @@ export const dispatch = async event => {
 
   try {
     switch (type) {
-      // ── EMERGENCY_ALERT_TRIGGERED → Push first, then SMS ──────────────────
+      // ── EMERGENCY_ALERT_TRIGGERED → push + SMS ────────────────────────────
       case EVENTS.EMERGENCY_ALERT_TRIGGERED: {
-        const { studentName, schoolName, scannedAt, parentContacts, parentFcmTokens } = payload;
+        const { studentName, schoolName, scannedAt, parentContacts, parentExpoTokens } = payload;
         const push = pushTemplates.EMERGENCY_ALERT({ studentName, schoolName });
         const smsBody = smsTemplates.EMERGENCY_ALERT({ studentName, schoolName, scannedAt });
 
         await timedSend(
           () =>
-            sendPushNotificationChannel({ tokens: parentFcmTokens ?? [], ...push, meta: logMeta }),
+            sendPushNotificationChannel({ tokens: parentExpoTokens ?? [], ...push, meta: logMeta }),
           'PUSH',
-          logMeta
+          logMeta,
+          { tokenCount: parentExpoTokens?.length ?? 0 } // ADDED
         );
 
         if (parentContacts?.length) {
@@ -221,7 +245,7 @@ export const dispatch = async event => {
         break;
       }
 
-      // ── USER_OTP_REQUESTED → SMS only ─────────────────────────────────────
+      // ── USER_OTP_REQUESTED → SMS only (queue retry path) ─────────────────
       case EVENTS.USER_OTP_REQUESTED: {
         const { phone, otp, namespace, expiryMinutes } = payload;
         const body =
@@ -236,14 +260,14 @@ export const dispatch = async event => {
         break;
       }
 
-      // ── USER_DEVICE_LOGIN_NEW → email only ────────────────────────────────
+      // ── USER_DEVICE_LOGIN_NEW → email ─────────────────────────────────────
       case EVENTS.USER_DEVICE_LOGIN_NEW: {
-        const { userId, name, device, location, time } = payload;
-        const contacts = await loadUserContacts(userId);
+        const { userId, userType, name, device, location, time } = payload;
+        const contacts = await loadUserContacts(userId, userType);
         if (contacts.email) {
           const tmpl = emailTemplates.USER_DEVICE_LOGIN_NEW({ name, device, location, time });
           await timedSend(
-            () => sendEmailNotification({ to: contacts.email, ...tmpl, meta: logMeta }),
+            () => sendReactEmail({ to: contacts.email, tmpl, meta: logMeta }),
             'EMAIL',
             logMeta
           );
@@ -255,7 +279,7 @@ export const dispatch = async event => {
       case EVENTS.ORDER_CONFIRMED: {
         const { orderNumber, cardCount, amount } = payload;
         const [tokens, school] = await Promise.all([
-          loadSchoolAdminFcmTokens(schoolId),
+          loadSchoolAdminExpoTokens(schoolId),
           getSchool(),
         ]);
         const push = pushTemplates.ORDER_CONFIRMED({ orderNumber });
@@ -275,7 +299,7 @@ export const dispatch = async event => {
             ),
             school?.email
               ? timedSend(
-                  () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
+                  () => sendReactEmail({ to: school.email, tmpl, meta: logMeta }),
                   'EMAIL',
                   logMeta
                 )
@@ -284,7 +308,6 @@ export const dispatch = async event => {
           logMeta
         );
 
-        // [FIX-2] SSE → dashboard
         await sseToSchoolAdmins(schoolId, 'ORDER_CONFIRMED', { orderNumber, cardCount, amount });
         break;
       }
@@ -293,17 +316,15 @@ export const dispatch = async event => {
       case EVENTS.ORDER_ADVANCE_PAYMENT_RECEIVED: {
         const { orderNumber, amount } = payload;
         const [tokens, school] = await Promise.all([
-          loadSchoolAdminFcmTokens(schoolId),
+          loadSchoolAdminExpoTokens(schoolId),
           getSchool(),
         ]);
-        const push = pushTemplates.ORDER_CONFIRMED({ orderNumber });
-        const tmpl = emailTemplates.ORDER_ADVANCE_PAYMENT_RECEIVED
-          ? emailTemplates.ORDER_ADVANCE_PAYMENT_RECEIVED({
-              schoolName: school?.name ?? 'School',
-              orderNumber,
-              amount,
-            })
-          : null;
+        const push = pushTemplates.ORDER_ADVANCE_PAYMENT_RECEIVED({ orderNumber, amount });
+        const tmpl = emailTemplates.ORDER_ADVANCE_PAYMENT_RECEIVED({
+          schoolName: school?.name ?? 'School',
+          orderNumber,
+          amount,
+        });
 
         await sendParallel(
           [
@@ -312,9 +333,9 @@ export const dispatch = async event => {
               'PUSH',
               logMeta
             ),
-            school?.email && tmpl
+            school?.email
               ? timedSend(
-                  () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
+                  () => sendReactEmail({ to: school.email, tmpl, meta: logMeta }),
                   'EMAIL',
                   logMeta
                 )
@@ -330,10 +351,87 @@ export const dispatch = async event => {
         break;
       }
 
+      // ── PARTIAL_PAYMENT_CONFIRMED → push + email + SSE ───────────────────
+      case EVENTS.PARTIAL_PAYMENT_CONFIRMED: {
+        const { orderNumber, amount } = payload;
+        const [tokens, school] = await Promise.all([
+          loadSchoolAdminExpoTokens(schoolId),
+          getSchool(),
+        ]);
+        const push = pushTemplates.PARTIAL_PAYMENT_CONFIRMED({ orderNumber, amount });
+        const tmpl = emailTemplates.PARTIAL_PAYMENT_CONFIRMED({
+          schoolName: school?.name ?? 'School',
+          orderNumber,
+          amount,
+        });
+
+        await sendParallel(
+          [
+            timedSend(
+              () => sendPushNotificationChannel({ tokens, ...push, meta: logMeta }),
+              'PUSH',
+              logMeta
+            ),
+            school?.email
+              ? timedSend(
+                  () => sendReactEmail({ to: school.email, tmpl, meta: logMeta }),
+                  'EMAIL',
+                  logMeta
+                )
+              : Promise.resolve(),
+          ],
+          logMeta
+        );
+
+        await sseToSchoolAdmins(schoolId, 'PARTIAL_PAYMENT_CONFIRMED', { orderNumber, amount });
+        break;
+      }
+
+      // ── PARTIAL_INVOICE_GENERATED → push + email + SSE ───────────────────
+      case EVENTS.PARTIAL_INVOICE_GENERATED: {
+        const { orderNumber, amount, invoiceUrl } = payload;
+        const [tokens, school] = await Promise.all([
+          loadSchoolAdminExpoTokens(schoolId),
+          getSchool(),
+        ]);
+        const push = pushTemplates.PARTIAL_INVOICE_GENERATED({ orderNumber, amount });
+        const tmpl = emailTemplates.PARTIAL_INVOICE_GENERATED({
+          schoolName: school?.name ?? 'School',
+          orderNumber,
+          amount,
+          invoiceUrl,
+        });
+
+        await sendParallel(
+          [
+            timedSend(
+              () => sendPushNotificationChannel({ tokens, ...push, meta: logMeta }),
+              'PUSH',
+              logMeta
+            ),
+            school?.email
+              ? timedSend(
+                  () => sendReactEmail({ to: school.email, tmpl, meta: logMeta }),
+                  'EMAIL',
+                  logMeta
+                )
+              : Promise.resolve(),
+          ],
+          logMeta
+        );
+
+        await sseToSchoolAdmins(schoolId, 'PARTIAL_INVOICE_GENERATED', {
+          orderNumber,
+          amount,
+          invoiceUrl,
+        });
+        break;
+      }
+
       // ── ORDER_TOKEN_GENERATION_COMPLETE → push + SSE ──────────────────────
       case EVENTS.ORDER_TOKEN_GENERATION_COMPLETE: {
         const { orderNumber } = payload;
-        const tokens = await loadSchoolAdminFcmTokens(schoolId);
+        const tokens = await loadSchoolAdminExpoTokens(schoolId);
         const push = pushTemplates.ORDER_TOKEN_GENERATION_COMPLETE({ orderNumber });
         await timedSend(
           () => sendPushNotificationChannel({ tokens, ...push, meta: logMeta }),
@@ -348,17 +446,15 @@ export const dispatch = async event => {
       case EVENTS.ORDER_CARD_DESIGN_COMPLETE: {
         const { orderNumber, reviewUrl } = payload;
         const [tokens, school] = await Promise.all([
-          loadSchoolAdminFcmTokens(schoolId),
+          loadSchoolAdminExpoTokens(schoolId),
           getSchool(),
         ]);
         const push = pushTemplates.ORDER_CARD_DESIGN_COMPLETE({ orderNumber });
-        const tmpl = emailTemplates.ORDER_CARD_DESIGN_COMPLETE
-          ? emailTemplates.ORDER_CARD_DESIGN_COMPLETE({
-              schoolName: school?.name ?? 'School',
-              orderNumber,
-              reviewUrl,
-            })
-          : null;
+        const tmpl = emailTemplates.ORDER_CARD_DESIGN_COMPLETE({
+          schoolName: school?.name ?? 'School',
+          orderNumber,
+          reviewUrl,
+        });
 
         await sendParallel(
           [
@@ -367,9 +463,9 @@ export const dispatch = async event => {
               'PUSH',
               logMeta
             ),
-            school?.email && tmpl
+            school?.email
               ? timedSend(
-                  () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
+                  () => sendReactEmail({ to: school.email, tmpl, meta: logMeta }),
                   'EMAIL',
                   logMeta
                 )
@@ -382,22 +478,55 @@ export const dispatch = async event => {
         break;
       }
 
+      // ── DESIGN_APPROVED → push + email + SSE ──────────────────────────────
+      case EVENTS.DESIGN_APPROVED: {
+        const { orderNumber } = payload;
+        const [tokens, school] = await Promise.all([
+          loadSchoolAdminExpoTokens(schoolId),
+          getSchool(),
+        ]);
+        const push = pushTemplates.DESIGN_APPROVED({ orderNumber });
+        const tmpl = emailTemplates.DESIGN_APPROVED({
+          schoolName: school?.name ?? 'School',
+          orderNumber,
+        });
+
+        await sendParallel(
+          [
+            timedSend(
+              () => sendPushNotificationChannel({ tokens, ...push, meta: logMeta }),
+              'PUSH',
+              logMeta
+            ),
+            school?.email
+              ? timedSend(
+                  () => sendReactEmail({ to: school.email, tmpl, meta: logMeta }),
+                  'EMAIL',
+                  logMeta
+                )
+              : Promise.resolve(),
+          ],
+          logMeta
+        );
+
+        await sseToSchoolAdmins(schoolId, 'DESIGN_APPROVED', { orderNumber });
+        break;
+      }
+
       // ── ORDER_SHIPPED → push + SMS + email + SSE ──────────────────────────
       case EVENTS.ORDER_SHIPPED: {
         const { orderNumber, trackingId, trackingUrl, schoolPhone } = payload;
         const [tokens, school] = await Promise.all([
-          loadSchoolAdminFcmTokens(schoolId),
+          loadSchoolAdminExpoTokens(schoolId),
           getSchool(),
         ]);
         const push = pushTemplates.ORDER_SHIPPED({ orderNumber, trackingId });
-        const tmpl = emailTemplates.ORDER_SHIPPED
-          ? emailTemplates.ORDER_SHIPPED({
-              schoolName: school?.name ?? 'School',
-              orderNumber,
-              trackingId,
-              trackingUrl,
-            })
-          : null;
+        const tmpl = emailTemplates.ORDER_SHIPPED({
+          schoolName: school?.name ?? 'School',
+          orderNumber,
+          trackingId,
+          trackingUrl,
+        });
         const smsBody = smsTemplates.ORDER_SHIPPED({ orderNumber, trackingId });
 
         await sendParallel(
@@ -407,9 +536,9 @@ export const dispatch = async event => {
               'PUSH',
               logMeta
             ),
-            school?.email && tmpl
+            school?.email
               ? timedSend(
-                  () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
+                  () => sendReactEmail({ to: school.email, tmpl, meta: logMeta }),
                   'EMAIL',
                   logMeta
                 )
@@ -437,13 +566,14 @@ export const dispatch = async event => {
       case EVENTS.ORDER_DELIVERED: {
         const { orderNumber } = payload;
         const [tokens, school] = await Promise.all([
-          loadSchoolAdminFcmTokens(schoolId),
+          loadSchoolAdminExpoTokens(schoolId),
           getSchool(),
         ]);
         const push = pushTemplates.ORDER_DELIVERED({ orderNumber });
-        const tmpl = emailTemplates.ORDER_DELIVERED
-          ? emailTemplates.ORDER_DELIVERED({ schoolName: school?.name ?? 'School', orderNumber })
-          : null;
+        const tmpl = emailTemplates.ORDER_DELIVERED({
+          schoolName: school?.name ?? 'School',
+          orderNumber,
+        });
 
         await sendParallel(
           [
@@ -452,9 +582,9 @@ export const dispatch = async event => {
               'PUSH',
               logMeta
             ),
-            school?.email && tmpl
+            school?.email
               ? timedSend(
-                  () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
+                  () => sendReactEmail({ to: school.email, tmpl, meta: logMeta }),
                   'EMAIL',
                   logMeta
                 )
@@ -471,22 +601,18 @@ export const dispatch = async event => {
       case EVENTS.ORDER_BALANCE_INVOICE_ISSUED: {
         const { orderNumber, amount, dueDate, invoiceUrl, schoolPhone } = payload;
         const [tokens, school] = await Promise.all([
-          loadSchoolAdminFcmTokens(schoolId),
+          loadSchoolAdminExpoTokens(schoolId),
           getSchool(),
         ]);
         const push = pushTemplates.ORDER_BALANCE_INVOICE({ orderNumber, amount });
-        const tmpl = emailTemplates.ORDER_BALANCE_INVOICE
-          ? emailTemplates.ORDER_BALANCE_INVOICE({
-              schoolName: school?.name ?? 'School',
-              orderNumber,
-              amount,
-              dueDate,
-              invoiceUrl,
-            })
-          : null;
-        const smsBody = smsTemplates.BALANCE_INVOICE_DUE
-          ? smsTemplates.BALANCE_INVOICE_DUE({ orderNumber, amount })
-          : `ResQID: Balance of ₹${amount} due for order #${orderNumber}.`;
+        const tmpl = emailTemplates.ORDER_BALANCE_INVOICE({
+          schoolName: school?.name ?? 'School',
+          orderNumber,
+          amount,
+          dueDate,
+          invoiceUrl,
+        });
+        const smsBody = smsTemplates.BALANCE_INVOICE_DUE({ orderNumber, amount });
 
         await sendParallel(
           [
@@ -495,9 +621,9 @@ export const dispatch = async event => {
               'PUSH',
               logMeta
             ),
-            school?.email && tmpl
+            school?.email
               ? timedSend(
-                  () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
+                  () => sendReactEmail({ to: school.email, tmpl, meta: logMeta }),
                   'EMAIL',
                   logMeta
                 )
@@ -526,13 +652,14 @@ export const dispatch = async event => {
       case EVENTS.ORDER_COMPLETED: {
         const { orderNumber } = payload;
         const school = await getSchool();
-        const tmpl = emailTemplates.ORDER_COMPLETED
-          ? emailTemplates.ORDER_COMPLETED({ schoolName: school?.name ?? 'School', orderNumber })
-          : null;
+        const tmpl = emailTemplates.ORDER_COMPLETED({
+          schoolName: school?.name ?? 'School',
+          orderNumber,
+        });
 
-        if (school?.email && tmpl) {
+        if (school?.email) {
           await timedSend(
-            () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
+            () => sendReactEmail({ to: school.email, tmpl, meta: logMeta }),
             'EMAIL',
             logMeta
           );
@@ -541,17 +668,19 @@ export const dispatch = async event => {
         break;
       }
 
-      // ── ORDER_REFUNDED → push + email + SSE [FIX-1: was EVENTS.REFUNDED] ─
+      // ── ORDER_REFUNDED → push + email + SSE ───────────────────────────────
       case EVENTS.ORDER_REFUNDED: {
         const { orderNumber, amount } = payload;
         const [tokens, school] = await Promise.all([
-          loadSchoolAdminFcmTokens(schoolId),
+          loadSchoolAdminExpoTokens(schoolId),
           getSchool(),
         ]);
-        const push = pushTemplates.REFUNDED({ orderNumber, amount });
-        const tmpl = emailTemplates.REFUNDED
-          ? emailTemplates.REFUNDED({ schoolName: school?.name ?? 'School', orderNumber, amount })
-          : null;
+        const push = pushTemplates.ORDER_REFUNDED({ orderNumber, amount });
+        const tmpl = emailTemplates.ORDER_REFUNDED({
+          schoolName: school?.name ?? 'School',
+          orderNumber,
+          amount,
+        });
 
         await sendParallel(
           [
@@ -560,9 +689,9 @@ export const dispatch = async event => {
               'PUSH',
               logMeta
             ),
-            school?.email && tmpl
+            school?.email
               ? timedSend(
-                  () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
+                  () => sendReactEmail({ to: school.email, tmpl, meta: logMeta }),
                   'EMAIL',
                   logMeta
                 )
@@ -578,12 +707,10 @@ export const dispatch = async event => {
       // ── SCHOOL_ONBOARDED → email ───────────────────────────────────────────
       case EVENTS.SCHOOL_ONBOARDED: {
         const { schoolName, adminName, adminEmail, dashboardUrl } = payload;
-        const tmpl = emailTemplates.SCHOOL_ONBOARDED
-          ? emailTemplates.SCHOOL_ONBOARDED({ schoolName, adminName, dashboardUrl })
-          : null;
-        if (adminEmail && tmpl) {
+        const tmpl = emailTemplates.SCHOOL_ONBOARDED({ schoolName, adminName, dashboardUrl });
+        if (adminEmail) {
           await timedSend(
-            () => sendEmailNotification({ to: adminEmail, ...tmpl, meta: logMeta }),
+            () => sendReactEmail({ to: adminEmail, tmpl, meta: logMeta }),
             'EMAIL',
             logMeta
           );
@@ -594,16 +721,14 @@ export const dispatch = async event => {
       // ── SCHOOL_RENEWAL_DUE → email + SMS ──────────────────────────────────
       case EVENTS.SCHOOL_RENEWAL_DUE: {
         const { schoolName, adminEmail, schoolPhone, expiryDate, renewUrl } = payload;
-        const tmpl = emailTemplates.SCHOOL_RENEWAL_DUE
-          ? emailTemplates.SCHOOL_RENEWAL_DUE({ schoolName, expiryDate, renewUrl })
-          : null;
-        const smsBody = `ResQID: ${schoolName} subscription expires on ${expiryDate}. Renew at: ${renewUrl ?? 'resqid.in/renew'}`;
+        const tmpl = emailTemplates.SCHOOL_RENEWAL_DUE({ schoolName, expiryDate, renewUrl });
+        const smsBody = smsTemplates.SCHOOL_RENEWAL_DUE({ schoolName, expiryDate, renewUrl });
 
         await sendParallel(
           [
-            adminEmail && tmpl
+            adminEmail
               ? timedSend(
-                  () => sendEmailNotification({ to: adminEmail, ...tmpl, meta: logMeta }),
+                  () => sendReactEmail({ to: adminEmail, tmpl, meta: logMeta }),
                   'EMAIL',
                   logMeta
                 )
@@ -623,7 +748,7 @@ export const dispatch = async event => {
 
       // ── STUDENT_CARD_EXPIRING → push + SMS ────────────────────────────────
       case EVENTS.STUDENT_CARD_EXPIRING: {
-        const { studentName, expiryDate, daysLeft, parentPhone, parentFcmTokens } = payload;
+        const { studentName, expiryDate, daysLeft, parentPhone, parentExpoTokens } = payload;
         const push = pushTemplates.STUDENT_CARD_EXPIRING({ studentName, daysLeft });
         const smsBody = smsTemplates.STUDENT_CARD_EXPIRING({ studentName, expiryDate });
 
@@ -632,7 +757,7 @@ export const dispatch = async event => {
             timedSend(
               () =>
                 sendPushNotificationChannel({
-                  tokens: parentFcmTokens ?? [],
+                  tokens: parentExpoTokens ?? [],
                   ...push,
                   meta: logMeta,
                 }),
@@ -652,7 +777,7 @@ export const dispatch = async event => {
         break;
       }
 
-      // ── STUDENT_QR_SCANNED → push ─────────────────────────────────────────
+      // ── STUDENT_QR_SCANNED → push only ────────────────────────────────────
       case EVENTS.STUDENT_QR_SCANNED: {
         const { studentName, location, parentExpoTokens, notifyEnabled } = payload;
         if (notifyEnabled && parentExpoTokens?.length) {
@@ -663,118 +788,6 @@ export const dispatch = async event => {
             logMeta
           );
         }
-        break;
-      }
-
-      // ── PARTIAL_PAYMENT_CONFIRMED → push + email + SSE ────────────────────
-      case EVENTS.PARTIAL_PAYMENT_CONFIRMED: {
-        const { orderNumber, amount } = payload;
-        const [tokens, school] = await Promise.all([
-          loadSchoolAdminFcmTokens(schoolId),
-          getSchool(),
-        ]);
-        const push = pushTemplates.PARTIAL_PAYMENT_CONFIRMED({ orderNumber, amount });
-        const tmpl = emailTemplates.PARTIAL_PAYMENT_CONFIRMED({
-          schoolName: school?.name ?? 'School',
-          orderNumber,
-          amount,
-        });
-
-        await sendParallel(
-          [
-            timedSend(
-              () => sendPushNotificationChannel({ tokens, ...push, meta: logMeta }),
-              'PUSH',
-              logMeta
-            ),
-            school?.email
-              ? timedSend(
-                  () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
-                  'EMAIL',
-                  logMeta
-                )
-              : Promise.resolve(),
-          ],
-          logMeta
-        );
-
-        await sseToSchoolAdmins(schoolId, 'PARTIAL_PAYMENT_CONFIRMED', { orderNumber, amount });
-        break;
-      }
-
-      // ── PARTIAL_INVOICE_GENERATED → push + email + SSE ───────────────────
-      case EVENTS.PARTIAL_INVOICE_GENERATED: {
-        const { orderNumber, amount, invoiceUrl } = payload;
-        const [tokens, school] = await Promise.all([
-          loadSchoolAdminFcmTokens(schoolId),
-          getSchool(),
-        ]);
-        const push = pushTemplates.PARTIAL_INVOICE_GENERATED({ orderNumber, amount });
-        const tmpl = emailTemplates.PARTIAL_INVOICE_GENERATED({
-          schoolName: school?.name ?? 'School',
-          orderNumber,
-          amount,
-          invoiceUrl,
-        });
-
-        await sendParallel(
-          [
-            timedSend(
-              () => sendPushNotificationChannel({ tokens, ...push, meta: logMeta }),
-              'PUSH',
-              logMeta
-            ),
-            school?.email
-              ? timedSend(
-                  () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
-                  'EMAIL',
-                  logMeta
-                )
-              : Promise.resolve(),
-          ],
-          logMeta
-        );
-
-        await sseToSchoolAdmins(schoolId, 'PARTIAL_INVOICE_GENERATED', {
-          orderNumber,
-          amount,
-          invoiceUrl,
-        });
-        break;
-      }
-
-      // ── DESIGN_APPROVED → push + email + SSE ──────────────────────────────
-      case EVENTS.DESIGN_APPROVED: {
-        const { orderNumber } = payload;
-        const [tokens, school] = await Promise.all([
-          loadSchoolAdminFcmTokens(schoolId),
-          getSchool(),
-        ]);
-        const push = pushTemplates.DESIGN_APPROVED({ orderNumber });
-        const tmpl = emailTemplates.DESIGN_APPROVED({
-          schoolName: school?.name ?? 'School',
-          orderNumber,
-        });
-
-        await sendParallel(
-          [
-            timedSend(
-              () => sendPushNotificationChannel({ tokens, ...push, meta: logMeta }),
-              'PUSH',
-              logMeta
-            ),
-            school?.email
-              ? timedSend(
-                  () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
-                  'EMAIL',
-                  logMeta
-                )
-              : Promise.resolve(),
-          ],
-          logMeta
-        );
-
-        await sseToSchoolAdmins(schoolId, 'DESIGN_APPROVED', { orderNumber });
         break;
       }
 

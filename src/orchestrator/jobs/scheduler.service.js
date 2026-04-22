@@ -1,16 +1,7 @@
 // =============================================================================
-// orchestrator/jobs/scheduler.js — RESQID
+// orchestrator/jobs/scheduler.service.js — RESQID
 // Registers all cron jobs on startup.
-// Exactly 3 registered crons — per spec.
-// Adding a new cron = add job file + add schedule + add entry here.
-//
-// FIXED vs old scheduler_service.js:
-//   [F-1] Only 3 spec-defined crons — extra jobs removed
-//   [F-2] Behavioral cleanup at 2 AM IST (not every hour, not every 5 min)
-//   [F-3] Stall check every 15 min (not every 5 min)
-//   [F-4] invoice.job is event-triggered — no cron entry for it
-//   [F-5] All inline email HTML removed — templates.js is authoritative
-//   [F-6] DLQ Slack batch flushed hourly by this scheduler (not a separate cron job)
+// UPDATED: Added Expo token cleanup job.
 // =============================================================================
 
 import cron from 'node-cron';
@@ -18,11 +9,9 @@ import { logger } from '#config/logger.js';
 import { runBehavioralCleanup } from './behavioralCleanup.job.js';
 import { detectStalledPipelines } from './stalledPipeline.job.js';
 import { flushDlqSlackBatch } from '../dlq/dlq.handler.js';
+import { cleanupExpoTokens } from './cleanupExpoTokens.job.js'; // ADDED
 
 // ── Cron schedules ─────────────────────────────────────────────────────────────
-// All times in IST (Asia/Kolkata, UTC+5:30).
-// node-cron does NOT support named timezones natively in all versions —
-// we use the explicit UTC equivalent with the timezone option as the safe approach.
 
 const SCHEDULES = Object.freeze({
   // 2 AM IST = 20:30 UTC previous day
@@ -37,6 +26,13 @@ const SCHEDULES = Object.freeze({
 
   // Every hour — flush non-emergency DLQ Slack batch
   DLQ_SLACK_FLUSH: { cron: '0 * * * *', timezone: 'Asia/Kolkata', display: 'Every hour' },
+
+  // Daily at 3 AM IST = 21:30 UTC previous day — Expo token cleanup
+  EXPO_TOKEN_CLEANUP: {
+    cron: '30 21 * * *',
+    timezone: 'Asia/Kolkata',
+    display: '3:00 AM IST daily',
+  },
 });
 
 // ── Job wrappers with error isolation ─────────────────────────────────────────
@@ -77,6 +73,13 @@ export const startScheduler = () => {
     cron.schedule(SCHEDULES.DLQ_SLACK_FLUSH.cron, safeRun('dlq_slack_flush', flushDlqSlackBatch), {
       timezone: SCHEDULES.DLQ_SLACK_FLUSH.timezone,
     }),
+
+    // ADDED: Expo token cleanup
+    cron.schedule(
+      SCHEDULES.EXPO_TOKEN_CLEANUP.cron,
+      safeRun('expo_token_cleanup', cleanupExpoTokens),
+      { timezone: SCHEDULES.EXPO_TOKEN_CLEANUP.timezone }
+    ),
   ];
 
   logger.info(
@@ -85,13 +88,12 @@ export const startScheduler = () => {
         { name: 'behavioral_cleanup', schedule: SCHEDULES.BEHAVIORAL_CLEANUP.display },
         { name: 'stalled_pipeline', schedule: SCHEDULES.STALLED_PIPELINE.display },
         { name: 'dlq_slack_flush', schedule: SCHEDULES.DLQ_SLACK_FLUSH.display },
+        { name: 'expo_token_cleanup', schedule: SCHEDULES.EXPO_TOKEN_CLEANUP.display }, // ADDED
       ],
     },
     '[scheduler] All crons registered'
   );
 
-  // Warm-up: run stall check once after 10 seconds so we catch anything
-  // that stalled while the process was down
   setTimeout(safeRun('stalled_pipeline_startup', detectStalledPipelines), 10_000);
 };
 
@@ -101,10 +103,6 @@ export const stopScheduler = () => {
   logger.info('[scheduler] All crons stopped');
 };
 
-/**
- * Manually trigger a named job — used by super admin API and tests.
- * @param {'behavioral_cleanup' | 'stalled_pipeline' | 'dlq_slack_flush'} name
- */
 export const triggerJob = async name => {
   switch (name) {
     case 'behavioral_cleanup':
@@ -113,6 +111,8 @@ export const triggerJob = async name => {
       return detectStalledPipelines();
     case 'dlq_slack_flush':
       return flushDlqSlackBatch();
+    case 'expo_token_cleanup': // ADDED
+      return cleanupExpoTokens();
     default:
       throw new Error(`[scheduler] Unknown job name: "${name}"`);
   }

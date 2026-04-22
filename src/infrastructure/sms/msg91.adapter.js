@@ -1,60 +1,61 @@
+// =============================================================================
+// infrastructure/sms/msg91.adapter.js — RESQID
+// MSG91 adapter. DLT-compliant SMS, OTP send/verify.
+// FIXED: Support for named variables in DLT templates.
+// FIXED: verifyOtp changed from GET to POST.
+// FIXED: Phone normalization using shared utility.
+// =============================================================================
+
 import axios from 'axios';
 import { SmsProvider } from './sms.provider.js';
 import { logger } from '#config/logger.js';
+import { normalizePhone } from '#shared/utils/phoneNormalize.js';
 
 export class MSG91Adapter extends SmsProvider {
   constructor(config = {}) {
     super();
     this.authKey = config.AUTH_KEY ?? process.env.MSG91_AUTH_KEY;
     this.senderId = config.SENDER_ID ?? process.env.MSG91_SENDER_ID ?? 'RESQID';
-    this.templateId = config.TEMPLATE_ID ?? process.env.MSG91_TEMPLATE_ID; // DLT Template ID
+    this.templateId = config.TEMPLATE_ID ?? process.env.MSG91_TEMPLATE_ID;
     this.route = config.ROUTE ?? process.env.MSG91_ROUTE ?? '4';
     this.country = config.COUNTRY ?? process.env.MSG91_COUNTRY ?? '91';
     this.baseUrl = 'https://api.msg91.com/api/v5';
-    this.templates = new Map();
   }
 
-  registerTemplate(name, template) {
-    this.templates.set(name, template);
+  /**
+   * Normalize phone number using shared utility.
+   */
+  _normalizePhone(phoneNumber) {
+    return normalizePhone(phoneNumber, this.country);
   }
 
-  /** @private */
-  _renderTemplate(templateName, data) {
-    const template = this.templates.get(templateName);
-    if (!template) {
-      throw new Error(`[SMS] Template "${templateName}" is not registered.`);
-    }
-    return Object.entries(data).reduce(
-      (msg, [key, value]) => msg.replace(new RegExp(`{{${key}}}`, 'g'), value),
-      template
-    );
-  }
-
+  /**
+   * Send an SMS message (DLT template optional).
+   */
   async send(phoneNumber, message, options = {}) {
-    const { templateId = this.templateId } = options;
+    const { templateId = this.templateId, variables = null } = options;
 
     try {
-      // MSG91 Flow API (supports DLT templates)
       const payload = {
         sender: this.senderId,
-        mobiles: phoneNumber.replace(/\D/g, ''),
+        mobiles: this._normalizePhone(phoneNumber).replace(/\D/g, ''), // MSG91 expects digits only
         country: this.country,
         route: this.route,
       };
 
-      // Use template if available (DLT compliance)
       if (templateId) {
         payload.template_id = templateId;
-        payload.var = message; // Variable content for template
+        if (variables) {
+          payload.variables = variables;
+        } else {
+          payload.var = message;
+        }
       } else {
         payload.message = message;
       }
 
       const response = await axios.post(`${this.baseUrl}/flow/`, payload, {
-        headers: {
-          authkey: this.authKey,
-          'Content-Type': 'application/json',
-        },
+        headers: { authkey: this.authKey, 'Content-Type': 'application/json' },
       });
 
       const messageId = response.data?.message_id || response.data?.request_id;
@@ -62,26 +63,22 @@ export class MSG91Adapter extends SmsProvider {
       return { success: true, messageId };
     } catch (err) {
       logger.error(
-        {
-          phone: phoneNumber.slice(0, 6) + '…',
-          error: err.response?.data || err.message,
-        },
+        { phone: phoneNumber.slice(0, 6) + '…', error: err.response?.data || err.message },
         '[SMS] Send failed'
       );
       return { success: false, error: err.message };
     }
   }
 
-  async sendTemplate(phoneNumber, template, data) {
-    const message = this._renderTemplate(template, data);
-    return this.send(phoneNumber, message);
-  }
-
+  /**
+   * Send to multiple recipients in parallel.
+   */
   async sendBulk(messages) {
     const results = await Promise.allSettled(
-      messages.map(({ phone, message, templateId }) => this.send(phone, message, { templateId }))
+      messages.map(({ phone, message, templateId, variables }) =>
+        this.send(phone, message, { templateId, variables })
+      )
     );
-
     return results.map((result, index) =>
       result.status === 'fulfilled'
         ? result.value
@@ -89,6 +86,9 @@ export class MSG91Adapter extends SmsProvider {
     );
   }
 
+  /**
+   * Check delivery status of a sent message.
+   */
   async getStatus(messageId) {
     try {
       const response = await axios.get(`${this.baseUrl}/message/${messageId}`, {
@@ -98,6 +98,62 @@ export class MSG91Adapter extends SmsProvider {
     } catch (err) {
       logger.error({ messageId, error: err.message }, '[SMS] Status check failed');
       return null;
+    }
+  }
+
+  /**
+   * Send OTP via MSG91 dedicated OTP API.
+   */
+  async sendOtp(phoneNumber, otp) {
+    try {
+      const normalizedMobile = this._normalizePhone(phoneNumber);
+
+      const payload = {
+        template_id: process.env.MSG91_OTP_TEMPLATE_ID,
+        mobile: normalizedMobile,
+        authkey: this.authKey,
+        otp,
+      };
+
+      const response = await axios.post('https://control.msg91.com/api/v5/otp', payload, {
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      logger.info(
+        { phone: phoneNumber.slice(0, 6) + '…', type: response.data?.type },
+        '[SMS] OTP sent'
+      );
+      return { success: true, requestId: response.data?.request_id };
+    } catch (err) {
+      logger.error(
+        { phone: phoneNumber.slice(0, 6) + '…', error: err.response?.data || err.message },
+        '[SMS] OTP send failed'
+      );
+      return { success: false, error: err.message };
+    }
+  }
+
+  /**
+   * Verify OTP submitted by user.
+   */
+  async verifyOtp(phoneNumber, otp) {
+    try {
+      const normalizedMobile = this._normalizePhone(phoneNumber);
+
+      const payload = {
+        mobile: normalizedMobile,
+        otp,
+        authkey: this.authKey,
+      };
+
+      const response = await axios.post('https://control.msg91.com/api/v5/otp/verify', payload, {
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      return { success: response.data?.type === 'success' };
+    } catch (err) {
+      logger.error({ error: err.message }, '[SMS] OTP verify failed');
+      return { success: false, error: err.message };
     }
   }
 }

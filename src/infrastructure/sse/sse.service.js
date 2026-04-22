@@ -1,19 +1,18 @@
 // src/infrastructure/sse/sse.service.js
+// FIXED: Removed CONNECTION_TIMEOUT_MS. Heartbeat alone keeps connection alive.
+// FIXED: Removed lastActivity dead state.
+// FIXED: cleanupConnection timer leak resolved.
 
 import { logger } from '#config/logger.js';
 
 // Client registry: Map<userId, Set<{ res, heartbeatInterval, userType, createdAt }>>
-// FIX: Support multiple connections per user (different devices/tabs)
 const clients = new Map();
 
 // Maximum connections per user
 const MAX_CONNECTIONS_PER_USER = 5;
 
-// Heartbeat interval (25 seconds - standard)
+// Heartbeat interval (25 seconds - standard, beats most proxy timeouts)
 const HEARTBEAT_INTERVAL_MS = 25000;
-
-// Connection timeout (no heartbeat response = dead connection)
-const CONNECTION_TIMEOUT_MS = 60000;
 
 /**
  * Register an SSE client connection
@@ -39,7 +38,7 @@ export const registerClient = (userId, userType, res) => {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-transform',
     Connection: 'keep-alive',
-    'X-Accel-Buffering': 'no', // Nginx/Railway
+    'X-Accel-Buffering': 'no', // Nginx/proxy buffering disabled
   });
 
   // Send initial connection event
@@ -54,20 +53,12 @@ export const registerClient = (userId, userType, res) => {
     }
   }, HEARTBEAT_INTERVAL_MS);
 
-  // Setup connection timeout
-  const timeoutId = setTimeout(() => {
-    logger.warn({ userId }, '[SSE] Connection timeout');
-    cleanupConnection(userId, heartbeatInterval, res);
-  }, CONNECTION_TIMEOUT_MS);
-
   // Store connection
   const connection = {
     res,
     heartbeatInterval,
-    timeoutId,
     userType,
     createdAt: Date.now(),
-    lastActivity: Date.now(),
   };
 
   userConnections.add(connection);
@@ -107,7 +98,6 @@ const cleanupConnection = (userId, heartbeatInterval, res) => {
     // Find and remove this specific connection
     for (const conn of userConnections) {
       if (conn.res === res) {
-        clearTimeout(conn.timeoutId);
         userConnections.delete(conn);
         break;
       }
@@ -134,7 +124,6 @@ export const removeClient = userId => {
   if (userConnections) {
     for (const conn of userConnections) {
       clearInterval(conn.heartbeatInterval);
-      clearTimeout(conn.timeoutId);
       if (!conn.res.writableEnded) {
         conn.res.end();
       }
@@ -167,7 +156,6 @@ export const pushSSE = (userId, event) => {
     try {
       const eventString = `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`;
       res.write(eventString);
-      conn.lastActivity = Date.now();
       sent++;
     } catch (error) {
       logger.error({ userId, eventType: event.type, error: error.message }, '[SSE] Push failed');
@@ -241,7 +229,6 @@ export const getConnectedClients = () => {
         userId,
         userType: conn.userType,
         createdAt: conn.createdAt,
-        lastActivity: conn.lastActivity,
       });
     }
   }
@@ -260,7 +247,6 @@ export const closeAllConnections = () => {
   for (const [userId, connections] of clients.entries()) {
     for (const conn of connections) {
       clearInterval(conn.heartbeatInterval);
-      clearTimeout(conn.timeoutId);
       if (!conn.res.writableEnded) {
         conn.res.end();
       }

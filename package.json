@@ -46,7 +46,8 @@
     "#orchestrator/*": "./src/orchestrator/*",
     "#workers/*": "./src/orchestrator/workers/*",
     "#notifications/*": "./src/orchestrator/notifications/channel/*",
-    "#routes": "./src/routes/*"
+    "#routes": "./src/routes/*",
+    "#templates/*": "./src/templates/*"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
@@ -63,12 +64,13 @@
   "type": "module",
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1018.0",
-    "@aws-sdk/client-ses": "^3.1018.0",
+    "@aws-sdk/client-ses": "^3.1034.0",
     "@aws-sdk/s3-request-presigner": "^3.1018.0",
     "@bull-board/api": "^6.20.6",
     "@bull-board/express": "^6.20.6",
     "@prisma/adapter-pg": "^7.4.2",
     "@prisma/client": "^7.5.0",
+    "@react-email/components": "^1.0.12",
     "@sendgrid/mail": "^8.1.6",
     "axios": "^1.13.6",
     "bcrypt": "^6.0.0",
@@ -106,6 +108,7 @@
     "rate-limit-redis": "^4.3.1",
     "rate-limiter-flexible": "^11.0.0",
     "razorpay": "^2.9.6",
+    "react-email": "^6.0.0",
     "redis": "^5.11.0",
     "resend": "^6.9.4",
     "rotating-file-stream": "^3.2.9",

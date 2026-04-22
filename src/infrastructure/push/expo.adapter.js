@@ -1,6 +1,7 @@
 // =============================================================================
 // infrastructure/push/expo.adapter.js — RESQID
 // Expo Push Notification adapter.
+// FIXED: Added Expo access token for enhanced security.
 // =============================================================================
 
 import { Expo } from 'expo-server-sdk';
@@ -10,7 +11,10 @@ import { logger } from '#config/logger.js';
 export class ExpoAdapter extends PushProvider {
   constructor() {
     super();
-    this.expo = new Expo();
+    // FIXED: Pass access token for enhanced security
+    this.expo = new Expo({
+      accessToken: process.env.EXPO_ACCESS_TOKEN,
+    });
   }
 
   /**
