@@ -1,55 +1,82 @@
 // =============================================================================
 // orchestrator/notifications/notification.templates.js — RESQID
 //
-// This file is the bridge between the dispatcher and the templates folder.
-// All actual template content lives in src/templates/.
-// When you add a React Mail / HTML template, update src/templates/ only —
-// this file just re-exports / wraps them for the dispatcher to call.
+// SINGLE SOURCE OF TRUTH for template content used by the dispatcher.
 //
-// SHAPE CONTRACT:
-//   smsTemplates.KEY(vars)   → string
-//   pushTemplates.KEY(vars)  → { title, body }
-//   emailTemplates.KEY(vars) → { subject, html }
+// ARCHITECTURE:
+//   smsTemplates  — pure string functions (DLT-registered content)
+//   pushTemplates — pure { title, body } functions (Expo-compatible)
+//   emailTemplates — React Email components imported from src/templates/email/
+//                    Each entry returns { subject, Component, props(payload) }
+//                    The dispatcher calls getEmail().sendReactTemplate(...).
+//
+// RULES:
+//   - No raw HTML strings here. Ever.
+//   - No inline styles, no _wrap() helpers.
+//   - Email templates live in src/templates/email/*.jsx — import here only.
+//   - SMS strings are short DLT-compliant messages — keep under 160 chars.
+//   - Push { title, body } only — no FCM fields, Expo-compatible.
 // =============================================================================
 
-// ---------------------------------------------------------------------------
-// SMS Templates
-// Thin wrappers — replace bodies with imports from src/templates/sms/ once
-// your DLT-registered templates are finalised.
-// ---------------------------------------------------------------------------
+// ── Email component imports ───────────────────────────────────────────────────
+// Uncomment each as you create the .jsx file in src/templates/email/
+
+// import OtpAdminEmail        from '#templates/email/otp-admin.jsx';
+// import OtpParentEmail       from '#templates/email/otp-parent.jsx';
+// import WelcomeSchoolEmail   from '#templates/email/welcome-school.jsx';
+// import WelcomeParentEmail   from '#templates/email/welcome-parent.jsx';
+// import OrderConfirmedEmail  from '#templates/email/order-confirmed.jsx';
+// import OrderShippedEmail    from '#templates/email/order-shipped.jsx';
+// import OrderDeliveredEmail  from '#templates/email/order-delivered.jsx';
+// import OrderCompletedEmail  from '#templates/email/order-completed.jsx';
+// import OrderRefundedEmail   from '#templates/email/order-refunded.jsx';
+// import BalanceInvoiceEmail  from '#templates/email/balance-invoice.jsx';
+// import CardDesignEmail      from '#templates/email/card-design-ready.jsx';
+// import DesignApprovedEmail  from '#templates/email/design-approved.jsx';
+// import PartialInvoiceEmail  from '#templates/email/partial-invoice.jsx';
+// import NewDeviceLoginEmail  from '#templates/email/new-device-login.jsx';
+// import SchoolRenewalEmail   from '#templates/email/school-renewal.jsx';
+// import EmergencyLogEmail    from '#templates/email/emergency-log.jsx';
+
+// =============================================================================
+// SMS Templates — DLT-compliant plain strings
+// Keep each under 160 chars. Vars must match DLT-registered template exactly.
+// =============================================================================
+
 export const smsTemplates = Object.freeze({
   OTP_LOGIN: ({ otp, expiryMinutes = 5 }) =>
-    `Your ResQID login OTP is ${otp}. Valid for ${expiryMinutes} minutes. Do not share.`,
+    `Your ResQID login OTP is ${otp}. Valid for ${expiryMinutes} min. Do not share. -RESQID`,
 
   OTP_REGISTER: ({ otp, expiryMinutes = 5 }) =>
-    `Your ResQID registration OTP is ${otp}. Valid for ${expiryMinutes} minutes. Do not share.`,
+    `Your ResQID registration OTP is ${otp}. Valid for ${expiryMinutes} min. Do not share. -RESQID`,
 
   EMERGENCY_ALERT: ({ studentName, schoolName, scannedAt }) =>
-    `ALERT: ${studentName}'s ResQID card scanned at ${schoolName} at ${scannedAt}. Check app immediately.`,
+    `ALERT: ${studentName}'s ResQID card scanned at ${schoolName} at ${scannedAt}. Check app. -RESQID`,
 
   ORDER_SHIPPED: ({ orderNumber, trackingId }) =>
-    `ResQID: Order #${orderNumber} shipped. Tracking ID: ${trackingId}.`,
+    `ResQID: Order #${orderNumber} shipped. Tracking: ${trackingId}. -RESQID`,
 
   ORDER_DELIVERED: ({ orderNumber }) =>
-    `ResQID: Order #${orderNumber} delivered. Activate cards via your dashboard.`,
+    `ResQID: Order #${orderNumber} delivered. Activate cards from your dashboard. -RESQID`,
 
   STUDENT_CARD_EXPIRING: ({ studentName, expiryDate }) =>
-    `ResQID: ${studentName}'s ID card expires on ${expiryDate}. Renew soon to stay protected.`,
+    `ResQID: ${studentName}'s ID card expires ${expiryDate}. Renew soon. -RESQID`,
 
   BALANCE_INVOICE_DUE: ({ orderNumber, amount }) =>
-    `ResQID: Balance of Rs.${amount} due for order #${orderNumber}. Please clear to complete delivery.`,
+    `ResQID: Rs.${amount} balance due for order #${orderNumber}. Clear to complete delivery. -RESQID`,
 
-  STALLED_PIPELINE_ALERT: ({ orderNumber, step, elapsedMin }) =>
-    `ResQID ALERT: Order #${orderNumber} stalled at "${step}" for ${elapsedMin} min.`,
+  SCHOOL_RENEWAL_DUE: ({ schoolName, expiryDate, renewUrl }) =>
+    `ResQID: ${schoolName} subscription expires ${expiryDate}. Renew: ${renewUrl ?? 'getresqid.in/renew'} -RESQID`,
 });
 
-// ---------------------------------------------------------------------------
-// Push Templates
-// All Expo-compatible — { title, body } only. No FCM-specific fields.
-// ---------------------------------------------------------------------------
+// =============================================================================
+// Push Templates — Expo-compatible { title, body } only
+// No FCM fields (no android/apns blocks — handled by ExpoAdapter).
+// =============================================================================
+
 export const pushTemplates = Object.freeze({
   EMERGENCY_ALERT: ({ studentName, schoolName }) => ({
-    title: 'Emergency Alert',
+    title: '🚨 Emergency Alert',
     body: `${studentName}'s card scanned at ${schoolName}. Open app now.`,
   }),
 
@@ -59,8 +86,8 @@ export const pushTemplates = Object.freeze({
   }),
 
   ORDER_ADVANCE_PAYMENT_RECEIVED: ({ orderNumber, amount }) => ({
-    title: 'Advance Payment Received',
-    body: `Rs.${amount} received for order #${orderNumber}.`,
+    title: 'Payment Received',
+    body: `Rs.${amount} advance received for order #${orderNumber}.`,
   }),
 
   PARTIAL_PAYMENT_CONFIRMED: ({ orderNumber, amount }) => ({
@@ -69,12 +96,12 @@ export const pushTemplates = Object.freeze({
   }),
 
   PARTIAL_INVOICE_GENERATED: ({ orderNumber, amount }) => ({
-    title: 'Partial Invoice Generated',
+    title: 'Invoice Generated',
     body: `Invoice of Rs.${amount} created for order #${orderNumber}.`,
   }),
 
   ORDER_TOKEN_GENERATION_COMPLETE: ({ orderNumber }) => ({
-    title: 'Token Generation Complete',
+    title: 'QR Codes Ready',
     body: `Order #${orderNumber}: QR codes generated successfully.`,
   }),
 
@@ -85,7 +112,7 @@ export const pushTemplates = Object.freeze({
 
   DESIGN_APPROVED: ({ orderNumber }) => ({
     title: 'Design Approved',
-    body: `Order #${orderNumber} design approved. Printing begins shortly.`,
+    body: `Order #${orderNumber} approved. Printing begins shortly.`,
   }),
 
   ORDER_SHIPPED: ({ orderNumber, trackingId }) => ({
@@ -104,7 +131,7 @@ export const pushTemplates = Object.freeze({
   }),
 
   ORDER_COMPLETED: ({ orderNumber }) => ({
-    title: 'Order Completed',
+    title: 'Order Complete',
     body: `Order #${orderNumber} is fully complete.`,
   }),
 
@@ -120,212 +147,148 @@ export const pushTemplates = Object.freeze({
 
   STUDENT_QR_SCANNED: ({ studentName, location }) => ({
     title: 'QR Code Scanned',
-    body: `${studentName}'s ResQID card was just scanned${location ? ` at ${location}` : ''}.`,
+    body: `${studentName}'s card was scanned${location ? ` at ${location}` : ''}.`,
   }),
 });
 
-// ---------------------------------------------------------------------------
+// =============================================================================
 // Email Templates
-// Each function returns { subject, html }.
-// Replace the html values with your React Mail / SES template renders
-// once finalised. The dispatcher calls these — never inline HTML here.
 //
-// STUB NOTICE: These are plain HTML stubs. Replace html with your
-// React Mail rendered output when templates are ready.
-// ---------------------------------------------------------------------------
+// Shape: { subject, Component, props }
+//   subject   — string passed to SES
+//   Component — React Email component (imported above)
+//   props     — object passed to <Component {...props} />
+//
+// Dispatcher usage:
+//   const { subject, Component, props } = emailTemplates.ORDER_CONFIRMED({ ... });
+//   await email.sendReactTemplate(Component, props, { to, subject });
+//
+// STUB: All entries use a placeholder until .jsx files are created.
+//       Uncomment the real Component import above and swap in below.
+// =============================================================================
 
-const _wrap = (title, content) => `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${title}</title></head>
-<body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#1a1a1a">
-<img src="https://getresqid.in/logo.png" alt="RESQID" style="height:36px;margin-bottom:24px">
-${content}
-<hr style="margin-top:32px;border:none;border-top:1px solid #eee">
-<p style="font-size:12px;color:#888">RESQID — School Safety Platform | getresqid.in</p>
-</body></html>`;
+const stubEmail = (subject, debugLabel) => ({
+  subject,
+  Component: null, // replace with imported component
+  props: {},
+  _stub: debugLabel, // dev-only marker — remove when real component is wired
+});
 
 export const emailTemplates = Object.freeze({
-  ORDER_CONFIRMED: ({ schoolName, orderNumber, cardCount, amount }) => ({
-    subject: `Order Confirmed — #${orderNumber}`,
-    html: _wrap(
-      'Order Confirmed',
-      `<h2>Order Confirmed</h2>
-       <p>Dear ${schoolName},</p>
-       <p>Your order <strong>#${orderNumber}</strong> has been confirmed.</p>
-       <table style="width:100%;border-collapse:collapse;margin:16px 0">
-         <tr><td style="padding:8px;background:#f9f9f9">Cards Ordered</td><td style="padding:8px"><strong>${cardCount}</strong></td></tr>
-         <tr><td style="padding:8px;background:#f9f9f9">Advance Amount</td><td style="padding:8px"><strong>Rs.${amount}</strong></td></tr>
-         <tr><td style="padding:8px;background:#f9f9f9">Order Number</td><td style="padding:8px"><strong>#${orderNumber}</strong></td></tr>
-       </table>
-       <p>You will be notified at each stage of your order.</p>`
-    ),
+  OTP_ADMIN: ({ userName, otpCode, expiryMinutes = 5 }) => ({
+    subject: `Your RESQID OTP — ${otpCode}`,
+    // Component: OtpAdminEmail,
+    Component: null,
+    props: { userName, otpCode, expiryMinutes },
   }),
 
-  ORDER_ADVANCE_PAYMENT_RECEIVED: ({ schoolName, orderNumber, amount }) => ({
-    subject: `Advance Payment Received — #${orderNumber}`,
-    html: _wrap(
-      'Advance Payment Received',
-      `<h2>Payment Received</h2>
-       <p>Dear ${schoolName},</p>
-       <p>We have received your advance payment of <strong>Rs.${amount}</strong> for order <strong>#${orderNumber}</strong>.</p>
-       <p>Your order is now in the production queue.</p>`
-    ),
-  }),
-
-  PARTIAL_PAYMENT_CONFIRMED: ({ schoolName, orderNumber, amount }) => ({
-    subject: `Partial Payment Confirmed — #${orderNumber}`,
-    html: _wrap(
-      'Partial Payment Confirmed',
-      `<h2>Partial Payment Confirmed</h2>
-       <p>Dear ${schoolName},</p>
-       <p>Partial payment of <strong>Rs.${amount}</strong> received for order <strong>#${orderNumber}</strong>.</p>`
-    ),
-  }),
-
-  PARTIAL_INVOICE_GENERATED: ({ schoolName, orderNumber, amount, invoiceUrl }) => ({
-    subject: `Partial Invoice — #${orderNumber}`,
-    html: _wrap(
-      'Partial Invoice Generated',
-      `<h2>Partial Invoice Generated</h2>
-       <p>Dear ${schoolName},</p>
-       <p>An invoice of <strong>Rs.${amount}</strong> has been generated for order <strong>#${orderNumber}</strong>.</p>
-       ${invoiceUrl ? `<p><a href="${invoiceUrl}" style="display:inline-block;padding:10px 20px;background:#1a1a2e;color:#fff;text-decoration:none;border-radius:6px">View Invoice</a></p>` : ''}`
-    ),
-  }),
-
-  ORDER_CARD_DESIGN_COMPLETE: ({ schoolName, orderNumber, reviewUrl }) => ({
-    subject: `Card Design Ready for Review — #${orderNumber}`,
-    html: _wrap(
-      'Card Design Ready',
-      `<h2>Card Design Ready</h2>
-       <p>Dear ${schoolName},</p>
-       <p>The card design for order <strong>#${orderNumber}</strong> is complete and ready for your review.</p>
-       ${reviewUrl ? `<p><a href="${reviewUrl}" style="display:inline-block;padding:10px 20px;background:#1a1a2e;color:#fff;text-decoration:none;border-radius:6px">Review Design</a></p>` : '<p>Please log in to your dashboard to review.</p>'}`
-    ),
-  }),
-
-  DESIGN_APPROVED: ({ schoolName, orderNumber }) => ({
-    subject: `Design Approved — #${orderNumber}`,
-    html: _wrap(
-      'Design Approved',
-      `<h2>Design Approved</h2>
-       <p>Dear ${schoolName},</p>
-       <p>The card design for order <strong>#${orderNumber}</strong> has been approved. Printing will begin shortly.</p>`
-    ),
-  }),
-
-  ORDER_SHIPPED: ({ schoolName, orderNumber, trackingId, trackingUrl }) => ({
-    subject: `Order Shipped — #${orderNumber}`,
-    html: _wrap(
-      'Order Shipped',
-      `<h2>Your Order is on the Way</h2>
-       <p>Dear ${schoolName},</p>
-       <p>Order <strong>#${orderNumber}</strong> has been shipped.</p>
-       <table style="width:100%;border-collapse:collapse;margin:16px 0">
-         <tr><td style="padding:8px;background:#f9f9f9">Tracking ID</td><td style="padding:8px"><strong>${trackingId}</strong></td></tr>
-       </table>
-       ${trackingUrl ? `<p><a href="${trackingUrl}" style="display:inline-block;padding:10px 20px;background:#1a1a2e;color:#fff;text-decoration:none;border-radius:6px">Track Order</a></p>` : ''}`
-    ),
-  }),
-
-  ORDER_DELIVERED: ({ schoolName, orderNumber }) => ({
-    subject: `Order Delivered — #${orderNumber}`,
-    html: _wrap(
-      'Order Delivered',
-      `<h2>Order Delivered</h2>
-       <p>Dear ${schoolName},</p>
-       <p>Order <strong>#${orderNumber}</strong> has been delivered. Please activate the cards from your dashboard.</p>`
-    ),
-  }),
-
-  ORDER_BALANCE_INVOICE: ({ schoolName, orderNumber, amount, dueDate, invoiceUrl }) => ({
-    subject: `Balance Invoice Due — #${orderNumber}`,
-    html: _wrap(
-      'Balance Invoice Due',
-      `<h2>Balance Invoice</h2>
-       <p>Dear ${schoolName},</p>
-       <p>A balance of <strong>Rs.${amount}</strong> is due for order <strong>#${orderNumber}</strong>.</p>
-       <table style="width:100%;border-collapse:collapse;margin:16px 0">
-         <tr><td style="padding:8px;background:#f9f9f9">Amount Due</td><td style="padding:8px"><strong>Rs.${amount}</strong></td></tr>
-         <tr><td style="padding:8px;background:#f9f9f9">Due Date</td><td style="padding:8px"><strong>${dueDate}</strong></td></tr>
-       </table>
-       ${invoiceUrl ? `<p><a href="${invoiceUrl}" style="display:inline-block;padding:10px 20px;background:#1a1a2e;color:#fff;text-decoration:none;border-radius:6px">View Invoice</a></p>` : ''}`
-    ),
-  }),
-
-  ORDER_COMPLETED: ({ schoolName, orderNumber }) => ({
-    subject: `Order Complete — #${orderNumber}`,
-    html: _wrap(
-      'Order Complete',
-      `<h2>Order Complete</h2>
-       <p>Dear ${schoolName},</p>
-       <p>Order <strong>#${orderNumber}</strong> is fully complete. Thank you for choosing RESQID.</p>`
-    ),
-  }),
-
-  ORDER_REFUNDED: ({ schoolName, orderNumber, amount }) => ({
-    subject: `Order Refunded — #${orderNumber}`,
-    html: _wrap(
-      'Order Refunded',
-      `<h2>Order Refunded</h2>
-       <p>Dear ${schoolName},</p>
-       <p>Order <strong>#${orderNumber}</strong> has been refunded. Amount: <strong>Rs.${amount}</strong>.</p>`
-    ),
+  OTP_PARENT: ({ userName, otpCode, expiryMinutes = 5 }) => ({
+    subject: `Your RESQID OTP — ${otpCode}`,
+    // Component: OtpParentEmail,
+    Component: null,
+    props: { userName, otpCode, expiryMinutes },
   }),
 
   SCHOOL_ONBOARDED: ({ schoolName, adminName, dashboardUrl }) => ({
     subject: `Welcome to RESQID — ${schoolName}`,
-    html: _wrap(
-      'Welcome to RESQID',
-      `<h2>Welcome, ${adminName}!</h2>
-       <p>Your school <strong>${schoolName}</strong> has been successfully onboarded to RESQID.</p>
-       <p>You can now manage student safety cards, emergency profiles, and more from your dashboard.</p>
-       ${dashboardUrl ? `<p><a href="${dashboardUrl}" style="display:inline-block;padding:10px 20px;background:#1a1a2e;color:#fff;text-decoration:none;border-radius:6px">Go to Dashboard</a></p>` : ''}`
-    ),
+    // Component: WelcomeSchoolEmail,
+    Component: null,
+    props: { schoolName, adminName, dashboardUrl },
   }),
 
   SCHOOL_RENEWAL_DUE: ({ schoolName, expiryDate, renewUrl }) => ({
     subject: `Subscription Renewal Due — ${schoolName}`,
-    html: _wrap(
-      'Renewal Due',
-      `<h2>Subscription Renewal Due</h2>
-       <p>Dear ${schoolName} Admin,</p>
-       <p>Your RESQID subscription expires on <strong>${expiryDate}</strong>. Renew now to ensure uninterrupted safety coverage for your students.</p>
-       ${renewUrl ? `<p><a href="${renewUrl}" style="display:inline-block;padding:10px 20px;background:#1a1a2e;color:#fff;text-decoration:none;border-radius:6px">Renew Now</a></p>` : ''}`
-    ),
+    // Component: SchoolRenewalEmail,
+    Component: null,
+    props: { schoolName, expiryDate, renewUrl },
+  }),
+
+  ORDER_CONFIRMED: ({ schoolName, orderNumber, cardCount, amount }) => ({
+    subject: `Order Confirmed — #${orderNumber}`,
+    // Component: OrderConfirmedEmail,
+    Component: null,
+    props: { schoolName, orderNumber, cardCount, amount },
+  }),
+
+  ORDER_ADVANCE_PAYMENT_RECEIVED: ({ schoolName, orderNumber, amount }) => ({
+    subject: `Advance Payment Received — #${orderNumber}`,
+    Component: null,
+    props: { schoolName, orderNumber, amount },
+  }),
+
+  PARTIAL_PAYMENT_CONFIRMED: ({ schoolName, orderNumber, amount }) => ({
+    subject: `Partial Payment Confirmed — #${orderNumber}`,
+    Component: null,
+    props: { schoolName, orderNumber, amount },
+  }),
+
+  PARTIAL_INVOICE_GENERATED: ({ schoolName, orderNumber, amount, invoiceUrl }) => ({
+    subject: `Partial Invoice — #${orderNumber}`,
+    // Component: PartialInvoiceEmail,
+    Component: null,
+    props: { schoolName, orderNumber, amount, invoiceUrl },
+  }),
+
+  ORDER_CARD_DESIGN_COMPLETE: ({ schoolName, orderNumber, reviewUrl }) => ({
+    subject: `Card Design Ready for Review — #${orderNumber}`,
+    // Component: CardDesignEmail,
+    Component: null,
+    props: { schoolName, orderNumber, reviewUrl },
+  }),
+
+  DESIGN_APPROVED: ({ schoolName, orderNumber }) => ({
+    subject: `Design Approved — #${orderNumber}`,
+    // Component: DesignApprovedEmail,
+    Component: null,
+    props: { schoolName, orderNumber },
+  }),
+
+  ORDER_SHIPPED: ({ schoolName, orderNumber, trackingId, trackingUrl }) => ({
+    subject: `Order Shipped — #${orderNumber}`,
+    // Component: OrderShippedEmail,
+    Component: null,
+    props: { schoolName, orderNumber, trackingId, trackingUrl },
+  }),
+
+  ORDER_DELIVERED: ({ schoolName, orderNumber }) => ({
+    subject: `Order Delivered — #${orderNumber}`,
+    // Component: OrderDeliveredEmail,
+    Component: null,
+    props: { schoolName, orderNumber },
+  }),
+
+  ORDER_BALANCE_INVOICE: ({ schoolName, orderNumber, amount, dueDate, invoiceUrl }) => ({
+    subject: `Balance Invoice Due — #${orderNumber}`,
+    // Component: BalanceInvoiceEmail,
+    Component: null,
+    props: { schoolName, orderNumber, amount, dueDate, invoiceUrl },
+  }),
+
+  ORDER_COMPLETED: ({ schoolName, orderNumber }) => ({
+    subject: `Order Complete — #${orderNumber}`,
+    // Component: OrderCompletedEmail,
+    Component: null,
+    props: { schoolName, orderNumber },
+  }),
+
+  ORDER_REFUNDED: ({ schoolName, orderNumber, amount }) => ({
+    subject: `Order Refunded — #${orderNumber}`,
+    // Component: OrderRefundedEmail,
+    Component: null,
+    props: { schoolName, orderNumber, amount },
   }),
 
   USER_DEVICE_LOGIN_NEW: ({ name, device, location, time }) => ({
     subject: 'New Login Detected — RESQID',
-    html: _wrap(
-      'New Login Detected',
-      `<h2>New Login Detected</h2>
-       <p>Hello ${name},</p>
-       <p>A new login to your RESQID account was detected.</p>
-       <table style="width:100%;border-collapse:collapse;margin:16px 0">
-         <tr><td style="padding:8px;background:#f9f9f9">Device</td><td style="padding:8px">${device ?? 'Unknown'}</td></tr>
-         <tr><td style="padding:8px;background:#f9f9f9">Location</td><td style="padding:8px">${location ?? 'Unknown'}</td></tr>
-         <tr><td style="padding:8px;background:#f9f9f9">Time</td><td style="padding:8px">${time}</td></tr>
-       </table>
-       <p>If this wasn't you, please contact support immediately.</p>`
-    ),
+    // Component: NewDeviceLoginEmail,
+    Component: null,
+    props: { name, device, location, time },
   }),
 
   EMERGENCY_ALERT_LOG: ({ studentName, schoolName, location, scannedAt, dispatchResults }) => ({
     subject: `[RESQID] Emergency Alert — ${studentName}`,
-    html: _wrap(
-      'Emergency Alert Details',
-      `<h2 style="color:#dc2626">Emergency Alert Fired</h2>
-       <table style="width:100%;border-collapse:collapse;margin:16px 0">
-         <tr><td style="padding:8px;background:#fef2f2">Student</td><td style="padding:8px"><strong>${studentName}</strong></td></tr>
-         <tr><td style="padding:8px;background:#fef2f2">School</td><td style="padding:8px">${schoolName}</td></tr>
-         <tr><td style="padding:8px;background:#fef2f2">Scanned At</td><td style="padding:8px">${scannedAt}</td></tr>
-         <tr><td style="padding:8px;background:#fef2f2">Location</td><td style="padding:8px">${location?.lat && location?.lng ? `<a href="https://maps.google.com/?q=${location.lat},${location.lng}">View on Maps</a>` : 'Unknown'}</td></tr>
-         <tr><td style="padding:8px;background:#fef2f2">SMS</td><td style="padding:8px">${dispatchResults?.sms?.success ? '✅ Sent' : '❌ Failed'}</td></tr>
-         <tr><td style="padding:8px;background:#fef2f2">Push</td><td style="padding:8px">${dispatchResults?.push?.success ? '✅ Sent' : '❌ Failed'}</td></tr>
-       </table>`
-    ),
+    // Component: EmergencyLogEmail,
+    Component: null,
+    props: { studentName, schoolName, location, scannedAt, dispatchResults },
   }),
 });
-s

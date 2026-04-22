@@ -1,3 +1,10 @@
+// =============================================================================
+// infrastructure/sms/msg91.adapter.js — RESQID
+// MSG91 adapter. DLT-compliant SMS, OTP send/verify.
+// REMOVED: registerTemplate(), _renderTemplate(), sendTemplate() — dead code.
+//          SMS content comes from src/templates/sms/ — never registered here.
+// =============================================================================
+
 import axios from 'axios';
 import { SmsProvider } from './sms.provider.js';
 import { logger } from '#config/logger.js';
@@ -7,34 +14,20 @@ export class MSG91Adapter extends SmsProvider {
     super();
     this.authKey = config.AUTH_KEY ?? process.env.MSG91_AUTH_KEY;
     this.senderId = config.SENDER_ID ?? process.env.MSG91_SENDER_ID ?? 'RESQID';
-    this.templateId = config.TEMPLATE_ID ?? process.env.MSG91_TEMPLATE_ID; // DLT Template ID
+    this.templateId = config.TEMPLATE_ID ?? process.env.MSG91_TEMPLATE_ID;
     this.route = config.ROUTE ?? process.env.MSG91_ROUTE ?? '4';
     this.country = config.COUNTRY ?? process.env.MSG91_COUNTRY ?? '91';
     this.baseUrl = 'https://api.msg91.com/api/v5';
-    this.templates = new Map();
   }
 
-  registerTemplate(name, template) {
-    this.templates.set(name, template);
-  }
-
-  /** @private */
-  _renderTemplate(templateName, data) {
-    const template = this.templates.get(templateName);
-    if (!template) {
-      throw new Error(`[SMS] Template "${templateName}" is not registered.`);
-    }
-    return Object.entries(data).reduce(
-      (msg, [key, value]) => msg.replace(new RegExp(`{{${key}}}`, 'g'), value),
-      template
-    );
-  }
-
+  /**
+   * Send a plain SMS message (DLT template optional).
+   * message content always comes from src/templates/sms/ — caller renders it.
+   */
   async send(phoneNumber, message, options = {}) {
     const { templateId = this.templateId } = options;
 
     try {
-      // MSG91 Flow API (supports DLT templates)
       const payload = {
         sender: this.senderId,
         mobiles: phoneNumber.replace(/\D/g, ''),
@@ -42,19 +35,15 @@ export class MSG91Adapter extends SmsProvider {
         route: this.route,
       };
 
-      // Use template if available (DLT compliance)
       if (templateId) {
         payload.template_id = templateId;
-        payload.var = message; // Variable content for template
+        payload.var = message;
       } else {
         payload.message = message;
       }
 
       const response = await axios.post(`${this.baseUrl}/flow/`, payload, {
-        headers: {
-          authkey: this.authKey,
-          'Content-Type': 'application/json',
-        },
+        headers: { authkey: this.authKey, 'Content-Type': 'application/json' },
       });
 
       const messageId = response.data?.message_id || response.data?.request_id;
@@ -62,26 +51,20 @@ export class MSG91Adapter extends SmsProvider {
       return { success: true, messageId };
     } catch (err) {
       logger.error(
-        {
-          phone: phoneNumber.slice(0, 6) + '…',
-          error: err.response?.data || err.message,
-        },
+        { phone: phoneNumber.slice(0, 6) + '…', error: err.response?.data || err.message },
         '[SMS] Send failed'
       );
       return { success: false, error: err.message };
     }
   }
 
-  async sendTemplate(phoneNumber, template, data) {
-    const message = this._renderTemplate(template, data);
-    return this.send(phoneNumber, message);
-  }
-
+  /**
+   * Send to multiple recipients in parallel.
+   */
   async sendBulk(messages) {
     const results = await Promise.allSettled(
       messages.map(({ phone, message, templateId }) => this.send(phone, message, { templateId }))
     );
-
     return results.map((result, index) =>
       result.status === 'fulfilled'
         ? result.value
@@ -89,6 +72,9 @@ export class MSG91Adapter extends SmsProvider {
     );
   }
 
+  /**
+   * Check delivery status of a sent message.
+   */
   async getStatus(messageId) {
     try {
       const response = await axios.get(`${this.baseUrl}/message/${messageId}`, {
@@ -101,19 +87,21 @@ export class MSG91Adapter extends SmsProvider {
     }
   }
 
+  /**
+   * Send OTP via MSG91 dedicated OTP API.
+   * Uses MSG91_OTP_TEMPLATE_ID env var.
+   */
   async sendOtp(phoneNumber, otp) {
     try {
       const payload = {
         template_id: process.env.MSG91_OTP_TEMPLATE_ID,
         mobile: `91${phoneNumber.replace(/\D/g, '').replace(/^91/, '')}`,
         authkey: this.authKey,
-        otp: otp,
+        otp,
       };
 
       const response = await axios.post('https://control.msg91.com/api/v5/otp', payload, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
       });
 
       logger.info(
@@ -130,12 +118,15 @@ export class MSG91Adapter extends SmsProvider {
     }
   }
 
+  /**
+   * Verify OTP submitted by user.
+   */
   async verifyOtp(phoneNumber, otp) {
     try {
       const response = await axios.get('https://control.msg91.com/api/v5/otp/verify', {
         params: {
           mobile: `91${phoneNumber.replace(/\D/g, '').replace(/^91/, '')}`,
-          otp: otp,
+          otp,
           authkey: this.authKey,
         },
       });

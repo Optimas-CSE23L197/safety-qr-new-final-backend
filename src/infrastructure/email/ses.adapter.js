@@ -1,4 +1,12 @@
+// =============================================================================
+// infrastructure/email/ses.adapter.js — RESQID
+// AWS SES only. React Email for rendering. No Resend, no Nodemailer.
+// REMOVED: registerTemplate(), _renderTemplate(), sendTemplate() — dead code.
+// ADDED:   sendReactTemplate(Component, props, options) — single render path.
+// =============================================================================
+
 import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
+import { render } from '@react-email/components';
 import { EmailProvider } from './email.provider.js';
 import { logger } from '#config/logger.js';
 
@@ -14,26 +22,12 @@ export class SesAdapter extends EmailProvider {
     });
     this.defaultFrom =
       config.FROM_EMAIL ?? process.env.SES_FROM_EMAIL ?? 'RESQID <noreply@getresqid.in>';
-    this.templates = new Map();
   }
 
-  registerTemplate(name, template) {
-    this.templates.set(name, template);
-  }
-
-  _renderTemplate(templateName, data) {
-    const template = this.templates.get(templateName);
-    if (!template) throw new Error(`[Email] Template "${templateName}" not registered.`);
-
-    let { html, text } = template;
-    for (const [key, value] of Object.entries(data)) {
-      const pattern = new RegExp(`{{${key}}}`, 'g');
-      if (html) html = html.replace(pattern, value);
-      if (text) text = text.replace(pattern, value);
-    }
-    return { html, text };
-  }
-
+  /**
+   * Low-level send — accepts pre-rendered html string.
+   * All other methods call this internally.
+   */
   async send({ to, subject, html, text, from, replyTo }) {
     const source = from ?? this.defaultFrom;
     const recipients = Array.isArray(to) ? to : [to];
@@ -61,16 +55,36 @@ export class SesAdapter extends EmailProvider {
     }
   }
 
-  async sendTemplate(template, data, to, subject) {
+  /**
+   * Render a React Email component and send via SES.
+   * This is the ONLY template path — replaces sendTemplate() entirely.
+   *
+   * @param {React.ComponentType} Component  — imported from src/templates/email/
+   * @param {object}              props      — component props (typed per template)
+   * @param {{ to, subject, from?, replyTo? }} options
+   *
+   * @example
+   *   import OtpAdminEmail from '#templates/email/otp-admin.jsx';
+   *   await email.sendReactTemplate(OtpAdminEmail, { userName, otpCode }, {
+   *     to: 'admin@school.com',
+   *     subject: `Your RESQID OTP — ${otpCode}`,
+   *   });
+   */
+  async sendReactTemplate(Component, props = {}, { to, subject, from, replyTo } = {}) {
     try {
-      const { html, text } = this._renderTemplate(template, data);
-      return await this.send({ to, subject, html, text });
+      const html = await render(<Component {...props} />);
+      const text = await render(<Component {...props} />, { plainText: true });
+      return this.send({ to, subject, html, text, from, replyTo });
     } catch (err) {
-      logger.error({ template, to, error: err.message }, '[Email] Template send failed');
+      logger.error({ error: err.message, to }, '[Email] React template render/send failed');
       return { success: false, error: err.message };
     }
   }
 
+  /**
+   * Send the same pre-rendered email to multiple recipients.
+   * Renders once, sends N times in parallel.
+   */
   async sendBulk(emails) {
     const results = await Promise.allSettled(emails.map(e => this.send(e)));
     return results.map((r, i) =>

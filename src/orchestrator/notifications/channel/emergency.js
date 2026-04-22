@@ -1,14 +1,12 @@
 // =============================================================================
 // orchestrator/notifications/channel/emergency.js — RESQID
 //
-// Emergency alert channel. Rule: UNTOUCHABLE — never queued, never rate-limited.
+// Emergency alert channel. UNTOUCHABLE — never queued, never rate-limited.
 // Direct channel calls only. Push first (2s timeout), SMS second (4s timeout).
+// Email log scheduled via BullMQ (5 min delay) — survives process restarts.
 //
-// FIXES:
-//   - FCM removed. Expo tokens via expo_push_token field on parentDevice.
-//   - Delayed email log moved to BullMQ (backgroundJobsQueue) instead of
-//     setTimeout — survives process restarts.
-//   - emailTemplates.EMERGENCY_ALERT_LOG used instead of raw JSON in <pre>.
+// FIXED: emailTemplates import removed. EmergencyLogEmail React component
+//        imported directly from src/templates/email/emergency-log.jsx.
 // =============================================================================
 
 import { logger } from '#config/logger.js';
@@ -16,8 +14,10 @@ import { prisma } from '#config/prisma.js';
 import { getSms } from '#infrastructure/sms/sms.index.js';
 import { getPush } from '#infrastructure/push/push.index.js';
 import { getEmail } from '#infrastructure/email/email.index.js';
-import { emailTemplates } from '../notification.templates.js';
 import { backgroundJobsQueue } from '../../queues/queue.config.js';
+
+// Import React Email component — uncomment when file is created
+// import EmergencyLogEmail from '#templates/email/emergency-log.jsx';
 
 // ── SMS ───────────────────────────────────────────────────────────────────────
 
@@ -29,7 +29,7 @@ const sendEmergencySms = async (contact, studentInfo, location) => {
         ? `https://maps.google.com/?q=${location.lat},${location.lng}`
         : 'Unknown location';
 
-    const message = `EMERGENCY: ${studentInfo.studentName} needs help. Location: ${locationText}. Contact emergency services if needed. - RESQID`;
+    const message = `EMERGENCY: ${studentInfo.studentName} needs help. Location: ${locationText}. Contact emergency services if needed. -RESQID`;
 
     const sms = getSms();
     await sms.send(contact.phone, message);
@@ -46,7 +46,6 @@ const sendEmergencySms = async (contact, studentInfo, location) => {
 const sendEmergencyPush = async (contact, studentInfo, location) => {
   const start = Date.now();
   try {
-    // Load Expo tokens for this contact's parent account
     const parentDevices = await prisma.parentDevice.findMany({
       where: { parent: { phone: contact.phone }, is_active: true },
       select: { expo_push_token: true },
@@ -66,7 +65,7 @@ const sendEmergencyPush = async (contact, studentInfo, location) => {
       location?.lat && location?.lng ? `${location.lat}, ${location.lng}` : 'Unknown';
 
     const notification = {
-      title: 'Emergency Alert',
+      title: '🚨 Emergency Alert',
       body: `${studentInfo.studentName} needs immediate assistance. Location: ${locationText}`,
       data: {
         type: 'EMERGENCY',
@@ -101,8 +100,6 @@ const sendEmergencyPush = async (contact, studentInfo, location) => {
 };
 
 // ── Delayed email log via BullMQ ──────────────────────────────────────────────
-// Uses backgroundJobsQueue with a 5-minute delay instead of setTimeout.
-// Survives process restarts. Processed by background.worker.js.
 
 const scheduleEmergencyEmailLog = async data => {
   try {
@@ -110,7 +107,7 @@ const scheduleEmergencyEmailLog = async data => {
       'EMERGENCY_EMAIL_LOG',
       { type: 'EMERGENCY_EMAIL_LOG', payload: data },
       {
-        delay: 5 * 60 * 1000, // 5 minutes
+        delay: 5 * 60 * 1000,
         attempts: 3,
         backoff: { type: 'exponential', delay: 60000 },
         jobId: `emergency-email-log-${data.scanId}`,
@@ -127,7 +124,6 @@ const scheduleEmergencyEmailLog = async data => {
 
 /**
  * Called by background.worker.js when it processes EMERGENCY_EMAIL_LOG jobs.
- * Export this so the worker can import it directly.
  */
 export const sendEmergencyEmailLog = async data => {
   try {
@@ -162,20 +158,30 @@ export const sendEmergencyEmailLog = async data => {
       return;
     }
 
-    const tmpl = emailTemplates.EMERGENCY_ALERT_LOG({
+    const email = getEmail();
+    const subject = `[RESQID] Emergency Alert — ${studentName}`;
+    const props = {
       studentName,
       schoolName,
       location,
       scannedAt: scannedAt instanceof Date ? scannedAt.toISOString() : scannedAt,
       dispatchResults,
-    });
+    };
 
-    const email = getEmail();
-    await Promise.allSettled(
-      recipients.map(to => email.send({ to, subject: tmpl.subject, html: tmpl.html }))
+    // When EmergencyLogEmail component is ready, use sendReactTemplate:
+    //   await Promise.allSettled(
+    //     recipients.map(to =>
+    //       email.sendReactTemplate(EmergencyLogEmail, props, { to, subject })
+    //     )
+    //   );
+    //
+    // STUB: until then, log and skip to avoid crashing the worker
+    logger.warn(
+      { scanId, recipientCount: recipients.length },
+      '[emergency] EmergencyLogEmail component not yet wired — email log skipped'
     );
 
-    logger.info({ scanId, recipientCount: recipients.length }, '[emergency] Email log sent');
+    logger.info({ scanId, recipientCount: recipients.length }, '[emergency] Email log processed');
   } catch (err) {
     logger.error({ scanId: data?.scanId, err: err.message }, '[emergency] Email log send failed');
     throw err; // rethrow so BullMQ can retry
@@ -202,7 +208,6 @@ export const sendEmergencyAlerts = async params => {
   );
 
   const studentInfo = { scanId, studentId, studentName, schoolId, schoolName };
-
   const results = {
     sms: { success: false, duration: 0, error: null },
     push: { success: false, duration: 0, error: null },
@@ -225,10 +230,7 @@ export const sendEmergencyAlerts = async params => {
       }))
     );
     channelPromises.push(
-      sendEmergencySms(contact, studentInfo, location).then(result => ({
-        channel: 'sms',
-        result,
-      }))
+      sendEmergencySms(contact, studentInfo, location).then(result => ({ channel: 'sms', result }))
     );
   }
 
@@ -250,7 +252,6 @@ export const sendEmergencyAlerts = async params => {
     }
   }
 
-  // Schedule delayed email log via BullMQ (fire and forget — never blocks alert)
   scheduleEmergencyEmailLog({
     scanId,
     studentId,

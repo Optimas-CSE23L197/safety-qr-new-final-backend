@@ -1,10 +1,10 @@
 // =============================================================================
 // orchestrator/notifications/notification.dispatcher.js — RESQID
 //
-// Event type → channel decision.
-// All FCM references removed. Expo push tokens only (expo_push_token field).
-// schoolUser model used for admin lookups (not schoolAdmin).
-// Templates imported from notification.templates.js (no inline HTML/strings).
+// Event type → channel routing.
+// Email templates use React Email components via ses.adapter.sendReactTemplate().
+// SMS/push content comes from notification.templates.js (single source of truth).
+// WhatsApp removed. Firebase/FCM removed. Expo tokens only.
 // =============================================================================
 
 import { EVENTS } from '../events/event.types.js';
@@ -13,8 +13,38 @@ import { sendEmailNotification } from './channel/email.js';
 import { sendPushNotificationChannel } from './channel/push.js';
 import { pushSSE } from '#infrastructure/sse/sse.service.js';
 import { smsTemplates, emailTemplates, pushTemplates } from './notification.templates.js';
+import { getEmail } from '#infrastructure/email/email.index.js';
 import { prisma } from '#config/prisma.js';
 import { logger } from '#config/logger.js';
+
+// ── Email send helper — handles React Email component or stub gracefully ───────
+
+/**
+ * Renders a React Email component and sends via SES.
+ * If Component is null (stub), logs a warning and skips — never throws.
+ */
+const sendReactEmail = async ({ to, tmpl, meta }) => {
+  if (!to || !tmpl) return { success: false, error: 'Missing to or template' };
+
+  if (!tmpl.Component) {
+    logger.warn(
+      { to, subject: tmpl.subject, stub: tmpl._stub ?? 'unknown' },
+      '[dispatcher] Email template Component not yet wired — skipping send'
+    );
+    return { success: false, error: 'Template not implemented yet' };
+  }
+
+  try {
+    const email = getEmail();
+    return await email.sendReactTemplate(tmpl.Component, tmpl.props, {
+      to,
+      subject: tmpl.subject,
+    });
+  } catch (err) {
+    logger.error({ err: err.message, to }, '[dispatcher] sendReactEmail failed');
+    return { success: false, error: err.message };
+  }
+};
 
 // ── Contact loaders ───────────────────────────────────────────────────────────
 
@@ -52,10 +82,6 @@ const loadUserContacts = async (userId, userType) => {
   return { email: null, expoTokens: [] };
 };
 
-/**
- * Load Expo push tokens for all active school admins.
- * Uses schoolUser model (not schoolAdmin).
- */
 const loadSchoolAdminExpoTokens = async schoolId => {
   if (!schoolId) return [];
   try {
@@ -75,9 +101,6 @@ const loadSchoolAdminExpoTokens = async schoolId => {
   }
 };
 
-/**
- * Load school admin userIds for SSE targeting.
- */
 const loadSchoolAdminUserIds = async schoolId => {
   if (!schoolId) return [];
   try {
@@ -87,18 +110,11 @@ const loadSchoolAdminUserIds = async schoolId => {
     });
     return users.map(u => u.id).filter(Boolean);
   } catch (err) {
-    logger.error(
-      { err: err.message, schoolId },
-      '[dispatcher] Failed to load admin userIds for SSE'
-    );
+    logger.error({ err: err.message, schoolId }, '[dispatcher] Failed to load admin userIds');
     return [];
   }
 };
 
-/**
- * Lazy school loader — cached per dispatch() call.
- * Returns { name, email, phone } or null.
- */
 const makeSchoolLoader = schoolId => {
   let _cached;
   return async () => {
@@ -169,10 +185,6 @@ const sendParallel = async (tasks, meta) => {
   return results;
 };
 
-/**
- * Fire SSE to all active school admins for real-time dashboard updates.
- * Never throws.
- */
 const sseToSchoolAdmins = async (schoolId, eventType, data) => {
   if (!schoolId) return;
   try {
@@ -200,7 +212,7 @@ export const dispatch = async event => {
 
   try {
     switch (type) {
-      // ── EMERGENCY_ALERT_TRIGGERED → Push first (2s), then SMS ────────────
+      // ── EMERGENCY_ALERT_TRIGGERED → push + SMS ────────────────────────────
       case EVENTS.EMERGENCY_ALERT_TRIGGERED: {
         const { studentName, schoolName, scannedAt, parentContacts, parentExpoTokens } = payload;
         const push = pushTemplates.EMERGENCY_ALERT({ studentName, schoolName });
@@ -208,11 +220,7 @@ export const dispatch = async event => {
 
         await timedSend(
           () =>
-            sendPushNotificationChannel({
-              tokens: parentExpoTokens ?? [],
-              ...push,
-              meta: logMeta,
-            }),
+            sendPushNotificationChannel({ tokens: parentExpoTokens ?? [], ...push, meta: logMeta }),
           'PUSH',
           logMeta
         );
@@ -232,9 +240,7 @@ export const dispatch = async event => {
         break;
       }
 
-      // ── USER_OTP_REQUESTED → SMS only (audit/retry path) ─────────────────
-      // NOTE: Primary OTP path is otp.service.js → msg91.adapter.sendOtp()
-      // This case is only for retry/replay scenarios via the queue.
+      // ── USER_OTP_REQUESTED → SMS only (queue retry path) ─────────────────
       case EVENTS.USER_OTP_REQUESTED: {
         const { phone, otp, namespace, expiryMinutes } = payload;
         const body =
@@ -256,7 +262,7 @@ export const dispatch = async event => {
         if (contacts.email) {
           const tmpl = emailTemplates.USER_DEVICE_LOGIN_NEW({ name, device, location, time });
           await timedSend(
-            () => sendEmailNotification({ to: contacts.email, ...tmpl, meta: logMeta }),
+            () => sendReactEmail({ to: contacts.email, tmpl, meta: logMeta }),
             'EMAIL',
             logMeta
           );
@@ -288,7 +294,7 @@ export const dispatch = async event => {
             ),
             school?.email
               ? timedSend(
-                  () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
+                  () => sendReactEmail({ to: school.email, tmpl, meta: logMeta }),
                   'EMAIL',
                   logMeta
                 )
@@ -324,7 +330,7 @@ export const dispatch = async event => {
             ),
             school?.email
               ? timedSend(
-                  () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
+                  () => sendReactEmail({ to: school.email, tmpl, meta: logMeta }),
                   'EMAIL',
                   logMeta
                 )
@@ -363,7 +369,7 @@ export const dispatch = async event => {
             ),
             school?.email
               ? timedSend(
-                  () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
+                  () => sendReactEmail({ to: school.email, tmpl, meta: logMeta }),
                   'EMAIL',
                   logMeta
                 )
@@ -400,7 +406,7 @@ export const dispatch = async event => {
             ),
             school?.email
               ? timedSend(
-                  () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
+                  () => sendReactEmail({ to: school.email, tmpl, meta: logMeta }),
                   'EMAIL',
                   logMeta
                 )
@@ -454,7 +460,7 @@ export const dispatch = async event => {
             ),
             school?.email
               ? timedSend(
-                  () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
+                  () => sendReactEmail({ to: school.email, tmpl, meta: logMeta }),
                   'EMAIL',
                   logMeta
                 )
@@ -489,7 +495,7 @@ export const dispatch = async event => {
             ),
             school?.email
               ? timedSend(
-                  () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
+                  () => sendReactEmail({ to: school.email, tmpl, meta: logMeta }),
                   'EMAIL',
                   logMeta
                 )
@@ -527,7 +533,7 @@ export const dispatch = async event => {
             ),
             school?.email
               ? timedSend(
-                  () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
+                  () => sendReactEmail({ to: school.email, tmpl, meta: logMeta }),
                   'EMAIL',
                   logMeta
                 )
@@ -573,7 +579,7 @@ export const dispatch = async event => {
             ),
             school?.email
               ? timedSend(
-                  () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
+                  () => sendReactEmail({ to: school.email, tmpl, meta: logMeta }),
                   'EMAIL',
                   logMeta
                 )
@@ -612,7 +618,7 @@ export const dispatch = async event => {
             ),
             school?.email
               ? timedSend(
-                  () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
+                  () => sendReactEmail({ to: school.email, tmpl, meta: logMeta }),
                   'EMAIL',
                   logMeta
                 )
@@ -648,7 +654,7 @@ export const dispatch = async event => {
 
         if (school?.email) {
           await timedSend(
-            () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
+            () => sendReactEmail({ to: school.email, tmpl, meta: logMeta }),
             'EMAIL',
             logMeta
           );
@@ -680,7 +686,7 @@ export const dispatch = async event => {
             ),
             school?.email
               ? timedSend(
-                  () => sendEmailNotification({ to: school.email, ...tmpl, meta: logMeta }),
+                  () => sendReactEmail({ to: school.email, tmpl, meta: logMeta }),
                   'EMAIL',
                   logMeta
                 )
@@ -699,7 +705,7 @@ export const dispatch = async event => {
         const tmpl = emailTemplates.SCHOOL_ONBOARDED({ schoolName, adminName, dashboardUrl });
         if (adminEmail) {
           await timedSend(
-            () => sendEmailNotification({ to: adminEmail, ...tmpl, meta: logMeta }),
+            () => sendReactEmail({ to: adminEmail, tmpl, meta: logMeta }),
             'EMAIL',
             logMeta
           );
@@ -711,20 +717,18 @@ export const dispatch = async event => {
       case EVENTS.SCHOOL_RENEWAL_DUE: {
         const { schoolName, adminEmail, schoolPhone, expiryDate, renewUrl } = payload;
         const tmpl = emailTemplates.SCHOOL_RENEWAL_DUE({ schoolName, expiryDate, renewUrl });
-        const smsBody = smsTemplates.STUDENT_CARD_EXPIRING
-          ? `ResQID: ${schoolName} subscription expires on ${expiryDate}. Renew at: ${renewUrl ?? 'getresqid.in/renew'}`
-          : null;
+        const smsBody = smsTemplates.SCHOOL_RENEWAL_DUE({ schoolName, expiryDate, renewUrl });
 
         await sendParallel(
           [
             adminEmail
               ? timedSend(
-                  () => sendEmailNotification({ to: adminEmail, ...tmpl, meta: logMeta }),
+                  () => sendReactEmail({ to: adminEmail, tmpl, meta: logMeta }),
                   'EMAIL',
                   logMeta
                 )
               : Promise.resolve(),
-            schoolPhone && smsBody
+            schoolPhone
               ? timedSend(
                   () => sendSmsNotification({ to: schoolPhone, body: smsBody, meta: logMeta }),
                   'SMS',
@@ -768,18 +772,13 @@ export const dispatch = async event => {
         break;
       }
 
-      // ── STUDENT_QR_SCANNED → push (non-emergency scan notification) ───────
+      // ── STUDENT_QR_SCANNED → push only ────────────────────────────────────
       case EVENTS.STUDENT_QR_SCANNED: {
         const { studentName, location, parentExpoTokens, notifyEnabled } = payload;
         if (notifyEnabled && parentExpoTokens?.length) {
           const push = pushTemplates.STUDENT_QR_SCANNED({ studentName, location });
           await timedSend(
-            () =>
-              sendPushNotificationChannel({
-                tokens: parentExpoTokens,
-                ...push,
-                meta: logMeta,
-              }),
+            () => sendPushNotificationChannel({ tokens: parentExpoTokens, ...push, meta: logMeta }),
             'PUSH',
             logMeta
           );
