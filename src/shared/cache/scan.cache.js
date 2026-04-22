@@ -125,13 +125,17 @@ const SCAN_LOG_QUEUE_MAX = 50000;
 
 export const enqueueScanLog = async logEntry => {
   try {
+    console.log('[enqueueScanLog] attempting rpush, redis status:', redis.status);
     const queueLen = await redis.llen(SCAN_LOG_QUEUE_KEY);
+    console.log('[enqueueScanLog] llen result:', queueLen);
     if (queueLen >= SCAN_LOG_QUEUE_MAX) {
       logger.warn({ queueLen }, '[scan.cache] Scan log queue full — dropping entry');
       return;
     }
-    await redis.rpush(SCAN_LOG_QUEUE_KEY, JSON.stringify(logEntry));
+    const result = await redis.rpush(SCAN_LOG_QUEUE_KEY, JSON.stringify(logEntry));
+    console.log('[enqueueScanLog] rpush result:', result);
   } catch (err) {
+    console.error('[enqueueScanLog] FAILED:', err.message);
     logger.warn({ err: err.message }, '[scan.cache] enqueueScanLog failed');
   }
 };
