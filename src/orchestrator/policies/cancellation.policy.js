@@ -20,14 +20,16 @@ const CANCELLABLE_STATES = new Set([
  * Evaluate whether an order can be cancelled.
  *
  * Checks:
- *  1. Current state allows cancellation
- *  2. No tokens generated (or tokens not yet activated)
- *  3. Not shipped
- *  4. Printing not started
+ *  1. Actor authorization (Super Admin only in Phase 1)
+ *  2. Current state allows cancellation
+ *  3. No advance payment received (or refund handled)
+ *  4. No active tokens issued to parents
+ *  5. Printing not started
+ *  6. Not shipped
  *
  * @param {string} orderId
  * @param {object} actor - { id, role }
- * @returns {{ allowed: boolean, reason?: string }}
+ * @returns {Promise<{ allowed: boolean, reason?: string }>}
  */
 export async function evaluateCancellation(orderId, actor) {
   // Rule 1: Only super admin can cancel in Phase 1
@@ -39,9 +41,10 @@ export async function evaluateCancellation(orderId, actor) {
   const order = await prisma.cardOrder.findUnique({
     where: { id: orderId },
     include: {
-      tokens: { select: { id: true, status: true } }, // ✅ fetch all tokens
+      tokens: { select: { id: true, status: true } },
       cards: { where: { print_status: 'PRINTED' }, select: { id: true, print_status: true } },
       shipment: { select: { status: true } },
+      payments: { where: { status: 'SUCCESS' }, select: { id: true, amount: true } },
     },
   });
 
@@ -57,7 +60,16 @@ export async function evaluateCancellation(orderId, actor) {
     };
   }
 
-  // Rule 4: Check if any tokens are already ACTIVE (issued to parents)
+  // Rule 4: Check for advance payment (refund would be needed)
+  const hasAdvancePayment = order.payments.length > 0;
+  if (hasAdvancePayment) {
+    return {
+      allowed: false,
+      reason: 'Advance payment received — refund required before cancellation',
+    };
+  }
+
+  // Rule 5: Check if any tokens are already ACTIVE (issued to parents)
   const hasActiveTokens = order.tokens.some(t => t.status === 'ACTIVE');
   if (hasActiveTokens) {
     return {
@@ -66,7 +78,7 @@ export async function evaluateCancellation(orderId, actor) {
     };
   }
 
-  // Rule 5: Check if printing has started
+  // Rule 6: Check if printing has started
   const hasPrintedCards = order.cards.some(c => c.print_status === 'PRINTED');
   if (hasPrintedCards) {
     return {
@@ -75,7 +87,7 @@ export async function evaluateCancellation(orderId, actor) {
     };
   }
 
-  // Rule 6: Check if shipped
+  // Rule 7: Check if shipped
   if (
     order.shipment &&
     ['PICKED_UP', 'IN_TRANSIT', 'OUT_FOR_DELIVERY'].includes(order.shipment.status)
@@ -87,53 +99,4 @@ export async function evaluateCancellation(orderId, actor) {
   }
 
   return { allowed: true };
-}
-
-/**
- * Run cancellation guards (simplified for Phase 1)
- * @param {string} orderId
- * @returns {Promise<{ pass: boolean, reason?: string }>}
- */
-export async function runCancellationGuards(orderId) {
-  try {
-    const order = await prisma.cardOrder.findUnique({
-      where: { id: orderId },
-      include: {
-        payments: { where: { status: 'SUCCESS' }, select: { amount: true } },
-        tokens: { where: { status: 'ACTIVE' }, select: { id: true } },
-        cards: { where: { print_status: 'PRINTED' }, select: { id: true } },
-        shipment: { select: { status: true } },
-      },
-    });
-
-    if (!order) {
-      return { pass: false, reason: 'Order not found' };
-    }
-
-    // Check for advance payment (refund would be needed)
-    const hasAdvancePayment = order.payments.length > 0 && order.payments[0].amount > 0;
-    if (hasAdvancePayment) {
-      return { pass: false, reason: 'Advance payment received — refund required' };
-    }
-
-    // Check for active tokens
-    if (order.tokens.length > 0) {
-      return { pass: false, reason: 'Tokens already generated' };
-    }
-
-    // Check for printed cards
-    if (order.cards.length > 0) {
-      return { pass: false, reason: 'Cards already printed' };
-    }
-
-    // Check shipment status
-    if (order.shipment && order.shipment.status !== 'PENDING') {
-      return { pass: false, reason: 'Shipment already in progress' };
-    }
-
-    return { pass: true };
-  } catch (error) {
-    logger.error({ error: error.message, orderId }, '[cancellation.policy] Guard check failed');
-    return { pass: false, reason: 'Internal error checking cancellation guards' };
-  }
 }

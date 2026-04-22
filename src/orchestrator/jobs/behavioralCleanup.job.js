@@ -1,10 +1,6 @@
 // =============================================================================
 // orchestrator/jobs/behavioral.cleanup.job.js — RESQID
 // Nightly cleanup cron — runs at 2 AM IST every night.
-// Cleans: expired OTPs, rate limit records, expired sessions,
-//         blacklisted tokens, behavioral security Redis keys.
-//
-// DOES NOT delete OrderStatusLog or AuditLog — those are compliance records.
 // =============================================================================
 
 import { prisma } from '#config/prisma.js';
@@ -13,28 +9,32 @@ import { logger } from '#config/logger.js';
 import { behavioralCleanup } from '#middleware/security/behavioralSecurity.middleware.js';
 
 /**
- * Run all nightly cleanup tasks.
- * Called by scheduler.js — not a cron by itself, scheduler owns the schedule.
- *
- * @returns {Promise<object>} cleanup summary
+ * Scan Redis keys safely using cursor — O(1) per batch, non-blocking.
  */
+const scanKeys = async pattern => {
+  const keys = [];
+  let cursor = '0';
+  do {
+    const [nextCursor, batch] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+    cursor = nextCursor;
+    keys.push(...batch);
+  } while (cursor !== '0');
+  return keys;
+};
+
 export const runBehavioralCleanup = async () => {
   const startTime = Date.now();
   const summary = {};
 
   logger.info({ job: 'behavioral_cleanup' }, '[behavioral.cleanup] Job started');
 
-  // ── 1. Expired OTPs ──────────────────────────────────────────────────────
-  // NOTE: redis.keys() is O(N) and blocks the Redis event loop.
-  // Safe at current scale (< 1k keys). If key count grows past ~10k,
-  // replace with a cursor-based redis.scan() loop.
+  // 1. Expired OTPs
   try {
-    const otpKeys = await redis.keys('otp:*');
+    const otpKeys = await scanKeys('otp:*');
     let deletedOtps = 0;
     for (const key of otpKeys) {
       const ttl = await redis.ttl(key);
       if (ttl === -1) {
-        // no expiry — should not happen, but clean up defensively
         await redis.del(key);
         deletedOtps++;
       }
@@ -46,12 +46,10 @@ export const runBehavioralCleanup = async () => {
     summary.otpCleanupError = err.message;
   }
 
-  // ── 2. Expired sessions (DB) ─────────────────────────────────────────────
+  // 2. Expired sessions
   try {
     const result = await prisma.session.deleteMany({
-      where: {
-        OR: [{ expires_at: { lt: new Date() } }, { is_revoked: true }],
-      },
+      where: { OR: [{ expires_at: { lt: new Date() } }, { is_revoked: true }] },
     });
     summary.deletedSessions = result.count;
     logger.info({ count: result.count }, '[behavioral.cleanup] Session cleanup done');
@@ -60,7 +58,7 @@ export const runBehavioralCleanup = async () => {
     summary.sessionCleanupError = err.message;
   }
 
-  // ── 3. Expired blacklisted tokens (DB) ───────────────────────────────────
+  // 3. Expired blacklisted tokens
   try {
     const result = await prisma.blacklistedToken.deleteMany({
       where: { expires_at: { lt: new Date() } },
@@ -72,13 +70,10 @@ export const runBehavioralCleanup = async () => {
     summary.blacklistCleanupError = err.message;
   }
 
-  // ── 4. Expired rate limit records (DB) ────────────────────────────────────
+  // 4. Expired rate limit records
   try {
     const result = await prisma.scanRateLimit.deleteMany({
-      where: {
-        blocked_until: { lt: new Date() },
-        blocked_reason: { not: null },
-      },
+      where: { blocked_until: { lt: new Date() }, blocked_reason: { not: null } },
     });
     summary.deletedRateLimitRecords = result.count;
     logger.info({ count: result.count }, '[behavioral.cleanup] Rate limit cleanup done');
@@ -87,7 +82,7 @@ export const runBehavioralCleanup = async () => {
     summary.rateLimitCleanupError = err.message;
   }
 
-  // ── 5. Behavioral security Redis keys (via existing middleware function) ──
+  // 5. Behavioral security Redis keys
   try {
     const behavResult = await behavioralCleanup();
     summary.behavioralKeys = behavResult;
@@ -97,11 +92,9 @@ export const runBehavioralCleanup = async () => {
     summary.behavioralCleanupError = err.message;
   }
 
-  // ── 6. Orphaned Redis idempotency keys with no TTL ────────────────────────
-  // NOTE: Same redis.keys() caveat as step 1 — replace with scan() if
-  // orch:idem:* key count exceeds ~10k.
+  // 6. Orphaned idempotency keys
   try {
-    const idemKeys = await redis.keys('orch:idem:*');
+    const idemKeys = await scanKeys('orch:idem:*');
     let deletedIdem = 0;
     for (const key of idemKeys) {
       const ttl = await redis.ttl(key);
@@ -118,10 +111,6 @@ export const runBehavioralCleanup = async () => {
   }
 
   const durationMs = Date.now() - startTime;
-  logger.info(
-    { job: 'behavioral_cleanup', ...summary, durationMs },
-    '[behavioral.cleanup] Job completed'
-  );
-
+  logger.info({ ...summary, durationMs }, '[behavioral.cleanup] Job completed');
   return { ...summary, durationMs };
 };

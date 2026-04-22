@@ -604,3 +604,47 @@ export function validateConfirmUpload(req, res, next) {
   req.validatedBody = result.data;
   next();
 }
+
+// Student basic info schema
+const studentBasicSchema = z.object({
+  first_name: z.string().min(1).max(100).optional(),
+  last_name: z.string().max(100).optional(),
+  class: z.string().max(50).optional(),
+  section: z.string().max(30).optional(),
+  dob: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'DOB must be YYYY-MM-DD')
+    .optional(),
+  gender: z.enum(['MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY']).optional(),
+});
+
+export function validateStudentBasic(req, res, next) {
+  const result = studentBasicSchema.safeParse(req.body);
+  if (!result.success) {
+    return res.status(400).json({
+      success: false,
+      code: 'VALIDATION_ERROR',
+      errors: result.error.flatten().fieldErrors,
+    });
+  }
+  req.validatedBody = result.data;
+  next();
+}
+
+// Parent profile schema
+const parentProfileSchema = z.object({
+  name: z.string().min(1).max(100),
+});
+
+export function validateParentProfile(req, res, next) {
+  const result = parentProfileSchema.safeParse(req.body);
+  if (!result.success) {
+    return res.status(400).json({
+      success: false,
+      code: 'VALIDATION_ERROR',
+      errors: result.error.flatten().fieldErrors,
+    });
+  }
+  req.validatedBody = result.data;
+  next();
+}

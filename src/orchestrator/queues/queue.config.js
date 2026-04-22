@@ -1,11 +1,15 @@
 // =============================================================================
-// orchestrator/queues/queue.config.js — RESQID PHASE 1
-// FIX [Q-1]: Removed invalid `timeout` field from defaultJobOptions.
-//            BullMQ does not support timeout here — it was silently ignored.
-//            Per-channel timeouts are enforced inside workers via Promise.race.
-// FIX [Q-2]: Removed `priority` from defaultJobOptions — priority is a per-job
-//            option set in event.publisher.js getJobOptions(), not queue-level.
-//            Setting it here would override per-job priority on every add().
+// orchestrator/queues/queue.config.js — RESQID
+//
+// RAILWAY (24/7):  emergencyAlertsQueue + notificationsQueue
+// LOCAL ONLY:      pipelineJobsQueue (npm run worker:pipeline)
+//
+// Changes from previous version:
+//   - backgroundJobsQueue removed (invoice + maintenance are direct calls now)
+//   - getQueueConnection() now returns a config object, not a shared instance
+//   - stalledInterval: 60_000 on all queues (was BullMQ default 30s)
+//   - maxStalledCount: 1 on all queues
+//   - keepAlive handled in connection config (300s not 30s)
 // =============================================================================
 
 import { Queue } from 'bullmq';
@@ -20,8 +24,12 @@ const makeQueue = (name, customOptions = {}) => {
     defaultJobOptions: {
       attempts: 3,
       backoff: { type: 'exponential', delay: 2000 },
-      removeOnComplete: { age: 86400, count: 1000 }, // 24h or 1000 jobs
-      removeOnFail: { age: 604800, count: 5000 }, // 7 days or 5000 jobs
+      removeOnComplete: { age: 86400, count: 1000 },
+      removeOnFail: { age: 604800, count: 5000 },
+    },
+    settings: {
+      stalledInterval: 60_000,
+      maxStalledCount: 1,
     },
     connection,
   };
@@ -33,6 +41,10 @@ const makeQueue = (name, customOptions = {}) => {
       ...defaultOptions.defaultJobOptions,
       ...(customOptions.defaultJobOptions ?? {}),
     },
+    settings: {
+      ...defaultOptions.settings,
+      ...(customOptions.settings ?? {}),
+    },
   });
 
   logger.info({ queueName: name }, '[queue.config] Queue initialized');
@@ -40,59 +52,51 @@ const makeQueue = (name, customOptions = {}) => {
 };
 
 // =============================================================================
-// PHASE 1 QUEUES
+// RAILWAY QUEUES — always on
 // =============================================================================
 
-// Sacred pipeline — isolated, highest priority, aggressive retry
 export const emergencyAlertsQueue = makeQueue(QUEUE_NAMES.EMERGENCY_ALERTS, {
   defaultJobOptions: {
     attempts: 5,
     backoff: { type: 'exponential', delay: 500 },
-    // No timeout here — emergency.worker.js enforces per-channel timeouts
-    // via Promise.race (push: 2s, SMS: 4s, WA: 4s)
     removeOnComplete: { age: 86400, count: 500 },
     removeOnFail: { age: 604800, count: 2000 },
   },
 });
 
-// Order lifecycle, school notifications — can tolerate a few seconds latency
 export const notificationsQueue = makeQueue(QUEUE_NAMES.NOTIFICATIONS, {
   defaultJobOptions: {
     attempts: 3,
     backoff: { type: 'exponential', delay: 1000 },
-    // No timeout here — notification.worker.js delegates to channel functions
-    // which have their own provider-level timeouts via axios/fcm SDK
-  },
-});
-
-// Token generation, card design, invoice, maintenance — long-running jobs
-export const backgroundJobsQueue = makeQueue(QUEUE_NAMES.BACKGROUND_JOBS, {
-  defaultJobOptions: {
-    attempts: 3,
-    backoff: { type: 'exponential', delay: 5000 },
-    removeOnComplete: { age: 86400, count: 500 },
-    removeOnFail: { age: 604800, count: 2000 },
-  },
-});
-
-export const pipelineJobsQueue = makeQueue(QUEUE_NAMES.PIPELINE_JOBS, {
-  defaultJobOptions: {
-    attempts: 3,
-    backoff: { type: 'exponential', delay: 5000 },
-    removeOnComplete: { age: 86400, count: 500 },
-    removeOnFail: { age: 604800, count: 2000 },
   },
 });
 
 // =============================================================================
-// QUEUE REGISTRY
+// LOCAL-ONLY QUEUE — npm run worker:pipeline (never deployed on Railway)
+// Only instantiated when ENABLE_PIPELINE_QUEUE=true
+// Prevents Railway from opening a Redis connection to a queue nobody consumes
+// =============================================================================
+
+export const pipelineJobsQueue =
+  process.env.ENABLE_PIPELINE_QUEUE === 'true'
+    ? makeQueue(QUEUE_NAMES.PIPELINE_JOBS, {
+        defaultJobOptions: {
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 5000 },
+          removeOnComplete: { age: 86400, count: 500 },
+          removeOnFail: { age: 604800, count: 2000 },
+        },
+      })
+    : null;
+
+// =============================================================================
+// QUEUE REGISTRY — only include instantiated queues
 // =============================================================================
 
 export const allQueues = {
   [QUEUE_NAMES.EMERGENCY_ALERTS]: emergencyAlertsQueue,
   [QUEUE_NAMES.NOTIFICATIONS]: notificationsQueue,
-  [QUEUE_NAMES.BACKGROUND_JOBS]: backgroundJobsQueue,
-  [QUEUE_NAMES.PIPELINE_JOBS]: pipelineJobsQueue,
+  ...(pipelineJobsQueue ? { [QUEUE_NAMES.PIPELINE_JOBS]: pipelineJobsQueue } : {}),
 };
 
 export const getQueueByName = name => {

@@ -11,7 +11,6 @@ import { Router } from 'express';
 import {
   emergencyAlertsQueue,
   notificationsQueue,
-  backgroundJobsQueue,
   pipelineJobsQueue,
 } from '#orchestrator/queues/queue.config.js';
 import { authenticate } from '#middleware/auth/auth.middleware.js';
@@ -21,19 +20,23 @@ import { requireSuperAdmin } from '#middleware/auth/rbac.middleware.js';
 const serverAdapter = new ExpressAdapter();
 serverAdapter.setBasePath('/api/admin/queues');
 
+// Build queue list dynamically — only include instantiated queues
+const queues = [new BullMQAdapter(emergencyAlertsQueue), new BullMQAdapter(notificationsQueue)];
+
+// pipelineJobsQueue is null on Railway — only add if instantiated
+if (pipelineJobsQueue) {
+  queues.push(new BullMQAdapter(pipelineJobsQueue));
+}
+
 createBullBoard({
-  queues: [
-    new BullMQAdapter(emergencyAlertsQueue),
-    new BullMQAdapter(notificationsQueue),
-    new BullMQAdapter(backgroundJobsQueue),
-    new BullMQAdapter(pipelineJobsQueue),
-  ],
+  queues,
   serverAdapter,
 });
 
 // ── Router ────────────────────────────────────────────────────────────────────
 const router = Router();
 
-router.use('/', serverAdapter.getRouter());
+// Protect with auth + super admin only
+router.use('/', authenticate, requireSuperAdmin, serverAdapter.getRouter());
 
 export default router;

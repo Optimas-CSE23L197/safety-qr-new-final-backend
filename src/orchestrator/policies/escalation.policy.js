@@ -5,7 +5,7 @@
 
 import { logger } from '#config/logger.js';
 
-const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL;
+const SLACK_WEBHOOK_URL = process.env.SLACK_ALERTS_WEBHOOK;
 
 /**
  * Fire a Slack webhook with a structured message.
@@ -18,7 +18,7 @@ const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL;
  */
 export const notifySlack = async ({ title, level = 'warning', fields = {} }) => {
   if (!SLACK_WEBHOOK_URL) {
-    logger.warn({ title }, '[escalation] SLACK_WEBHOOK_URL not set — skipping Slack alert');
+    logger.warn({ title }, '[escalation] SLACK_ALERTS_WEBHOOK not set — skipping Slack alert');
     return;
   }
 

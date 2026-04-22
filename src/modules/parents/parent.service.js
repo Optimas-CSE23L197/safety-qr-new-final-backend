@@ -879,3 +879,115 @@ export async function updateParentAvatar(parentId, avatarUrl) {
 
   return { avatar_url: avatarUrl };
 }
+
+// =============================================================================
+// STUDENT PHOTO UPLOAD — FIXED (stores URL in DB)
+// =============================================================================
+
+export async function confirmStudentPhotoUpload(parentId, studentId, key, nonce) {
+  const nonceKey = `upload:nonce:${nonce}`;
+  const nonceData = await redis.get(nonceKey);
+
+  if (!nonceData) {
+    throw new ApiError('Upload session expired', 400);
+  }
+
+  const { parentId: storedParentId, studentId: storedStudentId } = JSON.parse(nonceData);
+
+  if (storedParentId !== parentId || storedStudentId !== studentId) {
+    throw new ApiError('Invalid upload confirmation', 403);
+  }
+
+  const cdnDomain = process.env.AWS_CDN_DOMAIN || 'assets.getresqid.in';
+  const photoUrl = `https://${cdnDomain}/${key}`;
+
+  // ✅ FIX: Actually store the URL in database
+  await prisma.student.update({
+    where: { id: studentId },
+    data: { photo_url: photoUrl },
+  });
+
+  await redis.del(nonceKey);
+  await invalidateParentHome(parentId);
+
+  return { success: true, photo_url: photoUrl };
+}
+
+// =============================================================================
+// STUDENT BASIC INFO (name, class, dob, gender)
+// =============================================================================
+
+export async function updateStudentBasicInfo(parentId, studentId, data) {
+  const link = await repo.findParentStudentLink(parentId, studentId);
+  if (!link) throw new ApiError('Student not linked to this parent', 403);
+
+  const updateData = {};
+
+  if (data.first_name !== undefined) updateData.first_name = data.first_name?.trim();
+  if (data.last_name !== undefined) updateData.last_name = data.last_name?.trim();
+  if (data.class !== undefined) updateData.class = data.class?.trim();
+  if (data.section !== undefined) updateData.section = data.section?.trim();
+  if (data.gender !== undefined) updateData.gender = data.gender;
+
+  // Encrypt DOB if provided
+  if (data.dob !== undefined) {
+    updateData.dob_encrypted = encryptField(data.dob);
+  }
+
+  await prisma.student.update({
+    where: { id: studentId },
+    data: updateData,
+  });
+
+  await invalidateParentHome(parentId);
+
+  return { success: true };
+}
+
+// =============================================================================
+// PARENT AVATAR UPLOAD CONFIRM
+// =============================================================================
+
+export async function confirmParentAvatarUpload(parentId, key, nonce) {
+  const nonceKey = `upload:nonce:${nonce}`;
+  const nonceData = await redis.get(nonceKey);
+
+  if (!nonceData) {
+    throw new ApiError('Upload session expired', 400);
+  }
+
+  const { parentId: storedParentId } = JSON.parse(nonceData);
+
+  if (storedParentId !== parentId) {
+    throw new ApiError('Invalid upload confirmation', 403);
+  }
+
+  const cdnDomain = process.env.AWS_CDN_DOMAIN || 'assets.getresqid.in';
+  const avatarUrl = `https://${cdnDomain}/${key}`;
+
+  // ✅ Store avatar URL
+  await prisma.parentUser.update({
+    where: { id: parentId },
+    data: { avatar_url: avatarUrl },
+  });
+
+  await redis.del(nonceKey);
+  await invalidateParentHome(parentId);
+
+  return { success: true, avatar_url: avatarUrl };
+}
+
+// =============================================================================
+// PARENT PROFILE (name only — email/phone handled separately)
+// =============================================================================
+
+export async function updateParentName(parentId, name) {
+  await prisma.parentUser.update({
+    where: { id: parentId },
+    data: { name: name?.trim() },
+  });
+
+  await invalidateParentHome(parentId);
+
+  return { success: true, name };
+}

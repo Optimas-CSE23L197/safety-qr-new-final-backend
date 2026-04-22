@@ -1,9 +1,10 @@
 // =============================================================================
-// invoice.job.js — FIXED VERSION
+// orchestrator/jobs/invoice.job.js — RESQID
+// Direct invoice generation — called from completion/delivery handlers.
 // =============================================================================
 
 import { prisma } from '#config/prisma.js';
-import logger from '#shared/logger/logger.js';
+import { logger } from '#config/logger.js';
 
 export const generateOrderInvoice = async orderId => {
   try {
@@ -19,10 +20,9 @@ export const generateOrderInvoice = async orderId => {
       throw new Error(`Order not found: ${orderId}`);
     }
 
-    // ✅ Determine invoice type based on payment status
     const invoiceType = order.payment_status === 'PARTIALLY_PAID' ? 'PARTIAL' : 'FINAL';
 
-    // ✅ Check for existing invoice with correct type to avoid duplicates
+    // Check for existing invoice to avoid duplicates
     const existingInvoice = await prisma.invoice.findFirst({
       where: {
         order_id: orderId,
@@ -32,43 +32,40 @@ export const generateOrderInvoice = async orderId => {
     });
 
     if (existingInvoice) {
-      logger.info({ orderId, invoiceType }, 'Invoice already exists');
+      logger.info({ orderId, invoiceType }, '[invoice.job] Invoice already exists');
       return existingInvoice;
     }
 
-    // ✅ Generate collision-safe invoice number
     const issuedAt = new Date();
+    const dueAt = new Date(issuedAt);
+    dueAt.setDate(dueAt.getDate() + 7);
+
     const invoiceNumber = `INV-${invoiceType}-${order.order_number}-${Date.now()}`;
 
-    // Calculate amounts
     const subtotal = (order.unit_price ?? 0) * order.student_count;
     const taxAmount = Math.round(subtotal * 0.18);
     const totalAmount =
-      invoiceType === 'PARTIAL'
-        ? Math.round((subtotal + taxAmount) * 0.5) // 50% advance for partial
-        : subtotal + taxAmount;
+      invoiceType === 'PARTIAL' ? Math.round((subtotal + taxAmount) * 0.5) : subtotal + taxAmount;
 
-    // Create invoice
     const invoice = await prisma.invoice.create({
       data: {
         school_id: order.school_id,
-        subscription_id: order.subscription_id,
+        subscription_id: order.subscription_id ?? null,
         order_id: order.id,
         invoice_number: invoiceNumber,
         category: 'ORDER_INVOICE',
         order_invoice_type: invoiceType,
         student_count: order.student_count,
-        unit_price: order.unit_price ?? 0, // ✅ Use order's unit_price, not hardcoded 0
+        unit_price: order.unit_price ?? 0,
         amount: subtotal,
         tax_amount: taxAmount,
         total_amount: totalAmount,
         status: 'ISSUED',
         issued_at: issuedAt,
-        due_at: new Date(issuedAt.setDate(issuedAt.getDate() + 7)),
+        due_at: dueAt,
       },
     });
 
-    // ✅ Update order with invoice reference
     if (invoiceType === 'PARTIAL') {
       await prisma.cardOrder.update({
         where: { id: order.id },
@@ -81,10 +78,10 @@ export const generateOrderInvoice = async orderId => {
       });
     }
 
-    logger.info({ orderId, invoiceId: invoice.id, invoiceType }, 'Invoice generated successfully');
+    logger.info({ orderId, invoiceId: invoice.id, invoiceType }, '[invoice.job] Invoice generated');
     return invoice;
   } catch (err) {
-    logger.error({ orderId, err: err.message }, 'Failed to generate invoice');
+    logger.error({ orderId, err: err.message }, '[invoice.job] Failed to generate invoice');
     throw err;
   }
 };

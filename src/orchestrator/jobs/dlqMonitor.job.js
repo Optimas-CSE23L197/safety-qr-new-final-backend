@@ -15,7 +15,6 @@ export const executeDlqMonitor = async () => {
   logger.info('[dlqMonitor] Job started');
 
   try {
-    // Get unresolved DLQ entries from database
     const unresolvedCount = await prisma.deadLetterQueue.count({
       where: { resolved: false },
     });
@@ -39,7 +38,6 @@ export const executeDlqMonitor = async () => {
       '[dlqMonitor] DLQ stats'
     );
 
-    // Create dashboard notifications if there are unresolved jobs
     let notificationSent = false;
     if (unresolvedCount > 0) {
       await notifySuperAdmins(unresolvedCount, recentUnresolved);
@@ -70,7 +68,7 @@ const notifySuperAdmins = async (count, jobs) => {
 
     if (superAdmins.length === 0) return;
 
-    // Check for existing recent notification
+    // Check for ANY unread DLQ notification in last 15 minutes — avoid spam
     const existingNotification = await prisma.dashboardNotification.findFirst({
       where: {
         type: 'DLQ_NEW_ENTRY',
@@ -79,8 +77,8 @@ const notifySuperAdmins = async (count, jobs) => {
       },
     });
 
-    if (existingNotification?.metadata?.dlqCount === count) {
-      logger.debug('[dlqMonitor] Skipping duplicate notification');
+    if (existingNotification) {
+      logger.debug('[dlqMonitor] Skipping notification — unread DLQ alert already exists');
       return;
     }
 

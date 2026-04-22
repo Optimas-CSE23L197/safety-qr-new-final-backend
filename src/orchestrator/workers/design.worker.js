@@ -1,11 +1,10 @@
 // src/orchestrator/workers/design.worker.js
 // Design Worker — standalone entry: npm run worker:design
-// Delegates ALL generation logic to design.service.js
 // =============================================================================
 
 import 'dotenv/config';
 import { Worker } from 'bullmq';
-import { workerRedis } from '#config/redis.js';
+import { redis as workerRedis } from '#config/redis.js';
 import { logger } from '#config/logger.js';
 import { prisma } from '#config/prisma.js';
 import { QUEUE_NAMES } from '../queues/queue.names.js';
@@ -22,10 +21,6 @@ import { EVENTS } from '../events/event.types.js';
 import { applyTransition } from '../state/order.guards.js';
 import { ORDER_STATUS } from '../state/order.states.js';
 import { generateCards } from '../services/designer.service.js';
-
-// =============================================================================
-// JOB PROCESSOR
-// =============================================================================
 
 export async function processDesignJob(job) {
   const { orderId, jobExecutionId, event, designConfig } = job.data;
@@ -46,7 +41,6 @@ export async function processDesignJob(job) {
   let stepExecution = null;
 
   try {
-    // Find or create pipeline record
     let pipeline = await prisma.orderPipeline.findFirst({
       where: { order_id: orderId },
       select: { id: true },
@@ -74,7 +68,6 @@ export async function processDesignJob(job) {
       jobExecutionId || job.id
     );
 
-    // Delegate to design service
     const result = await generateCards({
       orderId,
       customPositions: designConfig ?? null,
@@ -83,13 +76,11 @@ export async function processDesignJob(job) {
       },
     });
 
-    // Fetch order for state transition
     const order = await prisma.cardOrder.findUniqueOrThrow({
       where: { id: orderId },
-      select: { status: true, school_id: true, order_number: true },
+      select: { school_id: true, order_number: true },
     });
 
-    // Update order
     await prisma.cardOrder.update({
       where: { id: orderId },
       data: {
@@ -105,10 +96,9 @@ export async function processDesignJob(job) {
       },
     });
 
-    // State transition
+    // FIXED: removed 'from' parameter
     await applyTransition({
       orderId,
-      from: order.status,
       to: ORDER_STATUS.CARD_DESIGN,
       actorId: 'SYSTEM',
       actorType: 'WORKER',
@@ -117,7 +107,6 @@ export async function processDesignJob(job) {
       eventPayload: { orderNumber: order.order_number, pdfUrl: result.pdfUrl },
     });
 
-    // Notify super admin dashboard
     await publishEvent(EVENTS.ORDER_CARD_DESIGN_COMPLETE, orderId, {
       orderId,
       generatedCount: result.generated,
@@ -157,17 +146,13 @@ export async function processDesignJob(job) {
   }
 }
 
-// =============================================================================
-// WORKER FACTORY
-// =============================================================================
-
 export function createDesignWorker() {
   const worker = new Worker(QUEUE_NAMES.PIPELINE_JOBS, job => processDesignJob(job), {
     connection: workerRedis,
-    concurrency: 1, // CPU-intensive — keep at 1
+    concurrency: 1,
     stalledInterval: 90_000,
     maxStalledCount: 3,
-    lockDuration: 600_000, // 10min — large orders take time
+    lockDuration: 600_000,
   });
 
   worker.on('completed', (job, result) => {
@@ -185,10 +170,6 @@ export function createDesignWorker() {
   logger.info({ msg: 'Design worker created', queue: QUEUE_NAMES.PIPELINE_JOBS });
   return worker;
 }
-
-// =============================================================================
-// STANDALONE ENTRY — npm run worker:design
-// =============================================================================
 
 const worker = createDesignWorker();
 logger.info({ msg: '🎨 Design worker started', queue: QUEUE_NAMES.PIPELINE_JOBS });

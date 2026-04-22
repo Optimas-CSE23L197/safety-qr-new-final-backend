@@ -1,80 +1,55 @@
 // =============================================================================
 // orchestrator/workers/scan.worker.js — RESQID
 //
-// Background worker for scan-related async tasks.
+// NO BullMQ worker here. Plain async functions + setInterval only.
 //
 // RESPONSIBILITIES:
-//   1. Drain Redis scan log queue → bulk insert to DB (every 5 seconds)
-//   2. Sync DB IP blocklist → Redis on startup (warm the Redis blocklist)
-//   3. Expire stale IpBlocklist rows from DB (every 6 hours)
+//   1. On startup → sync DB IP blocklist → Redis
+//   2. Every 60s  → drain Redis scan log queue → bulk insert to Postgres
+//   3. Every 6h   → expire stale IpBlocklist rows from DB
 //
-// WHY A SEPARATE SCAN WORKER:
-//   The hot path (resolveScan) never touches Postgres for log writes.
-//   Instead, log entries are pushed to a Redis list.
-//   This worker drains that list in batches, keeping Postgres write load
-//   flat regardless of scan volume.
+// WHY NO BULLMQ:
+//   The log drain runs every 60s — BullMQ overhead (ZADD, HSET, LRANGE per job)
+//   would cost more Redis commands than the drain itself.
+//   Plain setInterval = 2 Redis commands per cycle (LRANGE + LTRIM), nothing more.
 //
-//   Under a DDoS at 1000 scans/min:
-//     Without worker: 1000 Postgres inserts/min on the hot path
-//     With worker:    1 bulk insert of 1000 rows every 60 seconds
-//
-// QUEUE:
-//   Uses BullMQ 'background' queue for the IP sync + expire jobs.
-//   The log drain runs on a plain setInterval — not a BullMQ job —
-//   because it runs every 5 seconds and BullMQ overhead would be wasteful.
-//
-// CONCURRENCY:
-//   concurrency: 1 — log drain is serial, no race condition on ltrim.
+// COMMAND COUNT:
+//   2 commands × 1/min × 1440 min = 2,880 commands/day (was 34,560/day at 5s)
 // =============================================================================
 
-import { Worker, Queue } from 'bullmq';
-import { getQueueConnection } from '../queues/queue.connection.js';
-import { QUEUE_NAMES } from '../queues/queue.names.js';
 import { prisma } from '#config/prisma.js';
 import { redis } from '#config/redis.js';
 import { logger } from '#config/logger.js';
 import { drainScanLogQueue } from '#shared/cache/scan.cache.js';
 import { bulkWriteScanLogs } from '../../modules/scan/scan.repository.js';
 
-const DRAIN_INTERVAL_MS = 5_000; // drain log queue every 5 seconds
-const DRAIN_BATCH_SIZE = 500; // max entries per drain cycle
+const DRAIN_INTERVAL_MS = 60_000; // 60s — was 5s, saves ~32k commands/day
+const EXPIRE_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h
+const DRAIN_BATCH_SIZE = 500;
 
 let _drainInterval = null;
-let _worker = null;
+let _expireInterval = null;
 
 // =============================================================================
-// LOG DRAIN — plain setInterval (not BullMQ, runs every 5s)
+// LOG DRAIN
 // =============================================================================
 
 const runLogDrain = async () => {
   try {
     const entries = await drainScanLogQueue(DRAIN_BATCH_SIZE);
     if (!entries.length) return;
-
     await bulkWriteScanLogs(entries);
-
     logger.debug({ count: entries.length }, '[scan.worker] Scan log batch inserted');
   } catch (err) {
     logger.error({ err: err.message }, '[scan.worker] Log drain cycle failed');
-    // Do not rethrow — next cycle will pick up remaining entries
   }
 };
 
 // =============================================================================
-// BULLMQ JOBS — IP sync and blocklist expiry
+// IP BLOCKLIST SYNC — runs on startup + every 6h
 // =============================================================================
 
-const JOB_NAMES = {
-  SYNC_IP_BLOCKLIST: 'scan:sync_ip_blocklist',
-  EXPIRE_IP_BLOCKLIST: 'scan:expire_ip_blocklist',
-};
-
-/**
- * Sync active DB IP blocklist entries to Redis.
- * Runs on startup and every 15 minutes via repeatable job.
- * Ensures Redis is authoritative even after a Redis restart.
- */
-const syncIpBlocklistToRedis = async () => {
+export const syncIpBlocklistToRedis = async () => {
   try {
     const activeBlocks = await prisma.ipBlocklist.findMany({
       where: {
@@ -93,7 +68,6 @@ const syncIpBlocklistToRedis = async () => {
         const ttl = Math.floor((block.expires_at.getTime() - Date.now()) / 1000);
         if (ttl > 0) pipeline.set(key, block.reason, 'EX', ttl);
       } else {
-        // No expiry — set 30 day TTL as a safety cap
         pipeline.set(key, block.reason, 'EX', 60 * 60 * 24 * 30);
       }
     }
@@ -105,17 +79,10 @@ const syncIpBlocklistToRedis = async () => {
   }
 };
 
-/**
- * Deactivate expired IpBlocklist rows in DB.
- * Keeps the DB table clean. Runs every 6 hours.
- */
 const expireIpBlocklistRows = async () => {
   try {
     const result = await prisma.ipBlocklist.updateMany({
-      where: {
-        is_active: true,
-        expires_at: { lt: new Date() },
-      },
+      where: { is_active: true, expires_at: { lt: new Date() } },
       data: { is_active: false },
     });
     if (result.count > 0) {
@@ -126,86 +93,27 @@ const expireIpBlocklistRows = async () => {
   }
 };
 
-// ── BullMQ job processor ──────────────────────────────────────────────────────
-
-const processScanJob = async job => {
-  switch (job.name) {
-    case JOB_NAMES.SYNC_IP_BLOCKLIST:
-      await syncIpBlocklistToRedis();
-      break;
-
-    case JOB_NAMES.EXPIRE_IP_BLOCKLIST:
-      await expireIpBlocklistRows();
-      break;
-
-    default:
-      logger.warn({ jobName: job.name }, '[scan.worker] Unknown job name — skipping');
-  }
-};
-
 // =============================================================================
-// WORKER LIFECYCLE
+// LIFECYCLE
 // =============================================================================
 
 export const startScanWorker = async () => {
-  if (_worker) return _worker;
-
-  // 1. Warm Redis blocklist on startup — before accepting any traffic
+  // 1. Warm Redis blocklist immediately on startup
   logger.info('[scan.worker] Warming IP blocklist cache...');
   await syncIpBlocklistToRedis();
 
-  // 2. Start log drain interval
+  // 2. Log drain — every 60s
   _drainInterval = setInterval(runLogDrain, DRAIN_INTERVAL_MS);
-  // Ensure interval doesn't prevent process exit
   if (_drainInterval.unref) _drainInterval.unref();
 
-  // 3. Start BullMQ worker for scheduled jobs
-  _worker = new Worker(QUEUE_NAMES.BACKGROUND, processScanJob, {
-    connection: getQueueConnection(),
-    concurrency: 1,
-  });
-
-  _worker.on('completed', job => {
-    logger.debug({ jobName: job.name }, '[scan.worker] Job completed');
-  });
-
-  _worker.on('failed', (job, err) => {
-    logger.error({ jobName: job?.name, err: err.message }, '[scan.worker] Job failed');
-  });
-
-  _worker.on('error', err => {
-    logger.error({ err: err.message }, '[scan.worker] Worker error');
-  });
-
-  // 4. Schedule repeatable jobs if not already scheduled
-  const queue = new Queue(QUEUE_NAMES.BACKGROUND, { connection: getQueueConnection() });
-
-  await queue.add(
-    JOB_NAMES.SYNC_IP_BLOCKLIST,
-    {},
-    {
-      repeat: { every: 15 * 60 * 1000 }, // every 15 minutes
-      jobId: JOB_NAMES.SYNC_IP_BLOCKLIST,
-    }
-  );
-
-  await queue.add(
-    JOB_NAMES.EXPIRE_IP_BLOCKLIST,
-    {},
-    {
-      repeat: { every: 6 * 60 * 60 * 1000 }, // every 6 hours
-      jobId: JOB_NAMES.EXPIRE_IP_BLOCKLIST,
-    }
-  );
-
-  await queue.close();
+  // 3. IP blocklist expiry — every 6h
+  _expireInterval = setInterval(expireIpBlocklistRows, EXPIRE_INTERVAL_MS);
+  if (_expireInterval.unref) _expireInterval.unref();
 
   logger.info(
-    { queue: QUEUE_NAMES.BACKGROUND, drainIntervalMs: DRAIN_INTERVAL_MS },
-    '[scan.worker] Started'
+    { drainIntervalMs: DRAIN_INTERVAL_MS },
+    '[scan.worker] Started (no BullMQ — plain intervals)'
   );
-
-  return _worker;
 };
 
 export const stopScanWorker = async () => {
@@ -213,12 +121,11 @@ export const stopScanWorker = async () => {
     clearInterval(_drainInterval);
     _drainInterval = null;
   }
+  if (_expireInterval) {
+    clearInterval(_expireInterval);
+    _expireInterval = null;
+  }
   // Final drain before shutdown — don't lose buffered logs
   await runLogDrain();
-
-  if (_worker) {
-    await _worker.close();
-    _worker = null;
-    logger.info('[scan.worker] Stopped');
-  }
+  logger.info('[scan.worker] Stopped');
 };

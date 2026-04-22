@@ -93,14 +93,16 @@ export async function validateRuntimeConfig() {
     warnings.push(`Redis worker client: ${err.message}`);
   }
 
-  // 2. Validate S3 bucket accessibility
+  // 2. Validate storage accessibility (via infrastructure module)
   try {
-    const s3Health = await import('./s3.js').then(m => m.checkS3Health());
-    if (s3Health.status !== 'ok') {
-      errors.push(`S3 bucket ${BUCKET}: ${s3Health.error || 'inaccessible'}`);
+    const { getStorage } = await import('#infrastructure/storage/storage.index.js');
+    const storage = getStorage();
+    if (storage) {
+      // Just check storage is initialized — actual bucket check happens on first upload
+      warnings.push('Storage initialized — bucket accessibility checked on first upload');
     }
   } catch (err) {
-    warnings.push(`S3 health check: ${err.message}`);
+    warnings.push(`Storage initialization: ${err.message}`);
   }
 
   // 3. Validate database connectivity
@@ -110,7 +112,7 @@ export async function validateRuntimeConfig() {
     errors.push(`Database: ${err.message}`);
   }
 
-  // 4. Check for duplicate secrets (additional check)
+  // 4. Check for duplicate secrets
   const allSecrets = [
     ENV.JWT_ACCESS_SECRET,
     ENV.JWT_REFRESH_SECRET,
@@ -118,7 +120,7 @@ export async function validateRuntimeConfig() {
     ENV.TOKEN_HASH_SECRET,
     ENV.SCAN_CODE_SECRET,
     ENV.LOOKUP_HASH_SECRET,
-  ];
+  ].filter(Boolean);
 
   const uniqueSecrets = new Set(allSecrets);
   if (uniqueSecrets.size !== allSecrets.length) {
@@ -141,13 +143,22 @@ export async function validateRuntimeConfig() {
 
   // 6. Check for development defaults in production
   if (ENV.IS_PROD) {
-    if (ENV.JWT_ACCESS_EXPIRY === '15m' && !ENV.JWT_ACCESS_EXPIRY_CUSTOM) {
+    if (ENV.JWT_ACCESS_EXPIRY === '15m') {
       warnings.push('Using default JWT_ACCESS_EXPIRY (15m) - consider customizing');
     }
 
     if (!ENV.SENTRY_DSN) {
       warnings.push('SENTRY_DSN not configured - error monitoring unavailable');
     }
+
+    if (!ENV.SLACK_ALERTS_WEBHOOK) {
+      warnings.push('SLACK_ALERTS_WEBHOOK not configured - DLQ alerts disabled');
+    }
+  }
+
+  // 7. Worker config validation
+  if (ENV.ENABLE_PIPELINE_QUEUE && ENV.IS_PROD) {
+    warnings.push('ENABLE_PIPELINE_QUEUE=true in production — pipeline worker should run locally');
   }
 
   // Log results

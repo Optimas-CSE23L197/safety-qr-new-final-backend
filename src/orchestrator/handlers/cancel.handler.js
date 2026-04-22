@@ -7,7 +7,6 @@ import { prisma } from '#config/prisma.js';
 import { logger } from '#config/logger.js';
 import { applyTransition } from '../state/order.guards.js';
 import { ORDER_STATUS } from '../state/order.states.js';
-import { backgroundJobsQueue } from '../queues/queue.config.js';
 
 export const handleCancellation = async job => {
   const { orderId, schoolId, actorId, reason, triggerRefund = false } = job.data?.payload ?? {};

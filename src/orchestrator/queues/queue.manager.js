@@ -1,12 +1,8 @@
 // =============================================================================
-// orchestrator/queues/queue.manager.js — RESQID PHASE 1
-// FIX [M-1]: Removed stalled job auto-removal. BullMQ re-queues stalled jobs
-//            automatically. Removing them silently discards in-flight work —
-//            on the emergency queue this is a critical data loss bug.
-// FIX [M-2]: DLQ handler in queue.manager 'failed' event is now guarded to
-//            only fire when the worker's own failed handler hasn't already
-//            called it. Workers handle their own DLQ — queue.manager is for
-//            logging + DB updates only. Removed the duplicate DLQ call here.
+// orchestrator/queues/queue.manager.js — RESQID
+//
+// Manages the 2 Railway queues (emergency + notification).
+// pipelineJobsQueue is local-only — only available when ENABLE_PIPELINE_QUEUE=true
 // =============================================================================
 
 import { prisma } from '#config/prisma.js';
@@ -18,7 +14,6 @@ import {
   getAllQueueMetrics,
   emergencyAlertsQueue,
   notificationsQueue,
-  backgroundJobsQueue,
   pipelineJobsQueue,
 } from './queue.config.js';
 
@@ -29,7 +24,6 @@ export {
   getAllQueueMetrics,
   emergencyAlertsQueue,
   notificationsQueue,
-  backgroundJobsQueue,
   pipelineJobsQueue,
 };
 
@@ -40,7 +34,7 @@ export function getQueue(name) {
 export function initQueues() {
   const queueCount = Object.keys(allQueues).length;
   logger.info({
-    msg: 'Phase 1 orchestrator queues initialized',
+    msg: 'Orchestrator queues initialized',
     count: queueCount,
     queues: Object.keys(allQueues),
   });
@@ -74,10 +68,6 @@ function setupQueueEventHandlers(queue, queueName) {
       },
       '[queue.manager] Job failed'
     );
-
-    // FIX [M-2]: DLQ is handled inside each worker's own 'failed' event.
-    // queue.manager does NOT call handleDeadJob — that would fire it twice.
-    // This handler's only job is to update the DB execution record.
 
     if (job.data?.jobExecutionId) {
       try {
@@ -124,15 +114,10 @@ function setupQueueEventHandlers(queue, queueName) {
     }
   });
 
-  // FIX [M-1]: DO NOT remove stalled jobs.
-  // A stalled job means the worker lock expired — the worker was likely still
-  // processing it (e.g., slow DB query, network wait). BullMQ will automatically
-  // re-queue it for retry up to maxStalledCount. Removing it here causes silent
-  // data loss, especially catastrophic for the emergency queue.
   queue.on('stalled', jobId => {
     logger.warn(
       { queue: queueName, jobId },
-      '[queue.manager] Job stalled — BullMQ will re-queue automatically, no action taken'
+      '[queue.manager] Job stalled — BullMQ will re-queue automatically'
     );
   });
 
@@ -208,10 +193,6 @@ export async function cleanOldJobs(olderThanDays = 7) {
       await job.remove();
       removed.failed++;
     }
-
-    // FIX [M-1]: Stalled jobs removed from cleanOldJobs too.
-    // 'stalled' is not a valid state to query via getJobs() in BullMQ v4+.
-    // BullMQ handles stalled job lifecycle internally via maxStalledCount.
 
     const delayedJobs = await queue.getJobs(['delayed']);
     for (const job of delayedJobs.filter(j => j.timestamp < cutoffTimestamp)) {

@@ -65,23 +65,12 @@ const warn = `${c.gold}${c.bold}⚠${c.reset}`;
 const dot = (col = c.cyan) => `${col}●${c.reset}`;
 const badge = (text, col = c.bgBlue + c.white) => `${col}${c.bold} ${text} ${c.reset}`;
 
-// ── Firebase ───────────────────────────────────────────────────────────────
-let firebaseServiceAccount = null;
-
-try {
-  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    firebaseServiceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-  }
-} catch {
-  // silently disabled
-}
-
 // ── Infrastructure init ────────────────────────────────────────────────────
 try {
   await initializeInfrastructure({
     cache: { REDIS_URL: process.env.REDIS_URL },
     email: { API_KEY: process.env.RESEND_API_KEY },
-    push: firebaseServiceAccount ? { serviceAccount: firebaseServiceAccount } : null,
+    push: null, // Expo handles push, not Firebase
     sms: { AUTH_KEY: process.env.MSG91_AUTH_KEY },
     storage: { BUCKET: process.env.AWS_S3_BUCKET },
   });
@@ -174,8 +163,8 @@ function printServerInfo(port) {
 
   // Services sub-block
   const services = [
-    [firebaseServiceAccount, 'Push'],
-    [process.env.RESEND_API_KEY, 'Email'],
+    [process.env.EXPO_ACCESS_TOKEN, 'Push'],
+    [process.env.SMTP_USER || process.env.RESEND_API_KEY, 'Email'],
     [process.env.MSG91_AUTH_KEY, 'SMS'],
     [process.env.AWS_S3_BUCKET, 'Storage'],
     [process.env.REDIS_URL, 'Redis'],
@@ -228,18 +217,14 @@ async function checkConnections() {
     );
   } catch (err) {
     console.log(
-      `  ${fail}  ${c.bold}${pad('Redis', 14)}${c.reset}${c.red}${err.message}${c.reset}`
+      `  ${warn}  ${c.bold}${pad('Redis', 14)}${c.reset}${c.gold}${err.message}${c.reset}`
     );
-    throw err;
+    // Don't throw — allow server to start with degraded Redis
+    logger.warn({ err: err.message }, 'Redis connection failed — starting in degraded mode');
   }
 
   console.log(SEP);
 }
-
-// ══════════════════════════════════════════════════════════════════════════
-// MIDDLEWARE TABLE  (called from app.js, re-exported for use here)
-// ══════════════════════════════════════════════════════════════════════════
-// printMiddlewareTable() is imported from app.js — no changes needed
 
 // ══════════════════════════════════════════════════════════════════════════
 // ROUTE TABLE
@@ -298,29 +283,28 @@ function printRouteTable(port) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// WORKER TOPOLOGY  (informational — workers run in separate process)
+// WORKER TOPOLOGY — Updated for new queue architecture
 // ══════════════════════════════════════════════════════════════════════════
 function printWorkerTopology() {
   const PHASE_1_WORKERS = [
     {
-      role: 'RAILWAY',
+      role: 'RAILWAY (24/7)',
       col: c.violet,
       badge: '☁ Railway',
       workers: [
-        { name: 'EmergencyWorker', queue: 'EMERGENCY_ALERTS', conc: 20 },
-        { name: 'NotificationWorker', queue: 'NOTIFICATIONS', conc: 10 },
-        { name: 'InvoiceWorker', queue: 'BACKGROUND_JOBS', conc: 5 },
-        { name: 'MaintenanceWorker', queue: 'BACKGROUND_JOBS', conc: 2 },
-        { name: 'ScanWorker', queue: 'BACKGROUND_JOBS', conc: 1 },
+        { name: 'EmergencyWorker', queue: 'emergency_queue', conc: 10 },
+        { name: 'NotificationWorker', queue: 'notification_queue', conc: 5 },
+        { name: 'ScanWorker', queue: 'setInterval/60s', conc: 1 },
+        { name: 'MaintenanceWorker', queue: 'setInterval/24h', conc: 1 },
       ],
     },
     {
-      role: 'LOCAL',
+      role: 'LOCAL (on-demand)',
       col: c.orange,
       badge: '⚙ Local Dev',
       workers: [
-        { name: 'PipelineWorker', queue: 'BACKGROUND_JOBS', conc: 2 },
-        { name: 'DesignWorker', queue: 'BACKGROUND_JOBS', conc: 1 },
+        { name: 'PipelineWorker', queue: 'pipeline_queue', conc: 3 },
+        { name: 'DesignWorker', queue: 'pipeline_queue', conc: 1 },
       ],
     },
   ];
@@ -339,7 +323,7 @@ function printWorkerTopology() {
     workers.forEach(({ name, queue, conc }) => {
       console.log(
         `    ${dot(col)}  ${c.bold}${pad(name, 22)}${c.reset}` +
-          `${c.dim}queue:${c.reset} ${c.sky}${pad(queue, 20)}${c.reset}` +
+          `${c.dim}queue:${c.reset} ${c.sky}${pad(queue, 18)}${c.reset}` +
           `${c.gray}×${conc}${c.reset}`
       );
     });
@@ -347,7 +331,13 @@ function printWorkerTopology() {
   });
 
   console.log(
-    `  ${c.dim}Start workers:${c.reset}  ${c.white}npm run worker:easy${c.reset}  ${c.gray}(WORKER_ROLE=all)${c.reset}`
+    `  ${c.dim}Start Railway workers:${c.reset}  ${c.white}npm run worker:easy${c.reset}  ${c.gray}(WORKER_ROLE=all)${c.reset}`
+  );
+  console.log(
+    `  ${c.dim}Start local pipeline:${c.reset}   ${c.white}npm run worker:pipeline${c.reset}`
+  );
+  console.log(
+    `  ${c.dim}Start local design:${c.reset}     ${c.white}npm run worker:design${c.reset}`
   );
   console.log(SEP);
 }
@@ -424,7 +414,7 @@ async function start() {
     await checkConnections();
 
     const app = createApp();
-    printMiddlewareTable(); // imported from app.js
+    printMiddlewareTable();
     printWorkerTopology();
 
     const server = app.listen(PORT, () => {

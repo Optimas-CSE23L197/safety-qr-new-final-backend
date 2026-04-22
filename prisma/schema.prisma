@@ -840,7 +840,7 @@ model Subscription {
   agreements              SchoolAgreement[]  // NEW
   payments                Payment[]          // NEW
 
-  @@index([school_id])
+  @@index([school_id, status])
   @@index([status])
   @@index([current_period_end])  // NEW: for renewal cron queries
   @@index([is_pilot])            // NEW: for pilot tracking

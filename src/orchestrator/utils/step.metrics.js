@@ -1,6 +1,7 @@
 // =============================================================================
 // utils/step.metrics.js — RESQID PHASE 1
 // Complete metrics collection for pipeline steps with aggregation.
+// Gated behind ENABLE_STEP_METRICS — off by default to save Redis commands.
 // =============================================================================
 
 import { redis } from '#config/redis.js';
@@ -12,8 +13,14 @@ const DETAIL_RETENTION_HOURS = 24;
 
 /**
  * Record step execution metric
+ * Phase 1: disabled by default — set ENABLE_STEP_METRICS=true to enable
  */
 export async function recordMetric(step, orderId, durationMs, status, metadata = {}) {
+  if (process.env.ENABLE_STEP_METRICS !== 'true') {
+    logger.debug({ msg: 'Step metric skipped (disabled)', step, orderId, status });
+    return;
+  }
+
   const timestamp = new Date();
   const hour = timestamp.toISOString().slice(0, 13);
   const day = timestamp.toISOString().slice(0, 10);
@@ -118,25 +125,39 @@ export async function getAvgDuration(step) {
 }
 
 /**
+ * Get step metrics
+ */
+async function getStepMetrics(step, metric) {
+  const key = `${METRICS_PREFIX}:${step}:${metric}`;
+  try {
+    const value = await redis.get(key);
+    return { [metric]: parseInt(value, 10) || 0 };
+  } catch (err) {
+    logger.warn({ msg: 'Step metrics read failed', step, err: err.message });
+    return { [metric]: 0 };
+  }
+}
+
+/**
  * Get overall pipeline metrics
- * ✅ Updated to match schema states
  */
 export async function getPipelineMetrics() {
   const steps = [
     'CREATE',
     'CONFIRM',
-    'PARTIAL_PAYMENT_CONFIRMED',
-    'PARTIAL_INVOICE_GENERATED',
+    'PAYMENT_PENDING',
     'ADVANCE_RECEIVED',
-    'TOKEN_GENERATING',
-    'TOKEN_COMPLETE',
-    'DESIGN_GENERATING',
-    'DESIGN_COMPLETE',
+    'TOKEN_GENERATED',
+    'CARD_DESIGN',
+    'CARD_DESIGN_READY',
     'DESIGN_APPROVED',
-    'VENDOR_SENT',
+    'SENT_TO_VENDOR',
     'PRINTING',
+    'PRINT_COMPLETE',
     'SHIPPED',
+    'OUT_FOR_DELIVERY',
     'DELIVERED',
+    'BALANCE_PENDING',
     'COMPLETED',
     'CANCELLED',
     'REFUNDED',
@@ -152,10 +173,12 @@ export async function getPipelineMetrics() {
       metrics[step] = stepMetrics;
 
       if (step === 'COMPLETED') {
-        completedOrders = stepMetrics.success || 0;
+        const completed = await redis.get(`${METRICS_PREFIX}:${step}:total`);
+        completedOrders = parseInt(completed, 10) || 0;
       }
       if (step === 'CREATE') {
-        totalOrders = stepMetrics.total || 0;
+        const created = await redis.get(`${METRICS_PREFIX}:${step}:total`);
+        totalOrders = parseInt(created, 10) || 0;
       }
     })
   );

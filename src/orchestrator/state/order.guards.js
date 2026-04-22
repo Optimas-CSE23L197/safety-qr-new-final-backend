@@ -1,5 +1,5 @@
 // =============================================================================
-// services/state.service.js — RESQID PHASE 1
+// orchestrator/state/order.guards.js — RESQID PHASE 1
 // Manages the canonical order state — DB is source of truth, Redis is cache.
 // =============================================================================
 
@@ -8,7 +8,7 @@ import { redis } from '#config/redis.js';
 import { logger } from '#config/logger.js';
 import { REDIS_KEYS } from '../orchestrator.constants.js';
 import { TRANSITIONS } from './order.transitions.js';
-import { ORDER_STATUS } from '../state/order.states.js';
+import { ORDER_STATUS } from './order.states.js';
 
 const STATE_CACHE_TTL = 300; // 5 min
 
@@ -80,6 +80,56 @@ export async function transitionState(orderId, toState, triggeredBy, meta = {}) 
   return { from: currentState, to: toState };
 }
 
+export const applyTransition = async ({
+  orderId,
+  to,
+  actorId,
+  actorType,
+  schoolId,
+  meta = {},
+  eventPayload = {},
+}) => {
+  // Always fetch current state from source of truth — never trust caller's 'from'
+  const currentState = await getOrderState(orderId);
+  const { valid, reason } = validateTransition(currentState, to);
+  if (!valid) throw new Error(`Invalid transition: ${reason}`);
+
+  const newDbStatus = ORDER_STATUS[to];
+  if (!newDbStatus) throw new Error(`No DB status mapping for state: ${to}`);
+
+  await prisma.$transaction(async tx => {
+    await tx.cardOrder.update({
+      where: { id: orderId },
+      data: { status: newDbStatus, updated_at: new Date() },
+    });
+
+    // Log the transition for audit
+    await tx.orderStatusLog.create({
+      data: {
+        order_id: orderId,
+        from_status: currentState,
+        to_status: to,
+        changed_by: actorId ?? 'SYSTEM',
+        changed_by_type: actorType ?? 'SYSTEM',
+        metadata: { ...meta, ...eventPayload },
+      },
+    });
+  });
+
+  cacheDel(REDIS_KEYS.STATE(orderId));
+
+  logger.info({
+    msg: 'State transition applied',
+    orderId,
+    from: currentState,
+    to,
+    actorId,
+    actorType,
+  });
+
+  return { from: currentState, to };
+};
+
 export async function markStalled(orderId, reason) {
   await prisma.orderPipeline.updateMany({
     where: { order_id: orderId },
@@ -88,56 +138,32 @@ export async function markStalled(orderId, reason) {
   logger.warn({ msg: 'Pipeline marked stalled', orderId, reason });
 }
 
-export const applyTransition = async ({
-  orderId,
-  from,
-  to,
-  actorId,
-  actorType,
-  schoolId,
-  meta,
-  eventPayload,
-}) => {
-  const { valid, reason } = validateTransition(from, to);
-  if (!valid) throw new Error(`Invalid transition: ${reason}`);
-
-  const newDbStatus = ORDER_STATUS[to];
-  if (!newDbStatus) throw new Error(`No DB status mapping for state: ${to}`);
-
-  await prisma.cardOrder.update({
-    where: { id: orderId },
-    data: { status: newDbStatus, updated_at: new Date() },
-  });
-
-  return { from, to };
-};
-
 // =============================================================================
 // Helpers
 // =============================================================================
 
 function dbStatusToOrchestratorState(dbStatus) {
-  // Direct mapping: if DB status matches one of our constants, return it
   if (Object.values(ORDER_STATUS).includes(dbStatus)) {
     return dbStatus;
   }
 
-  // Fallbacks for legacy/ambiguous statuses
   const fallbacks = {
     CONFIRMED: 'CONFIRMED',
     PAYMENT_PENDING: 'PAYMENT_PENDING',
-    PARTIAL_PAYMENT_CONFIRMED: 'PARTIAL_PAYMENT_CONFIRMED',
-    PARTIAL_INVOICE_GENERATED: 'PARTIAL_INVOICE_GENERATED',
     ADVANCE_RECEIVED: 'ADVANCE_RECEIVED',
-    TOKEN_GENERATING: 'TOKEN_GENERATING',
-    TOKEN_COMPLETE: 'TOKEN_COMPLETE',
-    DESIGN_GENERATING: 'DESIGN_GENERATING',
-    DESIGN_COMPLETE: 'DESIGN_COMPLETE',
+    TOKEN_GENERATED: 'TOKEN_GENERATED',
+    CARD_DESIGN: 'CARD_DESIGN',
+    CARD_DESIGN_READY: 'CARD_DESIGN_READY',
+    CARD_DESIGN_REVISION: 'CARD_DESIGN_REVISION',
     DESIGN_APPROVED: 'DESIGN_APPROVED',
-    VENDOR_SENT: 'VENDOR_SENT',
+    SENT_TO_VENDOR: 'SENT_TO_VENDOR',
     PRINTING: 'PRINTING',
+    PRINT_COMPLETE: 'PRINT_COMPLETE',
+    READY_TO_SHIP: 'READY_TO_SHIP',
     SHIPPED: 'SHIPPED',
+    OUT_FOR_DELIVERY: 'OUT_FOR_DELIVERY',
     DELIVERED: 'DELIVERED',
+    BALANCE_PENDING: 'BALANCE_PENDING',
     COMPLETED: 'COMPLETED',
     CANCELLED: 'CANCELLED',
     REFUNDED: 'REFUNDED',
@@ -146,26 +172,29 @@ function dbStatusToOrchestratorState(dbStatus) {
   return fallbacks[dbStatus] || 'PENDING';
 }
 
-function computeProgress(state) {
+export function computeProgress(state) {
   const PROGRESS_MAP = {
     PENDING: 5,
     CONFIRMED: 10,
-    PARTIAL_PAYMENT_CONFIRMED: 15,
-    PARTIAL_INVOICE_GENERATED: 20,
-    PAYMENT_PENDING: 25,
+    PAYMENT_PENDING: 20,
     ADVANCE_RECEIVED: 30,
-    TOKEN_GENERATING: 40,
-    TOKEN_COMPLETE: 50,
-    DESIGN_GENERATING: 60,
-    DESIGN_COMPLETE: 70,
-    DESIGN_APPROVED: 75,
-    VENDOR_SENT: 80,
-    PRINTING: 85,
+    TOKEN_GENERATED: 40,
+    CARD_DESIGN: 50,
+    CARD_DESIGN_READY: 60,
+    CARD_DESIGN_REVISION: 55,
+    DESIGN_APPROVED: 65,
+    SENT_TO_VENDOR: 70,
+    PRINTING: 75,
+    PRINT_COMPLETE: 80,
+    READY_TO_SHIP: 85,
     SHIPPED: 90,
+    OUT_FOR_DELIVERY: 92,
     DELIVERED: 95,
+    BALANCE_PENDING: 97,
     COMPLETED: 100,
     CANCELLED: 0,
     REFUNDED: 0,
+    ON_HOLD: -1,
   };
   return PROGRESS_MAP[state] ?? 0;
 }

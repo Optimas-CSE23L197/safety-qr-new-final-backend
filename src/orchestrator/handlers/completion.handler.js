@@ -7,7 +7,7 @@ import { prisma } from '#config/prisma.js';
 import { logger } from '#config/logger.js';
 import { applyTransition } from '../state/order.guards.js';
 import { ORDER_STATUS } from '../state/order.states.js';
-import { backgroundJobsQueue } from '../queues/queue.config.js';
+import { generateOrderInvoice } from '../jobs/invoice.job.js';
 
 export async function finalizeOrder(orderId, finalizedBy, notes = '') {
   const order = await prisma.cardOrder.findUnique({
@@ -65,22 +65,8 @@ export async function finalizeOrder(orderId, finalizedBy, notes = '') {
     eventPayload: { orderNumber: order.order_number },
   });
 
-  // Phase 1: Enqueue final invoice job
-  await backgroundJobsQueue.add(
-    'GENERATE_FINAL_INVOICE',
-    {
-      action: 'GENERATE_BALANCE_INVOICE',
-      orderId,
-      invoiceId: null,
-      payload: {
-        orderId,
-        schoolId: order.school_id,
-        orderNumber: order.order_number,
-        totalAmount: grandTotal,
-      },
-    },
-    { jobId: `final-invoice-${orderId}` }
-  );
+  // Generate final invoice directly — no queue
+  await generateOrderInvoice(orderId);
 
   logger.info(
     { orderId, finalizedBy, totalPaid, grandTotal },

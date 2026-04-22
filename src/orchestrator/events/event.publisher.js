@@ -9,7 +9,6 @@ import { EVENTS } from './event.types.js';
 import {
   emergencyAlertsQueue,
   notificationsQueue,
-  backgroundJobsQueue,
   pipelineJobsQueue,
 } from '../queues/queue.config.js';
 import { logger } from '#config/logger.js';
@@ -28,7 +27,14 @@ const BACKGROUND_EVENTS = new Set([
 
 const routeEvent = type => {
   if (EMERGENCY_EVENTS.has(type)) return emergencyAlertsQueue;
-  if (BACKGROUND_EVENTS.has(type)) return pipelineJobsQueue;
+  if (BACKGROUND_EVENTS.has(type)) {
+    if (!pipelineJobsQueue) {
+      throw new Error(
+        `Cannot publish ${type} — pipeline queue not enabled. Set ENABLE_PIPELINE_QUEUE=true`
+      );
+    }
+    return pipelineJobsQueue;
+  }
   return notificationsQueue;
 };
 
@@ -36,7 +42,7 @@ const routeEvent = type => {
 
 const getJobOptions = (type, id) => {
   const jobId = `${type}-${id}`;
-  
+
   if (EMERGENCY_EVENTS.has(type)) {
     return {
       jobId,
@@ -117,10 +123,6 @@ export const publish = async event => {
 
 // ── Convenience wrappers used by pipeline.worker.js + design.worker.js ───────
 
-/**
- * publishEvent(eventType, orderId, payload)
- * Quick fire-and-forget for system-generated order events.
- */
 export const publishEvent = async (eventType, orderId, payload = {}) => {
   return publish({
     type: eventType,
@@ -131,10 +133,6 @@ export const publishEvent = async (eventType, orderId, payload = {}) => {
   });
 };
 
-/**
- * publishFailure(orderId, step, error, meta)
- * Publishes a WORKER_JOB_FAILED event when a pipeline step errors out.
- */
 export const publishFailure = async (orderId, step, error, extraMeta = {}) => {
   return publish({
     type: 'WORKER_JOB_FAILED',

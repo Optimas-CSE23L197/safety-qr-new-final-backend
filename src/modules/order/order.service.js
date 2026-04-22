@@ -1,26 +1,31 @@
 // =============================================================================
-// order.service.js — RESQID (FULLY FIXED & STABLE)
+// order.service.js — RESQID (FIXED)
 // FIXES:
-//   - Removed deprecated calculateOrderFinancials
-//   - Uses subscription.unit_price_snapshot and advance_percent
-//   - Fixed generateAdvanceInvoice parameter mapping
-//   - Fixed confirmOrder (no financial calculation)
-//   - Fixed recordBalancePayment (uses subscription snapshot)
-//   - All NaN/undefined issues resolved
+//   - Paisa conversion added for payments (frontend sends rupees)
+//   - Uses authoritative validateTransition from order.guards.js
+//   - Removed dependency on order.helpers.js transitions
 // =============================================================================
 
 import * as repo from './order.repository.js';
-import { assertValidTransition, isCancellable, requiresRefund } from './order.helpers.js';
+import { isCancellable, requiresRefund } from './order.helpers.js';
 import { ApiError } from '#shared/response/ApiError.js';
 import { dispatch } from '#orchestrator/notifications/notification.dispatcher.js';
 import { EVENTS } from '#orchestrator/events/event.types.js';
 import { prisma } from '#config/prisma.js';
+import { validateTransition } from '#orchestrator/state/order.guards.js';
 
 const getSchoolWithContacts = async schoolId => {
   return prisma.school.findUnique({
     where: { id: schoolId },
     select: { id: true, name: true, email: true, phone: true },
   });
+};
+
+const assertValidTransition = (fromStatus, toStatus) => {
+  const { valid, reason } = validateTransition(fromStatus, toStatus);
+  if (!valid) {
+    throw ApiError.badRequest(`Invalid status transition: ${reason}`);
+  }
 };
 
 // =============================================================================
@@ -256,19 +261,20 @@ export const recordAdvancePayment = async (orderId, paymentData, userId) => {
     throw ApiError.badRequest('Advance invoice is already marked as paid');
   }
 
+  // ✅ FIXED: Convert rupees from frontend to paisa for DB
+  const amountInPaise = Math.round(paymentData.amount_received * 100);
   const expectedAmount = order.advance_amount || invoice.total_amount;
 
-  if (paymentData.amount_received < expectedAmount) {
-    throw ApiError.badRequest(
-      `Advance payment must be at least ₹${(expectedAmount / 100).toFixed(2)}`
-    );
+  if (amountInPaise < expectedAmount) {
+    const expectedRupees = (expectedAmount / 100).toFixed(2);
+    throw ApiError.badRequest(`Advance payment must be at least ₹${expectedRupees}`);
   }
 
   const payment = await repo.recordPayment({
     orderId,
     invoiceId: invoice.id,
     schoolId: order.school_id,
-    amount: paymentData.amount_received,
+    amount: amountInPaise,
     paymentMode: paymentData.payment_mode,
     paymentRef: paymentData.payment_ref,
     userId,
@@ -279,7 +285,7 @@ export const recordAdvancePayment = async (orderId, paymentData, userId) => {
     'PARTIALLY_PAID',
     userId,
     true,
-    paymentData.amount_received,
+    amountInPaise,
     paymentData.payment_ref
   );
 
@@ -287,7 +293,7 @@ export const recordAdvancePayment = async (orderId, paymentData, userId) => {
     await dispatch({
       type: EVENTS.ORDER_ADVANCE_PAYMENT_RECEIVED,
       schoolId: order.school_id,
-      payload: { orderNumber: order.order_number, amount: paymentData.amount_received },
+      payload: { orderNumber: order.order_number, amount: amountInPaise },
       meta: { orderId },
     });
   } catch (err) {
@@ -297,7 +303,7 @@ export const recordAdvancePayment = async (orderId, paymentData, userId) => {
   return {
     payment,
     invoiceId: invoice.id,
-    amountReceived: paymentData.amount_received,
+    amountReceived: amountInPaise,
     advanceAmount: expectedAmount,
   };
 };
@@ -315,6 +321,9 @@ export const recordBalancePayment = async (orderId, paymentData, userId) => {
       `Cannot record balance payment. Order is in ${order.status} — expected BALANCE_PENDING`
     );
   }
+
+  // ✅ FIXED: Convert rupees from frontend to paisa for DB
+  const amountInPaise = Math.round(paymentData.amount_received * 100);
 
   let finalInvoice = order.finalInvoice;
   if (!finalInvoice && order.final_invoice_id) {
@@ -357,7 +366,7 @@ export const recordBalancePayment = async (orderId, paymentData, userId) => {
     orderId,
     invoiceId: finalInvoice.id,
     schoolId: order.school_id,
-    amount: paymentData.amount_received,
+    amount: amountInPaise,
     paymentMode: paymentData.payment_mode,
     paymentRef: paymentData.payment_ref,
     userId,
@@ -368,7 +377,7 @@ export const recordBalancePayment = async (orderId, paymentData, userId) => {
     'FULLY_PAID',
     userId,
     false,
-    paymentData.amount_received,
+    amountInPaise,
     paymentData.payment_ref
   );
 
@@ -388,7 +397,7 @@ export const recordBalancePayment = async (orderId, paymentData, userId) => {
   return {
     payment,
     invoiceId: finalInvoice.id,
-    amountReceived: paymentData.amount_received,
+    amountReceived: amountInPaise,
     orderId,
     status: 'COMPLETED',
   };

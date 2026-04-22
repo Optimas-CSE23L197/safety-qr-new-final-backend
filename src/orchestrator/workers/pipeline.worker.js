@@ -2,12 +2,8 @@
 // Unified Pipeline Worker — Handles token generation for BLANK and PRE_DETAILS orders
 // =============================================================================
 
-console.log('========================================');
-console.log('Pipeline Worker Module Loading...');
-console.log('========================================');
-
 import { Worker } from 'bullmq';
-import { workerRedis } from '#config/redis.js';
+import { redis as workerRedis } from '#config/redis.js';
 import { logger } from '#config/logger.js';
 import { prisma } from '#config/prisma.js';
 import { QUEUE_NAMES } from '../queues/queue.names.js';
@@ -36,73 +32,23 @@ import {
 import { applyTransition } from '../state/order.guards.js';
 import { ORDER_STATUS } from '../state/order.states.js';
 
-console.log('All imports loaded successfully');
-console.log('Queue Names:', QUEUE_NAMES);
-console.log('========================================\n');
-
-// Constants
 const TOKEN_BATCH_SIZE = 50;
 const QR_PARALLEL = 10;
 
-// =============================================================================
-// Maintenance Job Handlers
-// =============================================================================
-
-async function handleExpireIpBlocklist(job) {
-  logger.info({ msg: 'Running IP blocklist expiration scan', jobId: job.id });
-
-  try {
-    const expiredCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const deleted = await prisma.ipBlocklist.deleteMany({
-      where: { expires_at: { lt: expiredCutoff } },
-    });
-
-    logger.info({ msg: 'IP blocklist expiration scan completed', deletedCount: deleted.count });
-    return { success: true, deletedCount: deleted.count, cutoff: expiredCutoff };
-  } catch (error) {
-    logger.error({ msg: 'IP blocklist expiration scan failed', error: error.message });
-    throw error;
-  }
-}
-
-async function handleSyncIpBlocklist(job) {
-  logger.info({ msg: 'Running IP blocklist sync', jobId: job.id });
-
-  try {
-    const activeBlocks = await prisma.ipBlocklist.count({
-      where: { expires_at: { gt: new Date() } },
-    });
-
-    logger.info({ msg: 'IP blocklist sync completed', activeCount: activeBlocks });
-    return { success: true, activeCount: activeBlocks, syncedAt: new Date() };
-  } catch (error) {
-    logger.error({ msg: 'IP blocklist sync failed', error: error.message });
-    throw error;
-  }
-}
-
-// =============================================================================
-// Token Generation (Pipeline Step)
-// =============================================================================
-
 async function generateTokens(orderId, stepExecutionId, jobId) {
-  console.log(`\n🔵 Token generation started for order: ${orderId}`);
   logger.info({ msg: 'Token generation started', orderId });
 
   try {
-    // STEP 1: Fetch order meta to determine type
     const orderMeta = await prisma.cardOrder.findUnique({
       where: { id: orderId },
       select: { order_type: true },
     });
 
     if (!orderMeta) throw new Error(`Order ${orderId} not found`);
-    console.log(`✅ Order type: ${orderMeta.order_type}`);
 
     const isBlank = orderMeta.order_type === 'BLANK';
     const isPreDetails = orderMeta.order_type === 'PRE_DETAILS';
 
-    // STEP 2: Fetch full order with items
     const order = await prisma.cardOrder.findUnique({
       where: { id: orderId },
       include: {
@@ -120,10 +66,8 @@ async function generateTokens(orderId, stepExecutionId, jobId) {
     if (!order) throw new Error(`Order ${orderId} not found`);
 
     const totalStudents = isBlank ? (order.student_count ?? 0) : (order.items?.length ?? 0);
-    console.log(`✅ Total students to process: ${totalStudents}`);
 
     if (totalStudents === 0) {
-      console.log(`⚠️ No students to process for order: ${orderId}`);
       return { skipped: true, reason: 'No students', total: 0 };
     }
 
@@ -139,29 +83,13 @@ async function generateTokens(orderId, stepExecutionId, jobId) {
       jobId
     );
 
-    // STEP 3: Idempotency check
-    const existingComplete = isBlank
-      ? await prisma.card.count({ where: { order_id: orderId } })
-      : (order.items ?? []).filter(item => item.pipeline_status === 'COMPLETE' || item.card_number)
-          .length;
-
     const existingTokens = await prisma.token.count({ where: { order_id: orderId } });
     if (existingTokens > 0) {
-      console.log(`⚠️ Found ${existingTokens} existing tokens, cleaning up partial run...`);
       await prisma.token.deleteMany({ where: { order_id: orderId } });
       await prisma.card.deleteMany({ where: { order_id: orderId } });
       await prisma.qrAsset.deleteMany({ where: { order_id: orderId } });
     }
 
-    console.log(`✅ Existing complete: ${existingComplete}`);
-
-    if (existingComplete >= totalStudents) {
-      console.log(`✅ All tokens already generated, skipping order: ${orderId}`);
-      await stepLog(stepExecutionId, orderId, 'Skipped — all tokens already exist', {}, jobId);
-      return { skipped: true, existingComplete, total: totalStudents };
-    }
-
-    // STEP 4: Create token batch
     const tokenBatch = await prisma.tokenBatch.create({
       data: {
         school_id: order.school_id,
@@ -171,16 +99,12 @@ async function generateTokens(orderId, stepExecutionId, jobId) {
         created_by: 'system',
       },
     });
-    console.log(`✅ Token batch created: ${tokenBatch.id}`);
 
-    // STEP 5: Generate card numbers
     const cardNumbers = batchGenerateCardNumbers(order.school.serial_number, totalStudents);
-    console.log(`✅ Generated ${cardNumbers.length} card numbers`);
 
-    let generatedCount = existingComplete;
+    let generatedCount = 0;
     let failedCount = 0;
 
-    // Build process items array
     const processItems = isBlank
       ? Array.from({ length: totalStudents }, (_, idx) => ({
           id: `blank-${idx}`,
@@ -191,13 +115,10 @@ async function generateTokens(orderId, stepExecutionId, jobId) {
         }))
       : (order.items ?? []);
 
-    // STEP 6: Initialize storage once before batch processing
     let storage;
     try {
       storage = getStorage();
-      console.log(`✅ Storage already initialized`);
     } catch (e) {
-      console.log(`🔵 Initializing storage...`);
       await initializeStorage({
         ENDPOINT: process.env.AWS_S3_ENDPOINT,
         BUCKET: process.env.AWS_S3_BUCKET,
@@ -206,22 +127,13 @@ async function generateTokens(orderId, stepExecutionId, jobId) {
         CDN_DOMAIN: process.env.AWS_CDN_DOMAIN,
       });
       storage = getStorage();
-      console.log(`✅ Storage initialized`);
     }
 
-    // STEP 7: Process in batches
-    console.log(`🔵 Starting batch processing with batch size: ${TOKEN_BATCH_SIZE}`);
     for (let batchStart = 0; batchStart < totalStudents; batchStart += TOKEN_BATCH_SIZE) {
       const batchEnd = Math.min(batchStart + TOKEN_BATCH_SIZE, totalStudents);
-      console.log(
-        `\n📦 Processing batch ${batchStart + 1} to ${batchEnd} (${batchEnd - batchStart} items)`
-      );
-
       const batchItems = processItems.slice(batchStart, batchEnd);
       const batchCardNumbers = cardNumbers.slice(batchStart, batchEnd);
 
-      // Generate raw tokens
-      console.log(`  🔵 Generating raw tokens for batch...`);
       const rawTokens = [];
       const tokenData = [];
 
@@ -243,24 +155,16 @@ async function generateTokens(orderId, stepExecutionId, jobId) {
           expires_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
         });
       }
-      console.log(`  ✅ Generated ${tokenData.length} token records`);
 
-      // Bulk insert tokens
-      console.log(`  🔵 Inserting tokens into database...`);
       await prisma.token.createMany({ data: tokenData });
-      console.log(`  ✅ Tokens inserted`);
 
-      // Fetch created tokens
-      console.log(`  🔵 Fetching created tokens...`);
       const tokens = await prisma.token.findMany({
         where: { order_id: orderId, batch_id: tokenBatch.id },
         orderBy: { created_at: 'asc' },
         skip: batchStart,
         take: batchItems.length,
       });
-      console.log(`  ✅ Fetched ${tokens.length} tokens`);
 
-      // Persist raw tokens to Redis for recovery
       const rawTokenMap = new Map();
       for (let i = 0; i < tokens.length; i++) {
         rawTokenMap.set(tokens[i].id, rawTokens[i]);
@@ -268,17 +172,11 @@ async function generateTokens(orderId, stepExecutionId, jobId) {
 
       const recoveryKey = `pipeline:recovery:${orderId}:${tokenBatch.id}:${batchStart}`;
       await workerRedis.setex(recoveryKey, 3600, JSON.stringify(Array.from(rawTokenMap.entries())));
-      console.log(`  ✅ Recovery key saved: ${recoveryKey}`);
 
-      // Generate QR codes
-      console.log(`  🔵 Generating QR codes...`);
       const qrResults = [];
 
       for (let j = 0; j < tokens.length; j += QR_PARALLEL) {
         const chunk = tokens.slice(j, j + QR_PARALLEL);
-        console.log(
-          `    📸 Processing QR chunk ${Math.floor(j / QR_PARALLEL) + 1}/${Math.ceil(tokens.length / QR_PARALLEL)}`
-        );
 
         const chunkResults = await Promise.allSettled(
           chunk.map(async (token, idx) => {
@@ -290,8 +188,8 @@ async function generateTokens(orderId, stepExecutionId, jobId) {
               const scanUrl = buildScanUrl(token.id);
               const qrBuffer = await generateQrPng(scanUrl);
 
-              const qrKeyStudentId = item.student_id || `pending-${token.id}`;
-              const qrKey = StoragePath.studentQrCode(qrKeyStudentId);
+              const studentIdForPath = item.student_id || token.id;
+              const qrKey = StoragePath.studentQrCode(order.school_id, studentIdForPath);
 
               const { location: qrUrl } = await storage.upload(qrBuffer, qrKey, {
                 contentType: 'image/png',
@@ -300,7 +198,6 @@ async function generateTokens(orderId, stepExecutionId, jobId) {
 
               return { token, item, rawToken: rawTokenValue, cardNumber, scanUrl, qrUrl };
             } catch (err) {
-              console.log(`    🔴 QR generation failed for token ${token.id}: ${err.message}`);
               throw err;
             }
           })
@@ -310,11 +207,6 @@ async function generateTokens(orderId, stepExecutionId, jobId) {
           if (settled.status === 'fulfilled') {
             qrResults.push(settled.value);
           } else {
-            console.log(`    🔴 QR generation failed: ${settled.reason?.message}`);
-            logger.error({
-              msg: 'QR generation failed',
-              error: settled.reason?.message,
-            });
             failedCount++;
           }
         }
@@ -325,20 +217,18 @@ async function generateTokens(orderId, stepExecutionId, jobId) {
           { processed: batchStart + j + chunk.length, total: totalStudents }
         );
       }
-      console.log(
-        `  ✅ QR generation complete. Successful: ${qrResults.length}, Failed: ${batchItems.length - qrResults.length}`
-      );
 
-      // Transaction for successful QR results
       if (qrResults.length > 0) {
-        console.log(`  🔵 Committing ${qrResults.length} records to database...`);
         await prisma.$transaction(async tx => {
           for (const result of qrResults) {
             await tx.qrAsset.create({
               data: {
                 token_id: result.token.id,
                 school_id: order.school_id,
-                storage_key: `qr-codes/${order.school_id}/${result.item.student_id || result.token.id}.png`,
+                storage_key: StoragePath.studentQrCode(
+                  order.school_id,
+                  result.item.student_id || result.token.id
+                ),
                 public_url: result.qrUrl,
                 format: 'PNG',
                 width_px: 512,
@@ -388,14 +278,11 @@ async function generateTokens(orderId, stepExecutionId, jobId) {
             }
           }
         });
-        console.log(`  ✅ Transaction committed`);
 
         generatedCount += qrResults.length;
       }
 
-      // Clean up recovery key
       await workerRedis.del(recoveryKey);
-      console.log(`  ✅ Recovery key deleted`);
 
       await stepLog(
         stepExecutionId,
@@ -406,8 +293,6 @@ async function generateTokens(orderId, stepExecutionId, jobId) {
       );
     }
 
-    // STEP 8: Update token batch status
-    console.log(`\n🔵 Updating token batch status`);
     const batchStatus = failedCount === 0 ? 'COMPLETE' : generatedCount > 0 ? 'PARTIAL' : 'FAILED';
     await prisma.tokenBatch.update({
       where: { id: tokenBatch.id },
@@ -419,15 +304,8 @@ async function generateTokens(orderId, stepExecutionId, jobId) {
         error_log: failedCount > 0 ? { failedCount, totalStudents, failedAt: new Date() } : null,
       },
     });
-    console.log(
-      `✅ Batch status: ${batchStatus}, Generated: ${generatedCount}, Failed: ${failedCount}`
-    );
 
-    // STEP 9: Update order status based on success
-    console.log(`\n🔵 Updating order status`);
     if (generatedCount === totalStudents && generatedCount > 0) {
-      console.log(`✅ All tokens generated successfully (${generatedCount}/${totalStudents})`);
-
       await prisma.cardOrder.update({
         where: { id: orderId },
         data: {
@@ -437,35 +315,25 @@ async function generateTokens(orderId, stepExecutionId, jobId) {
           status: 'TOKEN_GENERATED',
         },
       });
-      console.log(`✅ Order status updated to TOKEN_GENERATED`);
 
-      // Apply state transition only if status changed
-      if (order.status !== ORDER_STATUS.TOKEN_GENERATED) {
-        console.log(`🔵 Applying state transition from ${order.status} to TOKEN_GENERATED`);
-        await applyTransition({
-          orderId,
-          from: order.status,
-          to: ORDER_STATUS.TOKEN_GENERATED,
-          actorId: 'SYSTEM',
-          actorType: 'WORKER',
-          schoolId: order.school_id,
-          meta: { generated: generatedCount, failed: failedCount },
-          eventPayload: { orderNumber: order.order_number, tokenCount: generatedCount },
-        });
-        console.log(`✅ State transition applied`);
-      }
+      // FIXED: removed 'from' parameter
+      await applyTransition({
+        orderId,
+        to: ORDER_STATUS.TOKEN_GENERATED,
+        actorId: 'SYSTEM',
+        actorType: 'WORKER',
+        schoolId: order.school_id,
+        meta: { generated: generatedCount, failed: failedCount },
+        eventPayload: { orderNumber: order.order_number, tokenCount: generatedCount },
+      });
 
-      // Publish events
-      console.log(`🔵 Publishing token generation complete event`);
       await publishEvent(EVENTS.ORDER_TOKEN_GENERATION_COMPLETE, orderId, {
         orderId,
         generatedCount,
         total: totalStudents,
       });
 
-      // For PRE_DETAILS orders, trigger design for each student
       if (!isBlank) {
-        console.log(`🔵 Publishing design events for ${totalStudents} students`);
         const completedItems = await prisma.cardOrderItem.findMany({
           where: { order_id: orderId, pipeline_status: 'COMPLETE' },
           include: {
@@ -490,10 +358,8 @@ async function generateTokens(orderId, stepExecutionId, jobId) {
             schoolId: order.school_id,
           });
         }
-        console.log(`✅ Design events published`);
       }
     } else if (generatedCount > 0 && generatedCount < totalStudents) {
-      console.log(`⚠️ Partial success: ${generatedCount}/${totalStudents} tokens generated`);
       await prisma.cardOrder.update({
         where: { id: orderId },
         data: {
@@ -508,12 +374,10 @@ async function generateTokens(orderId, stepExecutionId, jobId) {
         failed: failedCount,
       });
     } else {
-      console.log(`🔴 Complete failure: 0/${totalStudents} tokens generated`);
       logger.error({ msg: 'Token generation completely failed', orderId, failedCount });
       throw new Error(`Token generation failed for order ${orderId}`);
     }
 
-    console.log(`\n✅ Token generation completed for order ${orderId}`);
     logger.info({ msg: 'Token generation completed', orderId, generatedCount, failedCount });
 
     return {
@@ -524,21 +388,11 @@ async function generateTokens(orderId, stepExecutionId, jobId) {
       batchStatus,
     };
   } catch (error) {
-    console.log(
-      `\n🔴 [CRITICAL ERROR] Token generation failed for order ${orderId}:`,
-      error.message
-    );
-    console.log(error.stack);
     throw error;
   }
 }
 
-// =============================================================================
-// Main Job Processor
-// =============================================================================
-
 export async function processPipelineJob(job) {
-  console.log(`\n🔥 PROCESSING JOB: ${job.id}, Name: ${job.name}`);
   const jobName = job.name;
   const { orderId, stepExecutionId, jobExecutionId, event } = job.data;
 
@@ -550,25 +404,14 @@ export async function processPipelineJob(job) {
     orderId,
   });
 
-  // Maintenance jobs
-  if (jobName === 'scan:expire_ip_blocklist') {
-    return handleExpireIpBlocklist(job);
-  }
-
-  if (jobName === 'scan:sync_ip_blocklist') {
-    return handleSyncIpBlocklist(job);
-  }
-
   const validEvents = [EVENTS.ORDER_ADVANCE_PAYMENT_RECEIVED, EVENTS.ORDER_CONFIRMED];
 
   if (!orderId) {
-    console.log(`⚠️ Job missing orderId, skipping`);
     logger.warn({ msg: 'Job missing orderId, skipping', jobId: job.id });
     return { skipped: true, reason: 'Missing orderId' };
   }
 
   if (!validEvents.includes(event)) {
-    console.log(`⚠️ Skipping job — event not handled by pipeline worker: ${event}`);
     logger.info({
       msg: 'Skipping job — event not handled by pipeline worker',
       jobId: job.id,
@@ -580,10 +423,8 @@ export async function processPipelineJob(job) {
     };
   }
 
-  // Idempotency guard
   const { claimed } = await claimExecution(orderId, 'token_generation');
   if (!claimed) {
-    console.log(`⚠️ Token generation already claimed, skipping order: ${orderId}`);
     logger.info({ msg: 'Token generation already claimed, skipping', orderId });
     return { skipped: true, reason: 'Already processed' };
   }
@@ -611,11 +452,9 @@ export async function processPipelineJob(job) {
     await completeStepExecution(stepExecution.id, result);
     await markCompleted(orderId, 'token_generation', result);
 
-    console.log(`✅ Pipeline worker completed for order: ${orderId}`);
     logger.info({ msg: 'Pipeline worker completed', jobId: job.id, orderId });
     return result;
   } catch (error) {
-    console.log(`🔴 Pipeline worker failed for order ${orderId}:`, error.message);
     logger.error({
       msg: 'Pipeline worker failed',
       jobId: job.id,
@@ -641,37 +480,11 @@ export async function processPipelineJob(job) {
   }
 }
 
-// =============================================================================
-// Worker Factory
-// =============================================================================
-
 export function createPipelineWorker() {
-  logger.info({ msg: 'Creating pipeline worker' });
-
   const worker = new Worker(
     QUEUE_NAMES.PIPELINE_JOBS,
     async job => {
-      console.log(`🔥 Pipeline worker received job: ${job.id}, ${job.name}`);
-      logger.info({
-        msg: 'Pipeline worker received job',
-        jobId: job.id,
-        jobName: job.name,
-        data: job.data,
-      });
-
-      try {
-        return await processPipelineJob(job);
-      } catch (error) {
-        console.log(`🔴 Pipeline worker job error: ${error.message}`);
-        logger.error({
-          msg: 'Pipeline worker job error',
-          jobId: job.id,
-          jobName: job.name,
-          error: error.message,
-          stack: error.stack,
-        });
-        throw error;
-      }
+      return processPipelineJob(job);
     },
     {
       connection: workerRedis,
@@ -683,12 +496,10 @@ export function createPipelineWorker() {
   );
 
   worker.on('completed', (job, result) => {
-    console.log(`✅ Pipeline worker job completed: ${job.id}`);
     logger.info({ msg: 'Pipeline worker job completed', jobId: job.id, jobName: job.name, result });
   });
 
   worker.on('failed', (job, err) => {
-    console.log(`🔴 Pipeline worker job failed: ${job?.id}, Error: ${err.message}`);
     logger.error({
       msg: 'Pipeline worker job failed',
       jobId: job?.id,
@@ -699,13 +510,7 @@ export function createPipelineWorker() {
   });
 
   worker.on('error', err => {
-    console.log(`🔴 Pipeline worker error: ${err.message}`);
     logger.error({ msg: 'Pipeline worker error', error: err.message });
-  });
-
-  worker.on('stalled', jobId => {
-    console.log(`⚠️ Pipeline worker job stalled: ${jobId}`);
-    logger.warn({ msg: 'Pipeline worker job stalled — BullMQ will re-queue', jobId });
   });
 
   logger.info({
@@ -718,40 +523,3 @@ export function createPipelineWorker() {
 }
 
 export default { createPipelineWorker };
-
-// =============================================================================
-// Auto-start when executed directly
-// =============================================================================
-
-import { fileURLToPath } from 'url';
-import { resolve } from 'path';
-
-const __filename = fileURLToPath(import.meta.url);
-const entrypoint = resolve(process.argv[1]);
-
-if (resolve(__filename) === entrypoint) {
-  console.log('\n========================================');
-  console.log('🚀 Starting Pipeline Worker');
-  console.log('========================================\n');
-
-  const worker = createPipelineWorker();
-
-  console.log('✅ Pipeline Worker created and waiting for jobs');
-  console.log(`📡 Queue: ${QUEUE_NAMES.PIPELINE_JOBS}`);
-  console.log(`🔄 Concurrency: 3`);
-  console.log('\n⏳ Waiting for jobs...\n');
-
-  process.on('SIGTERM', async () => {
-    console.log('\n⚠️ Received SIGTERM, closing worker...');
-    await worker.close();
-    console.log('✅ Worker closed');
-    process.exit(0);
-  });
-
-  process.on('SIGINT', async () => {
-    console.log('\n⚠️ Received SIGINT, closing worker...');
-    await worker.close();
-    console.log('✅ Worker closed');
-    process.exit(0);
-  });
-}

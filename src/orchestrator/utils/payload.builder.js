@@ -38,7 +38,7 @@ export function buildNotificationPayload(
     recipientId,
     recipientType,
     templateData,
-    idempotencyKey: idempotencyKey || `${type}:${orderId}:${recipientId}:${Date.now()}`,
+    idempotencyKey: idempotencyKey || `${type}:${orderId}:${recipientId}`,
     timestamp: new Date().toISOString(),
   };
 }

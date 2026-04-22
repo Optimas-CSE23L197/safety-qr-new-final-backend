@@ -3,30 +3,47 @@ import { S3Adapter } from './s3.adapter.js';
 import { StorageProvider } from './storage.provider.js';
 
 // ---------------------------------------------------------------------------
-// Storage Path Builders
+// Storage Path Builders — ORGANIZED BY SCHOOL FIRST
 // ---------------------------------------------------------------------------
 export const StoragePath = {
-  studentAvatar: studentId => `students/${studentId}/avatar.jpg`,
-  studentDocuments: (studentId, filename) => `students/${studentId}/documents/${filename}`,
-  schoolLogo: schoolId => `schools/${schoolId}/logo.png`,
-  emergencyMedia: (tokenHash, filename) => `emergency/${tokenHash}/${filename}`,
-  temp: filename => `temp/${filename}`,
-  studentQrCode: studentId => `students/${studentId}/qr-code.png`,
-  studentCard: studentId => `students/${studentId}/card-design.png`,
-  orderInvoice: (orderId, type) => `orders/${orderId}/${type}-invoice.pdf`,
-  schoolBulkExport: (schoolId, orderId) => `schools/${schoolId}/bulk-export/batch-${orderId}.pdf`,
-  // NEW: Parent and student photo uploads
-  studentPhoto: studentId => {
+  // STUDENTS — nested under school_id
+  studentQrCode: (schoolId, studentId) => `students/${schoolId}/${studentId}/qr-code.png`,
+  studentPhoto: (schoolId, studentId) => {
     const timestamp = Date.now();
     const random = crypto.randomBytes(8).toString('hex');
-    return `students/${studentId}/photo/${timestamp}-${random}.webp`;
+    return `students/${schoolId}/${studentId}/photo/${timestamp}-${random}.webp`;
   },
+  studentAvatar: (schoolId, studentId) => `students/${schoolId}/${studentId}/avatar.jpg`,
+  studentCard: (schoolId, studentId) => `students/${schoolId}/${studentId}/card-design.png`,
+  studentDocuments: (schoolId, studentId, filename) =>
+    `students/${schoolId}/${studentId}/documents/${filename}`,
 
+  // SCHOOLS
+  schoolLogo: schoolId => `schools/${schoolId}/logo.png`,
+  schoolBulkExport: (schoolId, orderId) => `schools/${schoolId}/bulk-exports/order-${orderId}.pdf`,
+
+  // ORDERS
+  orderInvoice: (orderId, type) => `orders/${orderId}/invoices/${type}-invoice.pdf`,
+  orderCardPdf: orderId => `orders/${orderId}/cards.pdf`,
+
+  // CARDS (individual card designs)
+  cardDesign: cardId => `cards/${cardId}/design.pdf`,
+
+  // PARENTS
   parentAvatar: parentId => {
     const timestamp = Date.now();
     const random = crypto.randomBytes(8).toString('hex');
     return `parents/${parentId}/avatar/${timestamp}-${random}.webp`;
   },
+
+  // EMERGENCY
+  emergencyMedia: (tokenHash, filename) => `emergency/${tokenHash}/${filename}`,
+
+  // TEMP
+  temp: filename => `temp/${filename}`,
+
+  // SYSTEM
+  systemAsset: filename => `system/${filename}`,
 };
 
 // ---------------------------------------------------------------------------

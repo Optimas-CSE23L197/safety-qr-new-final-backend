@@ -468,3 +468,30 @@ export async function confirmAvatarUpload(req, res) {
     return handleError(res, err, { fn: 'confirmAvatarUpload', parentId });
   }
 }
+
+// ─── PATCH /me/student/:studentId/basic ─────────────────────────────────────
+export async function updateStudentBasic(req, res) {
+  const parentId = requireOwnParent(req, res);
+  if (!parentId) return;
+
+  try {
+    const { studentId } = req.params;
+    const result = await service.updateStudentBasicInfo(parentId, studentId, req.validatedBody);
+    return res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    return handleError(res, err, { fn: 'updateStudentBasic', parentId });
+  }
+}
+
+// ─── PATCH /me/profile ──────────────────────────────────────────────────────
+export async function updateParentProfile(req, res) {
+  const parentId = requireOwnParent(req, res);
+  if (!parentId) return;
+
+  try {
+    const result = await service.updateParentName(parentId, req.validatedBody.name);
+    return res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    return handleError(res, err, { fn: 'updateParentProfile', parentId });
+  }
+}

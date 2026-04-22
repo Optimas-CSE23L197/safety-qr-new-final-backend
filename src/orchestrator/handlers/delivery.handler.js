@@ -1,13 +1,13 @@
 // =============================================================================
 // orchestrator/handlers/delivery.handler.js — RESQID PHASE 1
-// Mark order delivered + trigger balance invoice job.
+// Mark order delivered + trigger balance invoice.
 // =============================================================================
 
 import { prisma } from '#config/prisma.js';
 import { logger } from '#config/logger.js';
 import { applyTransition } from '../state/order.guards.js';
 import { ORDER_STATUS } from '../state/order.states.js';
-import { backgroundJobsQueue } from '../queues/queue.config.js';
+import { generateOrderInvoice } from '../jobs/invoice.job.js';
 
 export const handleDelivery = async job => {
   const { orderId, schoolId, actorId, deliveredAt } = job.data?.payload ?? {};
@@ -31,7 +31,7 @@ export const handleDelivery = async job => {
     },
   });
 
-  // Update OrderShipment model (not shipment)
+  // Update OrderShipment model
   await prisma.orderShipment.updateMany({
     where: { order_id: orderId },
     data: {
@@ -52,26 +52,13 @@ export const handleDelivery = async job => {
     eventPayload: { orderNumber: order.order_number },
   });
 
-  // Enqueue invoice generation job
-  const invoiceJob = await backgroundJobsQueue.add(
-    'GENERATE_BALANCE_INVOICE',
-    {
-      action: 'GENERATE_BALANCE_INVOICE',
-      orderId,
-      payload: {
-        orderId,
-        schoolId,
-        orderNumber: order.order_number,
-        balanceAmount: order.balance_amount,
-      },
-    },
-    { jobId: `balance-invoice-${orderId}` }
-  );
+  // Generate balance invoice directly — no queue
+  await generateOrderInvoice(orderId);
 
-  logger.info({ orderId, invoiceJobId: invoiceJob.id }, '[delivery.handler] Delivery recorded');
+  logger.info({ orderId }, '[delivery.handler] Delivery recorded and invoice generated');
 
   return {
     success: true,
-    data: { orderId, newStatus: ORDER_STATUS.DELIVERED, invoiceJobId: invoiceJob.id },
+    data: { orderId, newStatus: ORDER_STATUS.DELIVERED },
   };
 };
