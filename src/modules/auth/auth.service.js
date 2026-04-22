@@ -38,14 +38,16 @@ const NONCE_TTL = 10 * 60;
 // HELPER FUNCTIONS (Extracted to eliminate duplication)
 // =============================================================================
 async function dispatchOtp({ phone, otp, namespace, actorId, expiryMinutes }) {
-  if (ENV.IS_DEV) {
-    logger.info({ phone, otp, namespace }, '[DEV OTP]');
-    return;
-  }
+  // Always send via orchestrator (SMS will be sent)
   await publishNotification.otpRequested({
     actorId,
     payload: { phone, otp, namespace, expiryMinutes },
   });
+
+  // Still log in dev for debugging
+  if (ENV.IS_DEV) {
+    logger.info({ phone, otp, namespace }, '[DEV] OTP sent via MSG91');
+  }
 }
 
 /**
@@ -375,7 +377,7 @@ export const verifyOtp = async ({ phone, otp, ipAddress, deviceInfo }) => {
   await upsertParentDevice({
     parentId: parent.id,
     deviceFingerprint,
-    deviceInfo,
+    deviceInfo: { ...deviceInfo, ip: ipAddress },
   });
 
   const { accessToken, refreshToken, expiresAt } = await createUserSession({
@@ -555,7 +557,7 @@ export const registerVerify = async ({ nonce, otp, phone, ipAddress, deviceInfo 
   await upsertParentDevice({
     parentId: parent.id,
     deviceFingerprint,
-    deviceInfo,
+    deviceInfo: { ...deviceInfo, ip: ipAddress },
   });
 
   const { accessToken, refreshToken, expiresAt } = await createUserSession({
@@ -881,11 +883,10 @@ export const verifyPhoneChange = async ({ changeToken, otp, ipAddress }) => {
   };
 };
 
-// Add this helper function near the top of auth.service.js (around line 30-50)
-
 /**
  * upsertParentDevice
  * Creates or updates a device record for the parent
+ * Triggers new device notification if this is a first-time device
  */
 async function upsertParentDevice({ parentId, deviceFingerprint, deviceInfo }) {
   if (!deviceFingerprint) return null;
@@ -914,7 +915,7 @@ async function upsertParentDevice({ parentId, deviceFingerprint, deviceInfo }) {
     });
   } else {
     // Create new device
-    return prisma.parentDevice.create({
+    const newDevice = await prisma.parentDevice.create({
       data: {
         parent_id: parentId,
         device_fingerprint: deviceFingerprint,
@@ -927,5 +928,36 @@ async function upsertParentDevice({ parentId, deviceFingerprint, deviceInfo }) {
         last_seen_at: new Date(),
       },
     });
+
+    // Send new device notification
+    try {
+      const parentDetails = await repo.findParentWithDetails(parentId);
+      const children = await repo.findParentChildren(parentId);
+
+      if (parentDetails && children.length > 0) {
+        await publishNotification.newDeviceLogin({
+          userId: parentId,
+          userType: 'PARENT_USER',
+          payload: {
+            name: parentDetails.name || 'Parent',
+            device: deviceInfo?.device_model || deviceInfo?.device_name || 'Unknown device',
+            location: deviceInfo?.ip || 'Unknown location',
+            time: new Date().toISOString(),
+          },
+          meta: {
+            parentId,
+            deviceFingerprint,
+            studentCount: children.length,
+          },
+        });
+      }
+    } catch (err) {
+      logger.error(
+        { err: err.message, parentId },
+        '[Auth] Failed to publish new device notification'
+      );
+    }
+
+    return newDevice;
   }
 }

@@ -261,4 +261,19 @@ export const publishNotification = {
       },
       meta: { studentId: meta.studentId, ...meta },
     }),
+
+  newDeviceLogin: ({ userId, userType, payload, meta = {} }) =>
+    _publish(EVENTS.USER_DEVICE_LOGIN_NEW, {
+      actorId: userId,
+      actorType: userType,
+      payload: {
+        userId,
+        userType,
+        name: payload.name,
+        device: payload.device,
+        location: payload.location,
+        time: payload.time,
+      },
+      meta,
+    }),
 };

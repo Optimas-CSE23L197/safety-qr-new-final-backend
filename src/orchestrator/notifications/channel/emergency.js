@@ -5,8 +5,7 @@
 // Direct channel calls only. Push first (2s timeout), SMS second (4s timeout).
 // Email log scheduled via BullMQ (5 min delay) — survives process restarts.
 //
-// FIXED: emailTemplates import removed. EmergencyLogEmail React component
-//        imported directly from src/templates/email/emergency-log.jsx.
+// FIXED: SMS now uses DLT template with named variables.
 // =============================================================================
 
 import { logger } from '#config/logger.js';
@@ -29,12 +28,31 @@ const sendEmergencySms = async (contact, studentInfo, location) => {
         ? `https://maps.google.com/?q=${location.lat},${location.lng}`
         : 'Unknown location';
 
-    const message = `EMERGENCY: ${studentInfo.studentName} needs help. Location: ${locationText}. Contact emergency services if needed. -RESQID`;
+    // Format time for SMS
+    const formattedTime = studentInfo.scannedAt
+      ? new Date(studentInfo.scannedAt).toLocaleTimeString('en-IN', {
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
 
     const sms = getSms();
-    await sms.send(contact.phone, message);
 
-    return { success: true, duration: Date.now() - start };
+    // Use DLT template with named variables
+    const result = await sms.send(
+      contact.phone,
+      null, // no plain message body
+      {
+        templateId: process.env.MSG91_EMERGENCY_TEMPLATE_ID,
+        variables: {
+          student_name: studentInfo.studentName,
+          school_name: studentInfo.schoolName,
+          scan_time: formattedTime,
+        },
+      }
+    );
+
+    return { success: true, duration: Date.now() - start, messageId: result?.messageId };
   } catch (error) {
     logger.error({ contactName: contact.name, error: error.message }, '[emergency] SMS failed');
     return { success: false, error: error.message, duration: Date.now() - start };
@@ -207,7 +225,7 @@ export const sendEmergencyAlerts = async params => {
     '[emergency] Sending emergency alerts'
   );
 
-  const studentInfo = { scanId, studentId, studentName, schoolId, schoolName };
+  const studentInfo = { scanId, studentId, studentName, schoolId, schoolName, scannedAt };
   const results = {
     sms: { success: false, duration: 0, error: null },
     push: { success: false, duration: 0, error: null },
@@ -252,17 +270,22 @@ export const sendEmergencyAlerts = async params => {
     }
   }
 
-  scheduleEmergencyEmailLog({
-    scanId,
-    studentId,
-    studentName,
-    schoolId,
-    schoolName,
-    emergencyContacts,
-    location,
-    scannedAt,
-    dispatchResults: results,
-  }).catch(err => logger.error({ err: err.message }, '[emergency] Failed to schedule email log'));
+  // Fire-and-forget email log scheduling (wrapped in try-catch for sync errors)
+  try {
+    scheduleEmergencyEmailLog({
+      scanId,
+      studentId,
+      studentName,
+      schoolId,
+      schoolName,
+      emergencyContacts,
+      location,
+      scannedAt,
+      dispatchResults: results,
+    }).catch(err => logger.error({ err: err.message }, '[emergency] Failed to schedule email log'));
+  } catch (err) {
+    logger.error({ err: err.message }, '[emergency] scheduleEmergencyEmailLog threw synchronously');
+  }
 
   const overallSuccess = dispatchedChannels.length > 0;
 

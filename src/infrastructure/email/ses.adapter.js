@@ -72,8 +72,9 @@ export class SesAdapter extends EmailProvider {
    */
   async sendReactTemplate(Component, props = {}, { to, subject, from, replyTo } = {}) {
     try {
-      const html = await render(<Component {...props} />);
-      const text = await render(<Component {...props} />, { plainText: true });
+      const element = Component(props); // Call as function, not JSX
+      const html = await render(element);
+      const text = await render(element, { plainText: true });
       return this.send({ to, subject, html, text, from, replyTo });
     } catch (err) {
       logger.error({ error: err.message, to }, '[Email] React template render/send failed');

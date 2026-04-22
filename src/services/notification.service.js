@@ -248,6 +248,12 @@ export async function logNotification({
   else if (userType === 'SCHOOL_USER') schoolUserId = userId;
   else if (userType === 'SUPER_ADMIN') adminUserId = userId;
 
+  // Redact OTP from logs
+  const isOtpEvent = type?.includes('OTP') || type === 'USER_OTP_REQUESTED';
+  const safePayload = isOtpEvent
+    ? { ...data, otp: '[REDACTED]', message: '[REDACTED - OTP]' }
+    : { data, error, metadata };
+
   try {
     return await prisma.notification.create({
       data: {
@@ -257,7 +263,7 @@ export async function logNotification({
         type,
         channel,
         status,
-        payload: { data, error, metadata },
+        payload: safePayload,
         sent_at: status === 'SENT' ? new Date() : null,
       },
     });
@@ -379,15 +385,15 @@ export async function notifyParent({
 // CONVENIENCE EXPORTS
 // =============================================================================
 
-export async function sendSmsNotification(phone, message, context = {}) {
+export async function sendSmsToParent(phone, message, context = {}) {
   return SmsChannel.send(phone, message, context);
 }
 
-export async function sendEmailNotification(to, subject, html, context = {}) {
+export async function sendEmailToParent(to, subject, html, context = {}) {
   return EmailChannel.send(to, subject, html, null, context);
 }
 
-export async function sendPushNotification(parentId, title, body, data = {}, context = {}) {
+export async function sendPushToParent(parentId, title, body, data = {}, context = {}) {
   const prefs = await getUserPrefs(parentId);
   if (!prefs.push_enabled) {
     logger.info({ parentId }, 'Push disabled for parent');

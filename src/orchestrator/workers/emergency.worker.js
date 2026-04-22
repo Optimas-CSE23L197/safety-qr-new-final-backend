@@ -4,6 +4,7 @@
 //
 // Steps 7–15 of the emergency alert pipeline.
 // FCM removed. Expo push tokens only (expo_push_token field).
+// FIXED: SMS now uses DLT template with named variables.
 // =============================================================================
 
 import { Worker } from 'bullmq';
@@ -25,7 +26,8 @@ const safeDecrypt = encrypted => {
   if (!encrypted) return null;
   try {
     return decryptField(encrypted);
-  } catch {
+  } catch (err) {
+    logger.error({ err: err.message }, '[emergency.worker] Decrypt failed');
     return null;
   }
 };
@@ -92,8 +94,34 @@ const logAttempt = async ({
   alertId,
   studentId,
   schoolId,
+  metadata = {},
 }) => {
   try {
+    // Check if log already exists for this alert + channel (prevents duplicates on retry)
+    const existing = await prisma.notification.findFirst({
+      where: {
+        channel,
+        metadata: { path: ['alertId'], equals: alertId },
+      },
+    });
+
+    if (existing) {
+      // Update existing record with latest attempt info
+      await prisma.notification.update({
+        where: { id: existing.id },
+        data: {
+          status,
+          latency_ms: latencyMs,
+          provider_ref: providerRef ?? null,
+          error: error ?? null,
+          metadata: { alertId, ...metadata, attempts: (existing.metadata?.attempts || 0) + 1 },
+        },
+      });
+      logger.debug({ alertId, channel }, '[emergency.worker] Updated existing notification log');
+      return;
+    }
+
+    // Create new record
     await prisma.notification.create({
       data: {
         channel,
@@ -103,7 +131,7 @@ const logAttempt = async ({
         error: error ?? null,
         student_id: studentId ?? null,
         school_id: schoolId ?? null,
-        metadata: { alertId },
+        metadata: { alertId, ...metadata, attempts: 1 },
       },
     });
   } catch (err) {
@@ -190,7 +218,16 @@ export const processEmergencyAlert = async job => {
     data: { alertId, studentId, type: 'EMERGENCY' },
   };
 
-  const smsBody = `ALERT: ${studentName ?? 'A student'}'s ResQID card was scanned at ${schoolName ?? 'school'}. Time: ${scannedAt ?? new Date().toISOString()}. Open the ResQID app.`;
+  // Format time for SMS (e.g., "10:30 AM")
+  const formattedTime = scannedAt
+    ? new Date(scannedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+    : new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+
+  const smsVariables = {
+    student_name: studentName ?? 'A student',
+    school_name: schoolName ?? 'school',
+    scan_time: formattedTime,
+  };
 
   const deliveredChannels = [];
   const failedChannels = [];
@@ -245,7 +282,12 @@ export const processEmergencyAlert = async job => {
         const start = Date.now();
         try {
           const res = await Promise.race([
-            sendSmsNotification({ to: phone, body: smsBody, meta: { alertId } }),
+            sendSmsNotification({
+              to: phone,
+              templateId: process.env.MSG91_EMERGENCY_TEMPLATE_ID,
+              variables: smsVariables,
+              meta: { alertId },
+            }),
             new Promise((_, rej) => setTimeout(() => rej(new Error('SMS timeout')), 4000)),
           ]);
           res?.success ? deliveredChannels.push('SMS') : failedChannels.push('SMS');

@@ -1,7 +1,12 @@
+// =============================================================================
+// infrastructure/infrastructure.index.js — RESQID
+// FIXED: Removed template exports (templates now live in orchestrator)
+// =============================================================================
+
 import { initializeCache, getCache, TTL, CacheKey } from './cache/cache.index.js';
-import { initializeEmail, getEmail, EMAIL_TEMPLATES } from './email/email.index.js';
-import { initializePush, getPush, NOTIFICATION_TEMPLATES } from './push/push.index.js';
-import { initializeSms, getSms, SMS_TEMPLATES } from './sms/sms.index.js';
+import { initializeEmail, getEmail } from './email/email.index.js';
+import { initializePush, getPush } from './push/push.index.js';
+import { initializeSms, getSms } from './sms/sms.index.js';
 import { initializeStorage, getStorage, StoragePath } from './storage/storage.index.js';
 
 export class Infrastructure {
@@ -58,7 +63,7 @@ export class Infrastructure {
   }
 
   getConstants() {
-    return { TTL, CacheKey, EMAIL_TEMPLATES, NOTIFICATION_TEMPLATES, SMS_TEMPLATES, StoragePath };
+    return { TTL, CacheKey, StoragePath };
   }
 
   async shutdown() {
@@ -98,4 +103,4 @@ export function getInfrastructure() {
 }
 
 // Re-export sub-module constants for convenience
-export { TTL, CacheKey, EMAIL_TEMPLATES, NOTIFICATION_TEMPLATES, SMS_TEMPLATES, StoragePath };
+export { TTL, CacheKey, StoragePath };

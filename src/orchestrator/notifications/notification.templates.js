@@ -176,14 +176,14 @@ const stubEmail = (subject, debugLabel) => ({
 
 export const emailTemplates = Object.freeze({
   OTP_ADMIN: ({ userName, otpCode, expiryMinutes = 5 }) => ({
-    subject: `Your RESQID OTP — ${otpCode}`,
+    subject: `Your RESQID Verification Code`,
     // Component: OtpAdminEmail,
     Component: null,
     props: { userName, otpCode, expiryMinutes },
   }),
 
   OTP_PARENT: ({ userName, otpCode, expiryMinutes = 5 }) => ({
-    subject: `Your RESQID OTP — ${otpCode}`,
+    subject: `Your RESQID Verification Code`,
     // Component: OtpParentEmail,
     Component: null,
     props: { userName, otpCode, expiryMinutes },

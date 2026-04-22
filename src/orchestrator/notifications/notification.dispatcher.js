@@ -137,6 +137,10 @@ const makeSchoolLoader = schoolId => {
 
 const writeNotificationLog = async ({ channel, status, latencyMs, providerRef, error, meta }) => {
   try {
+    // Redact OTP from logs
+    const isOtpEvent = meta?.eventType === 'USER_OTP_REQUESTED';
+    const safeContent = isOtpEvent ? '[REDACTED - OTP]' : (meta?.content ?? null);
+
     await prisma.notification.create({
       data: {
         channel,
@@ -150,7 +154,7 @@ const writeNotificationLog = async ({ channel, status, latencyMs, providerRef, e
         event_type: meta?.eventType ?? null,
         recipient: meta?.recipient ?? meta?.schoolId ?? 'system',
         type: meta?.eventType ?? channel,
-        content: meta?.content ?? null,
+        content: safeContent,
         subject: meta?.subject ?? null,
       },
     });
@@ -161,7 +165,7 @@ const writeNotificationLog = async ({ channel, status, latencyMs, providerRef, e
 
 // ── Channel send helpers ──────────────────────────────────────────────────────
 
-const timedSend = async (sendFn, channel, meta) => {
+const timedSend = async (sendFn, channel, meta, extraMeta = {}) => {
   const start = Date.now();
   const r = await sendFn();
   await writeNotificationLog({
@@ -170,7 +174,7 @@ const timedSend = async (sendFn, channel, meta) => {
     latencyMs: Date.now() - start,
     providerRef: r.providerRef ?? null,
     error: r.error ?? null,
-    meta,
+    meta: { ...meta, ...extraMeta }, // MERGE extraMeta into meta
   });
   return r;
 };
@@ -222,7 +226,8 @@ export const dispatch = async event => {
           () =>
             sendPushNotificationChannel({ tokens: parentExpoTokens ?? [], ...push, meta: logMeta }),
           'PUSH',
-          logMeta
+          logMeta,
+          { tokenCount: parentExpoTokens?.length ?? 0 } // ADDED
         );
 
         if (parentContacts?.length) {
