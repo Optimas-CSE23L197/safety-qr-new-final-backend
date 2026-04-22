@@ -37,10 +37,13 @@ let _expireInterval = null;
 const runLogDrain = async () => {
   try {
     const entries = await drainScanLogQueue(DRAIN_BATCH_SIZE);
+    console.log('[runLogDrain] entries drained:', entries.length);
     if (!entries.length) return;
+    console.log('[runLogDrain] first entry:', JSON.stringify(entries[0]));
     await bulkWriteScanLogs(entries);
-    logger.debug({ count: entries.length }, '[scan.worker] Scan log batch inserted');
+    console.log('[runLogDrain] bulk write done');
   } catch (err) {
+    console.error('[runLogDrain] FAILED:', err.message);
     logger.error({ err: err.message }, '[scan.worker] Log drain cycle failed');
   }
 };
