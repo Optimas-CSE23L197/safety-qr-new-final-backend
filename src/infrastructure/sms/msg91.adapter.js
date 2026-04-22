@@ -100,6 +100,51 @@ export class MSG91Adapter extends SmsProvider {
       return null;
     }
   }
+
+  async sendOtp(phoneNumber, otp) {
+    try {
+      const payload = {
+        template_id: process.env.MSG91_OTP_TEMPLATE_ID,
+        mobile: `91${phoneNumber.replace(/\D/g, '').replace(/^91/, '')}`,
+        authkey: this.authKey,
+        otp: otp,
+      };
+
+      const response = await axios.post('https://control.msg91.com/api/v5/otp', payload, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      logger.info(
+        { phone: phoneNumber.slice(0, 6) + '…', type: response.data?.type },
+        '[SMS] OTP sent'
+      );
+      return { success: true, requestId: response.data?.request_id };
+    } catch (err) {
+      logger.error(
+        { phone: phoneNumber.slice(0, 6) + '…', error: err.response?.data || err.message },
+        '[SMS] OTP send failed'
+      );
+      return { success: false, error: err.message };
+    }
+  }
+
+  async verifyOtp(phoneNumber, otp) {
+    try {
+      const response = await axios.get('https://control.msg91.com/api/v5/otp/verify', {
+        params: {
+          mobile: `91${phoneNumber.replace(/\D/g, '').replace(/^91/, '')}`,
+          otp: otp,
+          authkey: this.authKey,
+        },
+      });
+      return { success: response.data?.type === 'success' };
+    } catch (err) {
+      logger.error({ error: err.message }, '[SMS] OTP verify failed');
+      return { success: false, error: err.message };
+    }
+  }
 }
 
 export default MSG91Adapter;

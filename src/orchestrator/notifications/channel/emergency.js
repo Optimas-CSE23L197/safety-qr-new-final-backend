@@ -1,138 +1,73 @@
-// src/orchestrator/notifications/channel/emergency.js
-// Emergency alert channel — Rule 1: Emergency alerts are UNTOUCHABLE.
+// =============================================================================
+// orchestrator/notifications/channel/emergency.js — RESQID
 //
-// Direct channel calls — never queued, never rate-limited.
-// Fixed: imports now use getSms() / getPush() / getEmail() singletons,
-//        not the non-existent sendSms / sendPush / sendEmail named exports.
+// Emergency alert channel. Rule: UNTOUCHABLE — never queued, never rate-limited.
+// Direct channel calls only. Push first (2s timeout), SMS second (4s timeout).
+//
+// FIXES:
+//   - FCM removed. Expo tokens via expo_push_token field on parentDevice.
+//   - Delayed email log moved to BullMQ (backgroundJobsQueue) instead of
+//     setTimeout — survives process restarts.
+//   - emailTemplates.EMERGENCY_ALERT_LOG used instead of raw JSON in <pre>.
+// =============================================================================
 
-import logger from '#config/logger.js';
+import { logger } from '#config/logger.js';
 import { prisma } from '#config/prisma.js';
 import { getSms } from '#infrastructure/sms/sms.index.js';
 import { getPush } from '#infrastructure/push/push.index.js';
 import { getEmail } from '#infrastructure/email/email.index.js';
+import { emailTemplates } from '../notification.templates.js';
+import { backgroundJobsQueue } from '../../queues/queue.config.js';
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-const EMAIL_DELAY_MIN = 5 * 60 * 1000;
-const EMAIL_DELAY_MAX = 10 * 60 * 1000;
-const getEmailDelay = () =>
-  Math.floor(Math.random() * (EMAIL_DELAY_MAX - EMAIL_DELAY_MIN + 1) + EMAIL_DELAY_MIN);
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-const formatDetailedEmailLog = data => {
-  const {
-    scanId,
-    studentId,
-    studentName,
-    schoolId,
-    schoolName,
-    emergencyContacts,
-    location,
-    scannedAt,
-    dispatchResults,
-  } = data;
-
-  return {
-    scanId,
-    studentId,
-    studentName,
-    schoolId,
-    schoolName,
-    emergencyContacts: emergencyContacts.map(contact => ({
-      name: contact.name,
-      phone: contact.phone?.substring(0, 4) + '****' + contact.phone?.slice(-4),
-      relation: contact.relation,
-      channels: {
-        sms: dispatchResults?.sms?.success || false,
-        push: dispatchResults?.push?.success || false,
-      },
-    })),
-    location: {
-      lat: location?.lat,
-      lng: location?.lng,
-      googleMapsUrl:
-        location?.lat && location?.lng
-          ? `https://maps.google.com/?q=${location.lat},${location.lng}`
-          : null,
-    },
-    scannedAt: scannedAt instanceof Date ? scannedAt.toISOString() : scannedAt,
-    dispatchTiming: {
-      sms: dispatchResults?.sms?.duration,
-      push: dispatchResults?.push?.duration,
-    },
-    dispatchSuccess: {
-      sms: dispatchResults?.sms?.success || false,
-      push: dispatchResults?.push?.success || false,
-    },
-    dispatchErrors: {
-      sms: dispatchResults?.sms?.error,
-      push: dispatchResults?.push?.error,
-    },
-  };
-};
-
-// ── Channel senders ───────────────────────────────────────────────────────────
+// ── SMS ───────────────────────────────────────────────────────────────────────
 
 const sendEmergencySms = async (contact, studentInfo, location) => {
-  const startTime = Date.now();
+  const start = Date.now();
   try {
     const locationText =
       location?.lat && location?.lng
         ? `https://maps.google.com/?q=${location.lat},${location.lng}`
         : 'Unknown location';
 
-    const message = `🚨 EMERGENCY ALERT: ${studentInfo.studentName} needs immediate assistance. Location: ${locationText}. Please contact emergency services if needed. - RESQID`;
+    const message = `EMERGENCY: ${studentInfo.studentName} needs help. Location: ${locationText}. Contact emergency services if needed. - RESQID`;
 
-    // FIX: getSms() returns the MSG91Adapter instance; call .send() on it
     const sms = getSms();
     await sms.send(contact.phone, message);
 
-    const duration = Date.now() - startTime;
-    logger.info(
-      { contactName: contact.name, studentName: studentInfo.studentName, duration },
-      'Emergency SMS sent'
-    );
-    return { success: true, duration };
+    return { success: true, duration: Date.now() - start };
   } catch (error) {
-    const duration = Date.now() - startTime;
-    logger.error(
-      {
-        contactName: contact.name,
-        studentName: studentInfo.studentName,
-        error: error.message,
-        duration,
-      },
-      'Emergency SMS failed'
-    );
-    return { success: false, error: error.message, duration };
+    logger.error({ contactName: contact.name, error: error.message }, '[emergency] SMS failed');
+    return { success: false, error: error.message, duration: Date.now() - start };
   }
 };
 
+// ── Push ──────────────────────────────────────────────────────────────────────
+
 const sendEmergencyPush = async (contact, studentInfo, location) => {
-  const startTime = Date.now();
+  const start = Date.now();
   try {
+    // Load Expo tokens for this contact's parent account
     const parentDevices = await prisma.parentDevice.findMany({
       where: { parent: { phone: contact.phone }, is_active: true },
-      select: { device_token: true, platform: true },
+      select: { expo_push_token: true },
     });
 
-    if (parentDevices.length === 0) {
+    const tokens = parentDevices.map(d => d.expo_push_token).filter(Boolean);
+
+    if (tokens.length === 0) {
       logger.debug(
-        { phone: contact.phone?.substring(0, 4) + '****' },
-        'No active devices for push notification'
+        { phone: contact.phone?.slice(0, 6) + '…' },
+        '[emergency] No active Expo tokens for push'
       );
-      return { success: false, error: 'No active devices', duration: Date.now() - startTime };
+      return { success: false, error: 'No active Expo tokens', duration: Date.now() - start };
     }
 
     const locationText =
-      location?.lat && location?.lng
-        ? `Location: ${location.lat}, ${location.lng}`
-        : 'Location unknown';
+      location?.lat && location?.lng ? `${location.lat}, ${location.lng}` : 'Unknown';
 
     const notification = {
-      title: '🚨 EMERGENCY ALERT',
-      body: `${studentInfo.studentName} needs immediate assistance. ${locationText}`,
+      title: 'Emergency Alert',
+      body: `${studentInfo.studentName} needs immediate assistance. Location: ${locationText}`,
       data: {
         type: 'EMERGENCY',
         studentId: studentInfo.studentId,
@@ -142,97 +77,109 @@ const sendEmergencyPush = async (contact, studentInfo, location) => {
       },
     };
 
-    // FIX: getPush() returns the FirebaseAdapter instance
     const push = getPush();
-    const tokens = parentDevices.map(d => d.device_token);
-
-    const results = await Promise.allSettled(
+    const result =
       tokens.length === 1
-        ? [push.sendToDevice(tokens[0], notification)]
-        : [push.sendToDevices(tokens, notification)]
-    );
+        ? await push.sendToDevice(tokens[0], notification)
+        : await push.sendToDevices(tokens, notification);
 
-    const successCount = results.filter(r => r.status === 'fulfilled').length;
-    const duration = Date.now() - startTime;
+    const duration = Date.now() - start;
 
-    if (successCount > 0) {
+    if (result?.success) {
       logger.info(
-        {
-          contactName: contact.name,
-          studentName: studentInfo.studentName,
-          deviceCount: tokens.length,
-          successCount,
-          duration,
-        },
-        'Emergency Push sent'
+        { contactName: contact.name, tokenCount: tokens.length, duration },
+        '[emergency] Push sent'
       );
       return { success: true, duration };
     }
 
-    return { success: false, error: 'All push attempts failed', duration };
+    return { success: false, error: result?.error ?? 'Push failed', duration };
   } catch (error) {
-    const duration = Date.now() - startTime;
-    logger.error(
-      {
-        contactName: contact.name,
-        studentName: studentInfo.studentName,
-        error: error.message,
-        duration,
-      },
-      'Emergency Push failed'
-    );
-    return { success: false, error: error.message, duration };
+    logger.error({ contactName: contact.name, error: error.message }, '[emergency] Push failed');
+    return { success: false, error: error.message, duration: Date.now() - start };
   }
 };
 
-// ── Delayed email log ─────────────────────────────────────────────────────────
+// ── Delayed email log via BullMQ ──────────────────────────────────────────────
+// Uses backgroundJobsQueue with a 5-minute delay instead of setTimeout.
+// Survives process restarts. Processed by background.worker.js.
 
-const sendDetailedEmailLog = async data => {
-  const delay = getEmailDelay();
-  logger.info({ scanId: data.scanId, delayMs: delay }, 'Scheduling detailed email log');
+const scheduleEmergencyEmailLog = async data => {
+  try {
+    await backgroundJobsQueue.add(
+      'EMERGENCY_EMAIL_LOG',
+      { type: 'EMERGENCY_EMAIL_LOG', payload: data },
+      {
+        delay: 5 * 60 * 1000, // 5 minutes
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 60000 },
+        jobId: `emergency-email-log-${data.scanId}`,
+      }
+    );
+    logger.info({ scanId: data.scanId }, '[emergency] Email log job scheduled (5 min delay)');
+  } catch (err) {
+    logger.error(
+      { scanId: data.scanId, err: err.message },
+      '[emergency] Failed to schedule email log job'
+    );
+  }
+};
 
-  setTimeout(async () => {
-    try {
-      const formattedData = formatDetailedEmailLog(data);
+/**
+ * Called by background.worker.js when it processes EMERGENCY_EMAIL_LOG jobs.
+ * Export this so the worker can import it directly.
+ */
+export const sendEmergencyEmailLog = async data => {
+  try {
+    const {
+      scanId,
+      studentId,
+      studentName,
+      schoolId,
+      schoolName,
+      emergencyContacts,
+      location,
+      scannedAt,
+      dispatchResults,
+    } = data;
 
-      const [superAdmins, school] = await Promise.all([
-        prisma.superAdmin.findMany({
-          where: { is_active: true },
-          select: { email: true, name: true },
-        }),
-        prisma.school.findUnique({
-          where: { id: data.schoolId },
-          select: { email: true, name: true },
-        }),
-      ]);
+    const [superAdmins, school] = await Promise.all([
+      prisma.superAdmin.findMany({
+        where: { is_active: true },
+        select: { email: true, name: true },
+      }),
+      prisma.school.findUnique({
+        where: { id: schoolId },
+        select: { email: true, name: true },
+      }),
+    ]);
 
-      const recipients = superAdmins.map(a => ({ email: a.email, name: a.name }));
-      if (school?.email) recipients.push({ email: school.email, name: school.name });
+    const recipients = superAdmins.map(a => a.email).filter(Boolean);
+    if (school?.email) recipients.push(school.email);
 
-      // FIX: getEmail() returns the ResendAdapter instance; call .send() on it
-      const email = getEmail();
-
-      await Promise.allSettled(
-        recipients.map(recipient =>
-          email.send({
-            to: recipient.email,
-            subject: `[RESQID] Emergency Alert Details - ${data.studentName} - ${new Date().toLocaleString()}`,
-            html: `<pre>${JSON.stringify(formattedData, null, 2)}</pre>`, // replace with real template
-          })
-        )
-      );
-
-      logger.info(
-        { scanId: data.scanId, recipients: recipients.length },
-        'Detailed emergency email log sent'
-      );
-    } catch (error) {
-      logger.error(
-        { scanId: data.scanId, error: error.message },
-        'Failed to send detailed emergency email log'
-      );
+    if (!recipients.length) {
+      logger.warn({ scanId }, '[emergency] No recipients for email log');
+      return;
     }
-  }, delay);
+
+    const tmpl = emailTemplates.EMERGENCY_ALERT_LOG({
+      studentName,
+      schoolName,
+      location,
+      scannedAt: scannedAt instanceof Date ? scannedAt.toISOString() : scannedAt,
+      dispatchResults,
+    });
+
+    const email = getEmail();
+    await Promise.allSettled(
+      recipients.map(to => email.send({ to, subject: tmpl.subject, html: tmpl.html }))
+    );
+
+    logger.info({ scanId, recipientCount: recipients.length }, '[emergency] Email log sent');
+  } catch (err) {
+    logger.error({ scanId: data?.scanId, err: err.message }, '[emergency] Email log send failed');
+    throw err; // rethrow so BullMQ can retry
+  }
 };
 
 // ── Main export ───────────────────────────────────────────────────────────────
@@ -250,8 +197,8 @@ export const sendEmergencyAlerts = async params => {
   } = params;
 
   logger.info(
-    { scanId, studentId, studentName, contactCount: emergencyContacts.length },
-    'Sending emergency alerts'
+    { scanId, studentId, studentName, contactCount: emergencyContacts?.length ?? 0 },
+    '[emergency] Sending emergency alerts'
   );
 
   const studentInfo = { scanId, studentId, studentName, schoolId, schoolName };
@@ -263,52 +210,48 @@ export const sendEmergencyAlerts = async params => {
 
   const dispatchedChannels = [];
   const failedChannels = [];
-
   const channelPromises = [];
 
-  for (const contact of emergencyContacts) {
+  for (const contact of emergencyContacts ?? []) {
     if (!contact.phone) {
-      logger.warn({ contactName: contact.name }, 'Emergency contact missing phone');
+      logger.warn({ contactName: contact.name }, '[emergency] Contact missing phone — skipping');
       continue;
     }
 
     channelPromises.push(
-      sendEmergencySms(contact, studentInfo, location).then(result => ({
-        channel: 'sms',
-        contact: contact.name,
+      sendEmergencyPush(contact, studentInfo, location).then(result => ({
+        channel: 'push',
         result,
       }))
     );
     channelPromises.push(
-      sendEmergencyPush(contact, studentInfo, location).then(result => ({
-        channel: 'push',
-        contact: contact.name,
+      sendEmergencySms(contact, studentInfo, location).then(result => ({
+        channel: 'sms',
         result,
       }))
     );
-    // WhatsApp: DISABLED (costly). Re-enable here only when MSG91 WhatsApp is configured.
   }
 
-  const channelResults = await Promise.allSettled(channelPromises);
+  const settled = await Promise.allSettled(channelPromises);
 
-  for (const settled of channelResults) {
-    if (settled.status === 'fulfilled') {
-      const { channel, result } = settled.value;
+  for (const s of settled) {
+    if (s.status === 'fulfilled') {
+      const { channel, result } = s.value;
       if (result.success) {
         if (!dispatchedChannels.includes(channel)) dispatchedChannels.push(channel);
         results[channel].success = true;
         results[channel].duration += result.duration;
       } else {
         if (!failedChannels.includes(channel)) failedChannels.push(channel);
-        if (result.error) results[channel].error = result.error;
+        results[channel].error = result.error;
       }
     } else {
-      logger.error({ reason: settled.reason }, 'Emergency channel promise rejected');
+      logger.error({ reason: s.reason }, '[emergency] Channel promise rejected');
     }
   }
 
-  // Fire-and-forget delayed email log
-  sendDetailedEmailLog({
+  // Schedule delayed email log via BullMQ (fire and forget — never blocks alert)
+  scheduleEmergencyEmailLog({
     scanId,
     studentId,
     studentName,
@@ -318,18 +261,16 @@ export const sendEmergencyAlerts = async params => {
     location,
     scannedAt,
     dispatchResults: results,
-  }).catch(error =>
-    logger.error({ error: error.message }, 'Failed to schedule detailed email log')
-  );
+  }).catch(err => logger.error({ err: err.message }, '[emergency] Failed to schedule email log'));
 
   const overallSuccess = dispatchedChannels.length > 0;
 
   logger.info(
     { scanId, overallSuccess, dispatchedChannels, failedChannels },
-    'Emergency alerts completed'
+    '[emergency] Alerts completed'
   );
 
   return { success: overallSuccess, results, dispatchedChannels, failedChannels };
 };
 
-export default { sendEmergencyAlerts };
+export default { sendEmergencyAlerts, sendEmergencyEmailLog };

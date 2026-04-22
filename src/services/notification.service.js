@@ -1,51 +1,41 @@
 // =============================================================================
-// services/global/notification.service.js — RESQID
-// GLOBAL NOTIFICATION BASE SERVICE
-// Provides low-level send functions for SMS, Email, Push
-// Uses infrastructure layer for actual delivery
+// services/notification.service.js — RESQID
+// Global notification base service.
+// Low-level send functions + high-level notifyParent() with pref checking.
+//
+// FIXES:
+//   - FCM/Firebase removed. Expo push tokens only.
+//   - getPush imported from correct push.index.js (ExpoAdapter).
+//   - sendToTopic removed (not supported by Expo).
+//   - NOTIFICATION_TEMPLATES import removed (templates live in orchestrator).
+//   - EMAIL_TEMPLATES / SMS_TEMPLATES imports removed (no hardcoded templates here).
+//   - Dev mock uses ENV.NODE_ENV check (consistent with rest of app).
+//   - getParentDeviceTokens queries expo_push_token field.
 // =============================================================================
 
 import { ENV } from '#config/env.js';
 import { logger } from '#config/logger.js';
 import { prisma } from '#config/prisma.js';
+import { getEmail } from '#infrastructure/email/email.index.js';
+import { getSms } from '#infrastructure/sms/sms.index.js';
+import { getPush } from '#infrastructure/push/push.index.js';
 
-// Import infrastructure layer
-import { getEmail, EMAIL_TEMPLATES } from '#infrastructure/email/email.index.js';
-import { getSms, SMS_TEMPLATES } from '#infrastructure/sms/sms.index.js';
-import { getPush, NOTIFICATION_TEMPLATES } from '#infrastructure/push/push.index.js';
+const isDev = () => ENV.NODE_ENV === 'development';
 
 // =============================================================================
-// NOTIFICATION CHANNELS
+// SMS CHANNEL
 // =============================================================================
 
-/**
- * SMS Channel - Uses your MSG91 adapter
- */
 export const SmsChannel = {
-  /**
-   * Send SMS using infrastructure layer
-   */
   async send(phone, message, context = {}) {
-    const isDev = ENV.IS_DEV;
-
-    if (isDev) {
-      logger.info(
-        {
-          type: 'sms_dev_mock',
-          phone,
-          message,
-          ...context,
-        },
-        `[DEV] SMS to ${phone}: ${message}`
-      );
+    if (isDev()) {
+      logger.info({ type: 'sms_dev_mock', phone, message, ...context }, '[DEV] SMS mock');
       return { success: true, mode: 'mock' };
     }
-
     try {
       const smsService = getSms();
       const result = await smsService.send(phone, message);
-
-      logger.info({ phone, messageId: result.messageId }, 'SMS sent successfully');
+      logger.info({ phone, messageId: result.messageId }, 'SMS sent');
       return { success: true, mode: 'live', messageId: result.messageId };
     } catch (error) {
       logger.error({ error: error.message, phone, ...context }, 'SMS send failed');
@@ -53,13 +43,8 @@ export const SmsChannel = {
     }
   },
 
-  /**
-   * Send templated SMS
-   */
   async sendTemplate(phone, templateName, templateData, context = {}) {
-    const isDev = ENV.IS_DEV;
-
-    if (isDev) {
+    if (isDev()) {
       logger.info(
         {
           type: 'sms_template_dev_mock',
@@ -68,15 +53,13 @@ export const SmsChannel = {
           data: templateData,
           ...context,
         },
-        `[DEV] SMS template "${templateName}" to ${phone}`
+        '[DEV] SMS template mock'
       );
       return { success: true, mode: 'mock' };
     }
-
     try {
       const smsService = getSms();
       const result = await smsService.sendTemplate(phone, templateName, templateData);
-
       logger.info(
         { phone, template: templateName, messageId: result.messageId },
         'Template SMS sent'
@@ -92,125 +75,54 @@ export const SmsChannel = {
   },
 };
 
-/**
- * Email Channel - Uses your Resend adapter
- */
-export const EmailChannel = {
-  /**
-   * Send email using infrastructure layer
-   */
-  async send(to, subject, html, text = null, context = {}) {
-    const isDev = ENV.IS_DEV;
+// =============================================================================
+// EMAIL CHANNEL
+// =============================================================================
 
-    if (isDev) {
-      logger.info(
-        {
-          type: 'email_dev_mock',
-          to,
-          subject,
-          ...context,
-        },
-        `[DEV] Email to ${to}: ${subject}`
-      );
+export const EmailChannel = {
+  async send(to, subject, html, text = null, context = {}) {
+    if (isDev()) {
+      logger.info({ type: 'email_dev_mock', to, subject, ...context }, '[DEV] Email mock');
       return { success: true, mode: 'mock' };
     }
-
     try {
       const emailService = getEmail();
       const result = await emailService.send({
         to,
         subject,
         html,
-        text: text || html.replace(/<[^>]*>/g, ''), // Strip HTML for text version
+        text: text || html.replace(/<[^>]*>/g, ''),
       });
-
-      logger.info({ to, subject, messageId: result.id }, 'Email sent successfully');
+      logger.info({ to, subject, messageId: result.id }, 'Email sent');
       return { success: true, mode: 'live', messageId: result.id };
     } catch (error) {
       logger.error({ error: error.message, to, subject, ...context }, 'Email send failed');
       return { success: false, error: error.message };
     }
   },
-
-  /**
-   * Send templated email using infrastructure templates
-   */
-  async sendTemplate(to, templateName, templateData, subjectOverride = null, context = {}) {
-    const isDev = ENV.IS_DEV;
-    const template = EMAIL_TEMPLATES[templateName];
-
-    if (!template) {
-      logger.error({ templateName }, 'Email template not found');
-      return { success: false, error: `Template "${templateName}" not found` };
-    }
-
-    // Replace variables in subject if needed
-    let subject = subjectOverride || templateName.replace(/_/g, ' ');
-    if (templateData.subject) {
-      subject = templateData.subject;
-    }
-
-    if (isDev) {
-      logger.info(
-        {
-          type: 'email_template_dev_mock',
-          to,
-          template: templateName,
-          data: templateData,
-          ...context,
-        },
-        `[DEV] Email template "${templateName}" to ${to}`
-      );
-      return { success: true, mode: 'mock' };
-    }
-
-    try {
-      const emailService = getEmail();
-      const result = await emailService.sendTemplate(templateName, templateData, to, subject);
-
-      logger.info({ to, template: templateName, messageId: result.id }, 'Template email sent');
-      return { success: true, mode: 'live', messageId: result.id };
-    } catch (error) {
-      logger.error(
-        { error: error.message, to, template: templateName, ...context },
-        'Template email failed'
-      );
-      return { success: false, error: error.message };
-    }
-  },
 };
 
-/**
- * Push Notification Channel - Uses your Firebase adapter
- */
+// =============================================================================
+// PUSH CHANNEL — Expo only, no FCM, no topics
+// =============================================================================
+
 export const PushChannel = {
   /**
-   * Send push notification using infrastructure layer
+   * Send to a single Expo push token.
    */
   async sendToDevice(deviceToken, title, body, data = {}, context = {}) {
-    const isDev = ENV.IS_DEV;
-
-    if (isDev) {
+    if (isDev()) {
       logger.info(
-        {
-          type: 'push_dev_mock',
-          deviceToken,
-          title,
-          body,
-          data,
-          ...context,
-        },
-        `[DEV] Push to device: ${title}`
+        { type: 'push_dev_mock', deviceToken, title, body, ...context },
+        '[DEV] Push mock'
       );
       return { success: true, mode: 'mock' };
     }
-
     try {
       const pushService = getPush();
       const result = await pushService.sendToDevice(deviceToken, { title, body, data });
-
-      logger.info({ deviceToken, title, messageId: result.messageId }, 'Push sent to device');
-      return { success: true, mode: 'live', messageId: result.messageId };
+      logger.info({ deviceToken, title, successCount: result.successCount }, 'Push sent to device');
+      return { success: true, mode: 'live', successCount: result.successCount };
     } catch (error) {
       logger.error(
         { error: error.message, deviceToken, title, ...context },
@@ -221,33 +133,22 @@ export const PushChannel = {
   },
 
   /**
-   * Send push to multiple devices
+   * Send to multiple Expo push tokens.
    */
   async sendToDevices(deviceTokens, title, body, data = {}, context = {}) {
-    if (!deviceTokens.length) {
+    if (!deviceTokens?.length) {
       return { success: false, error: 'No device tokens provided' };
     }
-
-    const isDev = ENV.IS_DEV;
-
-    if (isDev) {
+    if (isDev()) {
       logger.info(
-        {
-          type: 'push_multicast_dev_mock',
-          deviceCount: deviceTokens.length,
-          title,
-          body,
-          ...context,
-        },
-        `[DEV] Push to ${deviceTokens.length} devices: ${title}`
+        { type: 'push_multicast_dev_mock', deviceCount: deviceTokens.length, title, ...context },
+        '[DEV] Push multicast mock'
       );
       return { success: true, mode: 'mock', devices: deviceTokens.length };
     }
-
     try {
       const pushService = getPush();
       const result = await pushService.sendToDevices(deviceTokens, { title, body, data });
-
       logger.info(
         {
           deviceCount: deviceTokens.length,
@@ -257,63 +158,26 @@ export const PushChannel = {
         },
         'Push multicast sent'
       );
-
       return {
-        success: true,
+        success: result.successCount > 0,
         mode: 'live',
         successCount: result.successCount,
         failureCount: result.failureCount,
-        responses: result.responses,
       };
     } catch (error) {
       logger.error(
-        { error: error.message, deviceCount: deviceTokens.length, title, ...context },
+        { error: error.message, deviceCount: deviceTokens.length, ...context },
         'Push multicast failed'
       );
-      return { success: false, error: error.message };
-    }
-  },
-
-  /**
-   * Send push to a topic
-   */
-  async sendToTopic(topic, title, body, data = {}, context = {}) {
-    const isDev = ENV.IS_DEV;
-
-    if (isDev) {
-      logger.info(
-        {
-          type: 'push_topic_dev_mock',
-          topic,
-          title,
-          body,
-          ...context,
-        },
-        `[DEV] Push to topic "${topic}": ${title}`
-      );
-      return { success: true, mode: 'mock' };
-    }
-
-    try {
-      const pushService = getPush();
-      const result = await pushService.sendToTopic(topic, { title, body, data });
-
-      logger.info({ topic, title, messageId: result.messageId }, 'Push sent to topic');
-      return { success: true, mode: 'live', messageId: result.messageId };
-    } catch (error) {
-      logger.error({ error: error.message, topic, title, ...context }, 'Push to topic failed');
       return { success: false, error: error.message };
     }
   },
 };
 
 // =============================================================================
-// HIGH-LEVEL NOTIFICATION FUNCTIONS (with user preferences & database logging)
+// DB HELPERS
 // =============================================================================
 
-/**
- * Get user contact info by user type
- */
 export async function getUserContact(userId, userType) {
   if (userType === 'PARENT_USER') {
     return prisma.parentUser.findUnique({
@@ -336,17 +200,12 @@ export async function getUserContact(userId, userType) {
   return null;
 }
 
-/**
- * Get user notification preferences (with defaults)
- */
 export async function getUserPrefs(parentId) {
   const prefs = await prisma.parentNotificationPref.findUnique({
     where: { parent_id: parentId },
   });
-
-  // Return defaults if no preferences found
   return (
-    prefs || {
+    prefs ?? {
       email_enabled: true,
       sms_enabled: true,
       push_enabled: true,
@@ -356,38 +215,21 @@ export async function getUserPrefs(parentId) {
 }
 
 /**
- * Check if user wants to receive this type of notification
+ * Load active Expo push tokens for a parent.
+ * Field: expo_push_token (not fcm_token).
  */
-async function shouldSendNotification(prefs, notificationType, isEmergency = false) {
-  if (!prefs) return true;
-
-  // If emergency only mode is on, only send emergency notifications
-  if (prefs.emergency_only && !isEmergency) {
-    return false;
-  }
-
-  return true;
-}
-
-/**
- * Get active device tokens for a parent
- */
-async function getParentDeviceTokens(parentId) {
+async function getParentExpoTokens(parentId) {
   const devices = await prisma.parentDevice.findMany({
     where: {
       parent_id: parentId,
       is_active: true,
-      device_token: { not: null },
+      expo_push_token: { not: null },
     },
-    select: { device_token: true, platform: true },
+    select: { expo_push_token: true },
   });
-
-  return devices.map(d => d.device_token).filter(Boolean);
+  return devices.map(d => d.expo_push_token).filter(Boolean);
 }
 
-/**
- * Log notification to database
- */
 export async function logNotification({
   userId,
   userType,
@@ -420,19 +262,16 @@ export async function logNotification({
       },
     });
   } catch (err) {
-    // Don't let logging failure break the notification flow
     logger.error({ err, userId, userType, type }, 'Failed to log notification');
     return null;
   }
 }
 
 // =============================================================================
-// CONVENIENCE FUNCTIONS
+// notifyParent — high-level with preference checking
+// Caller provides pre-rendered html/smsMessage. No template logic here.
 // =============================================================================
 
-/**
- * Send notification to a parent with preference checking
- */
 export async function notifyParent({
   parentId,
   notificationType,
@@ -445,71 +284,45 @@ export async function notifyParent({
   isEmergency = false,
   metadata = {},
 }) {
-  const startTime = Date.now();
-
+  const start = Date.now();
   try {
-    // Get parent details
     const parent = await getUserContact(parentId, 'PARENT_USER');
     if (!parent) {
       logger.error({ parentId }, 'Parent not found');
       return { success: false, error: 'Parent not found' };
     }
 
-    // Get preferences
     const prefs = await getUserPrefs(parentId);
 
-    // Check if we should send
-    if (!(await shouldSendNotification(prefs, notificationType, isEmergency))) {
-      logger.info({ parentId, notificationType, prefs }, 'Notification skipped due to preferences');
+    if (prefs.emergency_only && !isEmergency) {
+      logger.info({ parentId, notificationType }, 'Notification skipped — emergency_only pref');
       return { success: true, skipped: true, reason: 'User preferences' };
     }
 
-    const results = {
-      email: null,
-      sms: null,
-      push: null,
-    };
+    const results = { email: null, sms: null, push: null };
 
-    // Send email if enabled
-    if (prefs.email_enabled && parent.email) {
-      if (emailHtml) {
-        results.email = await EmailChannel.send(
-          parent.email,
-          emailSubject || title,
-          emailHtml,
-          null,
-          { notificationType, parentId, ...metadata }
-        );
-      } else {
-        // Use default email template
-        results.email = await EmailChannel.sendTemplate(
-          parent.email,
-          'EMERGENCY_ALERT',
-          {
-            studentName: metadata.studentName || 'your child',
-            timestamp: new Date().toISOString(),
-            location: metadata.location || 'Unknown',
-            message: message,
-            emergencyUrl: metadata.emergencyUrl || '#',
-          },
-          emailSubject || title,
-          { notificationType, parentId, ...metadata }
-        );
-      }
-
+    // Email
+    if (prefs.email_enabled && parent.email && emailHtml) {
+      results.email = await EmailChannel.send(
+        parent.email,
+        emailSubject || title,
+        emailHtml,
+        null,
+        { notificationType, parentId, ...metadata }
+      );
       await logNotification({
         userId: parentId,
         userType: 'PARENT_USER',
         type: notificationType,
         channel: 'EMAIL',
         status: results.email.success ? 'SENT' : 'FAILED',
-        data: { title, message, to: parent.email },
+        data: { title, to: parent.email },
         error: results.email.error,
         metadata,
       });
     }
 
-    // Send SMS if enabled
+    // SMS
     if (prefs.sms_enabled && parent.phone) {
       const smsText = smsMessage || message;
       results.sms = await SmsChannel.send(parent.phone, smsText, {
@@ -517,7 +330,6 @@ export async function notifyParent({
         parentId,
         ...metadata,
       });
-
       await logNotification({
         userId: parentId,
         userType: 'PARENT_USER',
@@ -530,76 +342,60 @@ export async function notifyParent({
       });
     }
 
-    // Send push if enabled
+    // Push
     if (prefs.push_enabled) {
-      const deviceTokens = await getParentDeviceTokens(parentId);
-      if (deviceTokens.length) {
+      const tokens = await getParentExpoTokens(parentId);
+      if (tokens.length) {
         results.push = await PushChannel.sendToDevices(
-          deviceTokens,
+          tokens,
           title,
           message,
           { type: notificationType, ...pushData },
           { notificationType, parentId, ...metadata }
         );
-
         await logNotification({
           userId: parentId,
           userType: 'PARENT_USER',
           type: notificationType,
           channel: 'PUSH',
           status: results.push.success ? 'SENT' : 'FAILED',
-          data: { title, message, deviceCount: deviceTokens.length },
+          data: { title, message, deviceCount: tokens.length },
           error: results.push.error,
           metadata,
         });
       }
     }
 
-    const duration = Date.now() - startTime;
-    logger.info({ parentId, notificationType, results, duration }, 'Parent notification completed');
-
-    return {
-      success: true,
-      results,
-      duration,
-    };
+    const duration = Date.now() - start;
+    logger.info({ parentId, notificationType, duration }, 'Parent notification completed');
+    return { success: true, results, duration };
   } catch (error) {
     logger.error({ error, parentId, notificationType }, 'Parent notification failed');
-    return {
-      success: false,
-      error: error.message,
-    };
+    return { success: false, error: error.message };
   }
 }
 
-/**
- * Simple SMS send (no preference checking)
- */
+// =============================================================================
+// CONVENIENCE EXPORTS
+// =============================================================================
+
 export async function sendSmsNotification(phone, message, context = {}) {
   return SmsChannel.send(phone, message, context);
 }
 
-/**
- * Simple email send (no preference checking)
- */
 export async function sendEmailNotification(to, subject, html, context = {}) {
   return EmailChannel.send(to, subject, html, null, context);
 }
 
-/**
- * Simple push send to parent (with preference checking)
- */
 export async function sendPushNotification(parentId, title, body, data = {}, context = {}) {
   const prefs = await getUserPrefs(parentId);
   if (!prefs.push_enabled) {
     logger.info({ parentId }, 'Push disabled for parent');
     return { success: true, skipped: true, reason: 'Push disabled' };
   }
-
-  const deviceTokens = await getParentDeviceTokens(parentId);
-  if (!deviceTokens.length) {
-    return { success: false, error: 'No active devices' };
+  const tokens = await getParentExpoTokens(parentId);
+  if (!tokens.length) {
+    return { success: false, error: 'No active Expo tokens' };
   }
-
-  return PushChannel.sendToDevices(deviceTokens, title, body, data, context);
+  return PushChannel.sendToDevices(tokens, title, body, data, context);
 }

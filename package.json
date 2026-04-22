@@ -46,7 +46,8 @@
     "#orchestrator/*": "./src/orchestrator/*",
     "#workers/*": "./src/orchestrator/workers/*",
     "#notifications/*": "./src/orchestrator/notifications/channel/*",
-    "#routes": "./src/routes/*"
+    "#routes": "./src/routes/*",
+    "#templates/*": "./src/templates/*"
   },
   "prisma": {
     "seed": "node prisma/seed.js"

@@ -1,3 +1,9 @@
+// =============================================================================
+// orchestrator/notifications/channel/push.js — RESQID
+// Thin channel wrapper over ExpoAdapter.
+// Handles chunking, logging, latency. Never throws.
+// =============================================================================
+
 import { getPush } from '#infrastructure/push/push.index.js';
 import { logger } from '#config/logger.js';
 
@@ -15,7 +21,7 @@ export const sendPushNotificationChannel = async ({
 
   const tokenList = Array.isArray(tokens) ? tokens : [tokens];
   if (tokenList.length === 0) {
-    return { success: false, error: 'No FCM tokens' };
+    return { success: false, error: 'No Expo push tokens' };
   }
 
   const start = Date.now();
@@ -28,24 +34,21 @@ export const sendPushNotificationChannel = async ({
       return { success: false, error: 'Push provider not available' };
     }
 
-    // Optional: chunk tokens if too many
+    // Expo SDK handles its own chunking inside ExpoAdapter,
+    // but we chunk here too for very large token lists (>500)
     const chunkSize = 500;
-    const chunks = [];
-    for (let i = 0; i < tokenList.length; i += chunkSize) {
-      chunks.push(tokenList.slice(i, i + chunkSize));
-    }
-
     let successCount = 0;
     let failureCount = 0;
 
-    for (const chunk of chunks) {
+    for (let i = 0; i < tokenList.length; i += chunkSize) {
+      const chunk = tokenList.slice(i, i + chunkSize);
       const result =
         chunk.length === 1
           ? await push.sendToDevice(chunk[0], { title, body, data })
           : await push.sendToDevices(chunk, { title, body, data });
 
-      successCount += result?.successCount ?? 0;
-      failureCount += result?.failureCount ?? 0;
+      successCount += result?.successCount ?? (result?.success ? 1 : 0);
+      failureCount += result?.failureCount ?? (result?.success ? 0 : 1);
     }
 
     logger.info(
@@ -59,7 +62,7 @@ export const sendPushNotificationChannel = async ({
       '[push] Push sent'
     );
 
-    return { success: true, successCount, failureCount };
+    return { success: successCount > 0, successCount, failureCount };
   } catch (err) {
     logger.error(
       { err: err.message, latencyMs: Date.now() - start, ...meta },
