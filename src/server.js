@@ -72,7 +72,7 @@ try {
     cache: { REDIS_URL: process.env.REDIS_URL },
     email: { API_KEY: process.env.BREVO_API_KEY },
     push: null, // Expo handles push, not Firebase
-    sms: { AUTH_KEY: process.env.MSG91_AUTH_KEY },
+    sms: { AUTH_KEY: process.env.TWOFACTOR_API_KEY },
     storage: { BUCKET: process.env.AWS_S3_BUCKET },
   });
 } catch {

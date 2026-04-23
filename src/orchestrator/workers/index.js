@@ -13,7 +13,9 @@
 
 // Must be set before importing event.consumer.js
 process.env.WORKER_PROCESS = 'true';
+// Add this import at the top of workers/index.js
 
+import { initializeInfrastructure } from '#infrastructure/infrastructure.index.js';
 import { startEmergencyWorker, stopEmergencyWorker } from './emergency.worker.js';
 import { startNotificationWorker, stopNotificationWorker } from './notification.worker.js';
 import { startScanWorker, stopScanWorker } from './scan.worker.js';
@@ -274,7 +276,7 @@ process.on('unhandledRejection', reason => {
 // START
 // =============================================================================
 
-export const startWorkers = () => {
+export const startWorkers = async () => {
   printBanner();
   printTopology();
 
@@ -283,6 +285,14 @@ export const startWorkers = () => {
     console.error(`  ${c.dim}Valid roles: all · emergency · notification${c.reset}\n`);
     process.exit(1);
   }
+
+  await initializeInfrastructure({
+    cache: { REDIS_URL: process.env.REDIS_URL },
+    email: { API_KEY: process.env.BREVO_API_KEY }, // ← pass real config
+    push: {},
+    sms: { API_KEY: process.env.TWOFACTOR_API_KEY },
+    storage: { BUCKET: process.env.AWS_S3_BUCKET },
+  });
 
   logger.info({ role: ROLE, count: ACTIVE.length }, '[workers/index] Starting workers');
 
