@@ -16,6 +16,7 @@ import { smsTemplates, emailTemplates, pushTemplates } from './notification.temp
 import { getEmail } from '#infrastructure/email/email.index.js';
 import { prisma } from '#config/prisma.js';
 import { logger } from '#config/logger.js';
+import { getSms } from '#infrastructure/sms/sms.index.js';
 
 // ── Email send helper — handles React Email component or stub gracefully ───────
 
@@ -246,14 +247,12 @@ export const dispatch = async event => {
       }
 
       // ── USER_OTP_REQUESTED → SMS only (queue retry path) ─────────────────
+      // notification.dispatcher.js — USER_OTP_REQUESTED case
       case EVENTS.USER_OTP_REQUESTED: {
-        const { phone, otp, namespace, expiryMinutes } = payload;
-        const body =
-          namespace === 'register'
-            ? smsTemplates.OTP_REGISTER({ otp, expiryMinutes })
-            : smsTemplates.OTP_LOGIN({ otp, expiryMinutes });
+        const { phone, otp } = payload; // namespace not needed for 2Factor
+        const sms = getSms();
         await timedSend(
-          () => sendSmsNotification({ to: phone, body, meta: logMeta }),
+          () => sms.sendOtp(phone, otp), // ✅ works for both login + register
           'SMS',
           logMeta
         );
