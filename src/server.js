@@ -5,6 +5,7 @@
  * Run: node src/server.js
  */
 
+import '../instrument.js'; // must be first
 import { createApp, printMiddlewareTable } from './app.js';
 import { ENV } from './config/env.js';
 import { logger } from './config/logger.js';
@@ -69,7 +70,7 @@ const badge = (text, col = c.bgBlue + c.white) => `${col}${c.bold} ${text} ${c.r
 try {
   await initializeInfrastructure({
     cache: { REDIS_URL: process.env.REDIS_URL },
-    email: { API_KEY: process.env.RESEND_API_KEY },
+    email: { API_KEY: process.env.BREVO_API_KEY },
     push: null, // Expo handles push, not Firebase
     sms: { AUTH_KEY: process.env.MSG91_AUTH_KEY },
     storage: { BUCKET: process.env.AWS_S3_BUCKET },
@@ -164,7 +165,7 @@ function printServerInfo(port) {
   // Services sub-block
   const services = [
     [process.env.EXPO_ACCESS_TOKEN, 'Push'],
-    [process.env.SMTP_USER || process.env.RESEND_API_KEY, 'Email'],
+    [process.env.SMTP_USER || process.env.BREVO_API_KEY, 'Email'],
     [process.env.MSG91_AUTH_KEY, 'SMS'],
     [process.env.AWS_S3_BUCKET, 'Storage'],
     [process.env.REDIS_URL, 'Redis'],

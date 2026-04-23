@@ -1,17 +1,19 @@
-// =============================================================================
-// infrastructure/email/email.index.js — RESQID
-// AWS SES only. ResendAdapter removed from exports (was never imported here).
-// Templates are managed in src/templates/ — NOT here.
-// =============================================================================
-
-import { SesAdapter } from './ses.adapter.js';
+import { BrevoAdapter } from './brevo.adapter.js';
+// import { SesAdapter } from './ses.adapter.js'; // uncomment when AWS SES approved
 import { EmailProvider } from './email.provider.js';
+
+// ── Active provider ──────────────────────────────────────
+// Switch this one line to change provider:
+// BrevoAdapter  → current (free tier, no SES approval needed)
+// SesAdapter    → when AWS approves
+const ActiveAdapter = BrevoAdapter;
+// ─────────────────────────────────────────────────────────
 
 let emailInstance = null;
 
 export function initializeEmail(config = {}) {
   if (!emailInstance) {
-    emailInstance = new SesAdapter(config);
+    emailInstance = new ActiveAdapter(config);
   }
   return emailInstance;
 }

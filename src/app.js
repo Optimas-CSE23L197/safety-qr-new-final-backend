@@ -45,6 +45,8 @@ import bullBoardRouter from './routes/bullMQ.routes.js';
 import { healthRouter } from '#monitoring/health.js';
 import scanRoutes from '#modules/scan/scan.routes.js';
 
+import * as Sentry from '@sentry/node';
+
 // ── Error Handling (MUST BE LAST) ────────────────────────────────────────────
 import { globalErrorHandler, notFoundHandler } from '#middleware/error.middleware.js';
 
@@ -191,6 +193,7 @@ export function createApp() {
   // ════════════════════════════════════════════════════════════════════════════
   // LAYER 12: 404 & ERROR HANDLING (MUST BE LAST)
   // ════════════════════════════════════════════════════════════════════════════
+  Sentry.setupExpressErrorHandler(app); // ← add this
   app.use(notFoundHandler); // 404 handler
   app.use(globalErrorHandler); // Global error handler (last)
 

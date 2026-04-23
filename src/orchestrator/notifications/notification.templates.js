@@ -1,30 +1,14 @@
 // =============================================================================
 // orchestrator/notifications/notification.templates.js — RESQID
-//
-// SINGLE SOURCE OF TRUTH for template content used by the dispatcher.
-//
-// ARCHITECTURE:
-//   smsTemplates  — pure string functions (DLT-registered content)
-//   pushTemplates — pure { title, body } functions (Expo-compatible)
-//   emailTemplates — React Email components imported from src/templates/email/
-//                    Each entry returns { subject, Component, props(payload) }
-//                    The dispatcher calls getEmail().sendReactTemplate(...).
-//
-// RULES:
-//   - No raw HTML strings here. Ever.
-//   - No inline styles, no _wrap() helpers.
-//   - Email templates live in src/templates/email/*.jsx — import here only.
-//   - SMS strings are short DLT-compliant messages — keep under 160 chars.
-//   - Push { title, body } only — no FCM fields, Expo-compatible.
 // =============================================================================
 
 // ── Email component imports ───────────────────────────────────────────────────
-// Uncomment each as you create the .jsx file in src/templates/email/
+import OtpAdminEmail from '#templates/email/otp-admin.jsx';
+import OtpParentEmail from '#templates/email/otp-parent.jsx';
+import WelcomeSchoolEmail from '#templates/email/welcome-school.jsx';
+import WelcomeParentEmail from '#templates/email/welcome-parent.jsx';
 
-// import OtpAdminEmail        from '#templates/email/otp-admin.jsx';
-// import OtpParentEmail       from '#templates/email/otp-parent.jsx';
-// import WelcomeSchoolEmail   from '#templates/email/welcome-school.jsx';
-// import WelcomeParentEmail   from '#templates/email/welcome-parent.jsx';
+// Remaining templates — uncomment as you build them:
 // import OrderConfirmedEmail  from '#templates/email/order-confirmed.jsx';
 // import OrderShippedEmail    from '#templates/email/order-shipped.jsx';
 // import OrderDeliveredEmail  from '#templates/email/order-delivered.jsx';
@@ -39,8 +23,7 @@
 // import EmergencyLogEmail    from '#templates/email/emergency-log.jsx';
 
 // =============================================================================
-// SMS Templates — DLT-compliant plain strings
-// Keep each under 160 chars. Vars must match DLT-registered template exactly.
+// SMS Templates
 // =============================================================================
 
 export const smsTemplates = Object.freeze({
@@ -70,8 +53,7 @@ export const smsTemplates = Object.freeze({
 });
 
 // =============================================================================
-// Push Templates — Expo-compatible { title, body } only
-// No FCM fields (no android/apns blocks — handled by ExpoAdapter).
+// Push Templates
 // =============================================================================
 
 export const pushTemplates = Object.freeze({
@@ -153,59 +135,77 @@ export const pushTemplates = Object.freeze({
 
 // =============================================================================
 // Email Templates
-//
-// Shape: { subject, Component, props }
-//   subject   — string passed to SES
-//   Component — React Email component (imported above)
-//   props     — object passed to <Component {...props} />
-//
-// Dispatcher usage:
-//   const { subject, Component, props } = emailTemplates.ORDER_CONFIRMED({ ... });
-//   await email.sendReactTemplate(Component, props, { to, subject });
-//
-// STUB: All entries use a placeholder until .jsx files are created.
-//       Uncomment the real Component import above and swap in below.
 // =============================================================================
-
-const stubEmail = (subject, debugLabel) => ({
-  subject,
-  Component: null, // replace with imported component
-  props: {},
-  _stub: debugLabel, // dev-only marker — remove when real component is wired
-});
 
 export const emailTemplates = Object.freeze({
   OTP_ADMIN: ({ userName, otpCode, expiryMinutes = 5 }) => ({
     subject: `Your RESQID Verification Code`,
-    // Component: OtpAdminEmail,
-    Component: null,
+    Component: OtpAdminEmail,
     props: { userName, otpCode, expiryMinutes },
   }),
 
   OTP_PARENT: ({ userName, otpCode, expiryMinutes = 5 }) => ({
     subject: `Your RESQID Verification Code`,
-    // Component: OtpParentEmail,
-    Component: null,
-    props: { userName, otpCode, expiryMinutes },
+    Component: OtpParentEmail,
+    props: { userName: userName ?? 'Parent', otpCode, expiryMinutes },
   }),
 
-  SCHOOL_ONBOARDED: ({ schoolName, adminName, dashboardUrl }) => ({
+  SCHOOL_ONBOARDED: ({
+    schoolName,
+    adminName,
+    adminEmail,
+    tempPassword,
+    dashboardUrl,
+    planName,
+    planExpiry,
+    cardCount,
+  }) => ({
     subject: `Welcome to RESQID — ${schoolName}`,
-    // Component: WelcomeSchoolEmail,
-    Component: null,
-    props: { schoolName, adminName, dashboardUrl },
+    Component: WelcomeSchoolEmail,
+    props: {
+      schoolName,
+      adminName,
+      adminEmail,
+      tempPassword,
+      dashboardUrl,
+      planName,
+      planExpiry,
+      cardCount,
+    },
+  }),
+
+  PARENT_ONBOARDED: ({
+    parentName,
+    phone,
+    studentName,
+    studentClass,
+    schoolName,
+    cardId,
+    appStoreUrl,
+    playStoreUrl,
+  }) => ({
+    subject: `Welcome to RESQID — ${studentName}'s emergency ID is ready`,
+    Component: WelcomeParentEmail,
+    props: {
+      parentName,
+      phone,
+      studentName,
+      studentClass,
+      schoolName,
+      cardId,
+      appStoreUrl,
+      playStoreUrl,
+    },
   }),
 
   SCHOOL_RENEWAL_DUE: ({ schoolName, expiryDate, renewUrl }) => ({
     subject: `Subscription Renewal Due — ${schoolName}`,
-    // Component: SchoolRenewalEmail,
-    Component: null,
+    Component: null, // import SchoolRenewalEmail when built
     props: { schoolName, expiryDate, renewUrl },
   }),
 
   ORDER_CONFIRMED: ({ schoolName, orderNumber, cardCount, amount }) => ({
     subject: `Order Confirmed — #${orderNumber}`,
-    // Component: OrderConfirmedEmail,
     Component: null,
     props: { schoolName, orderNumber, cardCount, amount },
   }),
@@ -224,70 +224,60 @@ export const emailTemplates = Object.freeze({
 
   PARTIAL_INVOICE_GENERATED: ({ schoolName, orderNumber, amount, invoiceUrl }) => ({
     subject: `Partial Invoice — #${orderNumber}`,
-    // Component: PartialInvoiceEmail,
     Component: null,
     props: { schoolName, orderNumber, amount, invoiceUrl },
   }),
 
   ORDER_CARD_DESIGN_COMPLETE: ({ schoolName, orderNumber, reviewUrl }) => ({
     subject: `Card Design Ready for Review — #${orderNumber}`,
-    // Component: CardDesignEmail,
     Component: null,
     props: { schoolName, orderNumber, reviewUrl },
   }),
 
   DESIGN_APPROVED: ({ schoolName, orderNumber }) => ({
     subject: `Design Approved — #${orderNumber}`,
-    // Component: DesignApprovedEmail,
     Component: null,
     props: { schoolName, orderNumber },
   }),
 
   ORDER_SHIPPED: ({ schoolName, orderNumber, trackingId, trackingUrl }) => ({
     subject: `Order Shipped — #${orderNumber}`,
-    // Component: OrderShippedEmail,
     Component: null,
     props: { schoolName, orderNumber, trackingId, trackingUrl },
   }),
 
   ORDER_DELIVERED: ({ schoolName, orderNumber }) => ({
     subject: `Order Delivered — #${orderNumber}`,
-    // Component: OrderDeliveredEmail,
     Component: null,
     props: { schoolName, orderNumber },
   }),
 
   ORDER_BALANCE_INVOICE: ({ schoolName, orderNumber, amount, dueDate, invoiceUrl }) => ({
     subject: `Balance Invoice Due — #${orderNumber}`,
-    // Component: BalanceInvoiceEmail,
     Component: null,
     props: { schoolName, orderNumber, amount, dueDate, invoiceUrl },
   }),
 
   ORDER_COMPLETED: ({ schoolName, orderNumber }) => ({
     subject: `Order Complete — #${orderNumber}`,
-    // Component: OrderCompletedEmail,
     Component: null,
     props: { schoolName, orderNumber },
   }),
 
   ORDER_REFUNDED: ({ schoolName, orderNumber, amount }) => ({
     subject: `Order Refunded — #${orderNumber}`,
-    // Component: OrderRefundedEmail,
     Component: null,
     props: { schoolName, orderNumber, amount },
   }),
 
   USER_DEVICE_LOGIN_NEW: ({ name, device, location, time }) => ({
     subject: 'New Login Detected — RESQID',
-    // Component: NewDeviceLoginEmail,
     Component: null,
     props: { name, device, location, time },
   }),
 
   EMERGENCY_ALERT_LOG: ({ studentName, schoolName, location, scannedAt, dispatchResults }) => ({
     subject: `[RESQID] Emergency Alert — ${studentName}`,
-    // Component: EmergencyLogEmail,
     Component: null,
     props: { studentName, schoolName, location, scannedAt, dispatchResults },
   }),

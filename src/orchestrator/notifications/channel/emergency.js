@@ -22,41 +22,10 @@ import { backgroundJobsQueue } from '../../queues/queue.config.js';
 
 const sendEmergencySms = async (contact, studentInfo, location) => {
   const start = Date.now();
-  try {
-    const locationText =
-      location?.lat && location?.lng
-        ? `https://maps.google.com/?q=${location.lat},${location.lng}`
-        : 'Unknown location';
-
-    // Format time for SMS
-    const formattedTime = studentInfo.scannedAt
-      ? new Date(studentInfo.scannedAt).toLocaleTimeString('en-IN', {
-          hour: '2-digit',
-          minute: '2-digit',
-        })
-      : new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-
-    const sms = getSms();
-
-    // Use DLT template with named variables
-    const result = await sms.send(
-      contact.phone,
-      null, // no plain message body
-      {
-        templateId: process.env.MSG91_EMERGENCY_TEMPLATE_ID,
-        variables: {
-          student_name: studentInfo.studentName,
-          school_name: studentInfo.schoolName,
-          scan_time: formattedTime,
-        },
-      }
-    );
-
-    return { success: true, duration: Date.now() - start, messageId: result?.messageId };
-  } catch (error) {
-    logger.error({ contactName: contact.name, error: error.message }, '[emergency] SMS failed');
-    return { success: false, error: error.message, duration: Date.now() - start };
-  }
+  // TODO: Emergency SMS requires DLT registration — post-pilot
+  // Will use transactional SMS template once business is registered
+  logger.warn({ contactName: contact.name }, '[emergency] SMS skipped — DLT registration pending');
+  return { success: false, error: 'DLT registration pending', duration: Date.now() - start };
 };
 
 // ── Push ──────────────────────────────────────────────────────────────────────
