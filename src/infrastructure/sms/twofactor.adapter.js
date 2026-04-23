@@ -14,6 +14,7 @@ export class TwoFactorAdapter extends SmsProvider {
     try {
       // Strip country code, 2Factor wants plain 10-digit number
       const phone = phoneNumber.replace(/^\+?91/, '').replace(/\D/g, '');
+      console.log('[DEBUG] Raw phone:', phoneNumber, '→ Stripped:', phone);
 
       const response = await axios.get(`${this.baseUrl}/${this.apiKey}/SMS/${phone}/${otp}`);
 

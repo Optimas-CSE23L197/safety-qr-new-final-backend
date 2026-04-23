@@ -166,7 +166,7 @@ function printServerInfo(port) {
   const services = [
     [process.env.EXPO_ACCESS_TOKEN, 'Push'],
     [process.env.SMTP_USER || process.env.BREVO_API_KEY, 'Email'],
-    [process.env.MSG91_AUTH_KEY, 'SMS'],
+    [process.env.TWOFACTOR_API_KEY, 'SMS'],
     [process.env.AWS_S3_BUCKET, 'Storage'],
     [process.env.REDIS_URL, 'Redis'],
     [process.env.DATABASE_URL, 'Postgres'],
