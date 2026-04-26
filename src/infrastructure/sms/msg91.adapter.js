@@ -38,7 +38,7 @@ export class MSG91Adapter extends SmsProvider {
     try {
       const payload = {
         sender: this.senderId,
-        mobiles: this._normalizePhone(phoneNumber).replace(/\D/g, ''), // MSG91 expects digits only
+        mobiles: this._normalizePhone(phoneNumber),
         country: this.country,
         route: this.route,
       };
@@ -59,12 +59,12 @@ export class MSG91Adapter extends SmsProvider {
       });
 
       const messageId = response.data?.message_id || response.data?.request_id;
-      logger.info({ phone: phoneNumber.slice(0, 6) + '…', messageId }, '[SMS] Sent');
+      logger.info({ phone: phoneNumber.slice(0, 6) + '…', messageId }, '[SMS] Sent via MSG91');
       return { success: true, messageId };
     } catch (err) {
       logger.error(
         { phone: phoneNumber.slice(0, 6) + '…', error: err.response?.data || err.message },
-        '[SMS] Send failed'
+        '[SMS] MSG91 send failed'
       );
       return { success: false, error: err.message };
     }

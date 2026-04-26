@@ -648,3 +648,41 @@ export function validateParentProfile(req, res, next) {
   req.validatedBody = result.data;
   next();
 }
+
+// ─── Generic validation wrapper ───────────────────────────────────────────────
+
+function validate(schema) {
+  return (req, res, next) => {
+    const result = schema.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        code: 'VALIDATION_ERROR',
+        errors: result.error.flatten().fieldErrors,
+      });
+    }
+    req.validatedBody = result.data;
+    next();
+  };
+}
+
+// email validation
+export const validateSendEmailOtp = validate(
+  z.object({
+    email: z.string().email('Invalid email address').toLowerCase(),
+  })
+);
+
+export const validateVerifyEmail = validate(
+  z.object({
+    email: z.string().email().toLowerCase(),
+    otp: z.string().length(6, 'OTP must be 6 digits'),
+  })
+);
+
+export const validateChangeEmail = validate(
+  z.object({
+    new_email: z.string().email('Invalid email address').toLowerCase(),
+    otp: z.string().length(6, 'OTP must be 6 digits'),
+  })
+);

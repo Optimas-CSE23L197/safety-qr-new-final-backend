@@ -34,35 +34,25 @@ export const sendPushNotificationChannel = async ({
       return { success: false, error: 'Push provider not available' };
     }
 
-    // Expo SDK handles its own chunking inside ExpoAdapter,
-    // but we chunk here too for very large token lists (>500)
-    const chunkSize = 500;
-    let successCount = 0;
-    let failureCount = 0;
-
-    for (let i = 0; i < tokenList.length; i += chunkSize) {
-      const chunk = tokenList.slice(i, i + chunkSize);
-      const result =
-        chunk.length === 1
-          ? await push.sendToDevice(chunk[0], { title, body, data })
-          : await push.sendToDevices(chunk, { title, body, data });
-
-      successCount += result?.successCount ?? (result?.success ? 1 : 0);
-      failureCount += result?.failureCount ?? (result?.success ? 0 : 1);
-    }
+    // ExpoAdapter handles chunking internally
+    const result = await push.sendToDevices(tokenList, { title, body, data });
 
     logger.info(
       {
         tokenCount: tokenList.length,
-        successCount,
-        failureCount,
+        successCount: result?.successCount ?? 0,
+        failureCount: result?.failureCount ?? 0,
         latencyMs: Date.now() - start,
         ...meta,
       },
       '[push] Push sent'
     );
 
-    return { success: successCount > 0, successCount, failureCount };
+    return {
+      success: (result?.successCount ?? 0) > 0,
+      successCount: result?.successCount ?? 0,
+      failureCount: result?.failureCount ?? 0,
+    };
   } catch (err) {
     logger.error(
       { err: err.message, latencyMs: Date.now() - start, ...meta },

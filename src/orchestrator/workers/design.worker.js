@@ -4,7 +4,7 @@
 
 import 'dotenv/config';
 import { Worker } from 'bullmq';
-import { redis as workerRedis } from '#config/redis.js';
+import { getQueueConnection } from '../queues/queue.connection.js';
 import { logger } from '#config/logger.js';
 import { prisma } from '#config/prisma.js';
 import { QUEUE_NAMES } from '../queues/queue.names.js';
@@ -148,7 +148,7 @@ export async function processDesignJob(job) {
 
 export function createDesignWorker() {
   const worker = new Worker(QUEUE_NAMES.PIPELINE_JOBS, job => processDesignJob(job), {
-    connection: workerRedis,
+    connection: getQueueConnection(), // ← was: workerRedis (shared singleton)
     concurrency: 1,
     stalledInterval: 90_000,
     maxStalledCount: 3,

@@ -1,7 +1,7 @@
-// infrastructure/sms/twofactor.adapter.js — RESQID
 import axios from 'axios';
 import { SmsProvider } from './sms.provider.js';
 import { logger } from '#config/logger.js';
+import { normalizePhone } from '#shared/utils/phoneNormalize.js';
 
 export class TwoFactorAdapter extends SmsProvider {
   constructor(config = {}) {
@@ -10,13 +10,20 @@ export class TwoFactorAdapter extends SmsProvider {
     this.baseUrl = 'https://2factor.in/API/V1';
   }
 
+  /**
+   * WARNING: verifyOtp(sessionId, otp) signature is DIFFERENT from MSG91's
+   * verifyOtp(phoneNumber, otp). If switching providers, update all callers.
+   */
   async sendOtp(phoneNumber, otp) {
     try {
-      // Strip country code, 2Factor wants plain 10-digit number
-      const phone = phoneNumber.replace(/^\+?91/, '').replace(/\D/g, '');
-      console.log('[DEBUG] Raw phone:', phoneNumber, '→ Stripped:', phone);
+      const normalized = normalizePhone(phoneNumber, '91');
+      const phone = normalized.replace(/^91/, '');
 
-      const response = await axios.get(`${this.baseUrl}/${this.apiKey}/SMS/${phone}/${otp}`);
+      logger.debug({ phone: phone.slice(-4) }, '[SMS] Phone normalized for 2Factor');
+
+      const response = await axios.get(
+        `${this.baseUrl}/${this.apiKey}/SMS/${phone}/${otp}/resqid-otp-service`
+      );
 
       if (response.data?.Status !== 'Success') {
         throw new Error(response.data?.Details || 'Unknown error');
@@ -30,7 +37,6 @@ export class TwoFactorAdapter extends SmsProvider {
     }
   }
 
-  // 2Factor verify — optional, since you own OTP logic in Redis
   async verifyOtp(sessionId, otp) {
     try {
       const response = await axios.get(
@@ -43,7 +49,6 @@ export class TwoFactorAdapter extends SmsProvider {
     }
   }
 
-  // Not needed for OTP-only use, but satisfies interface
   async send(phoneNumber, message, options = {}) {
     logger.warn(
       { phone: phoneNumber?.slice(0, 6) + '…' },
@@ -53,11 +58,13 @@ export class TwoFactorAdapter extends SmsProvider {
   }
 
   async sendBulk(messages) {
-    throw new Error('2Factor adapter is OTP-only.');
+    logger.warn('[SMS] sendBulk not supported by 2Factor adapter');
+    return [];
   }
 
   async getStatus(messageId) {
-    throw new Error('2Factor adapter does not support status checks.');
+    logger.warn({ messageId }, '[SMS] getStatus not supported by 2Factor adapter');
+    return null;
   }
 }
 

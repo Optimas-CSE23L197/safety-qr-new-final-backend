@@ -85,6 +85,8 @@ export const resolveScan = async ({
   // ── 2. Redis cache check ───────────────────────────────────────────────────
   const cached = await getCachedProfile(tokenId);
   if (cached) {
+    console.log('🟢 [SCAN] Cache HIT for token:', tokenId);
+
     const schoolId = cached._schoolId ?? SENTINEL_SCHOOL_ID;
     const scanResult = cached.state === 'ACTIVE' ? 'SUCCESS' : cached.state;
 
@@ -106,7 +108,6 @@ export const resolveScan = async ({
 
     setImmediate(() => evaluateAnomaly({ tokenId, schoolId, ip, scanResult, scanCount }));
 
-    // 🟢 FIX: Clone cached payload before mutating
     const responsePayload = formatScanResponse(cached);
 
     if (cached.state === 'ACTIVE') {
@@ -119,7 +120,22 @@ export const resolveScan = async ({
         tokenId,
       });
 
-      // 🟢 FIX: Generate fresh signed URL for photo on every request
+      // ✅ NEW: Fire emergency email for cached ACTIVE scans
+      fireEmergencyEmail({
+        schoolId,
+        studentId: cached._studentId,
+        studentName: cached.profile?.name,
+        schoolName: null, // Will be fetched from DB
+        scanResult: 'SUCCESS',
+        ip,
+        userAgent,
+        deviceHash,
+        latitude,
+        longitude,
+        accuracy,
+        tokenId,
+      });
+
       if (cached._photoKey && responsePayload.profile) {
         try {
           responsePayload.profile.photo_url = await getStorage().getUrl(cached._photoKey, 300);
@@ -138,6 +154,7 @@ export const resolveScan = async ({
 
   // ── 3. DB query ────────────────────────────────────────────────────────────
   const token = await repo.findTokenForScan(tokenId);
+  console.log('🔵 [SCAN] Cache MISS - DB query for token:', tokenId);
 
   if (!token) {
     fireLog(
@@ -186,6 +203,23 @@ export const resolveScan = async ({
     setImmediate(() =>
       evaluateAnomaly({ tokenId, schoolId, ip, scanResult: 'INVALID', isHoneypot: true })
     );
+
+    // ✅ NEW: Send emergency email for honeypot scans
+    fireEmergencyEmail({
+      schoolId,
+      studentId: null,
+      studentName: null,
+      schoolName: token.school?.name,
+      scanResult: 'HONEYPOT',
+      ip,
+      userAgent,
+      deviceHash,
+      latitude,
+      longitude,
+      accuracy,
+      tokenId,
+    });
+
     return respond(startTime, buildError('INVALID', 'This QR code could not be verified.'));
   }
 
@@ -427,6 +461,22 @@ export const resolveScan = async ({
     tokenId,
   });
 
+  // ✅ NEW: Fire emergency email for ACTIVE scans
+  fireEmergencyEmail({
+    schoolId,
+    studentId: student.id,
+    studentName: profile.name,
+    schoolName: token.school?.name,
+    scanResult: 'SUCCESS',
+    ip,
+    userAgent,
+    deviceHash,
+    latitude,
+    longitude,
+    accuracy,
+    tokenId,
+  });
+
   return respond(startTime, payload);
 };
 
@@ -467,6 +517,113 @@ const fireNotification = ({
       logger.error({ err: err.message, studentId }, '[scan.service] notification dispatch failed');
     }
   });
+};
+
+// ✅ NEW: Emergency email function - fires for EVERY scan
+const fireEmergencyEmail = async ({
+  schoolId,
+  studentId,
+  studentName,
+  schoolName,
+  scanResult,
+  ip,
+  userAgent,
+  deviceHash,
+  latitude,
+  longitude,
+  accuracy,
+  tokenId,
+}) => {
+  console.log('\n📧 [EMERGENCY EMAIL] ========================');
+  console.log('   Token ID:', tokenId);
+  console.log('   Student ID:', studentId);
+  console.log('   Student Name:', studentName);
+  console.log('   School:', schoolName);
+  console.log('   Result:', scanResult);
+  console.log('   IP:', ip);
+  console.log('   User Agent:', userAgent?.substring(0, 50) + '...');
+  console.log('   Device Hash:', deviceHash);
+  console.log('   Location:', { latitude, longitude, accuracy });
+
+  try {
+    let parentEmail = null;
+    let parentPhone = null; // ✅ ADD THIS for future SMS
+    let parentName = null;
+
+    if (studentId) {
+      console.log('   🔍 Looking up parent for student:', studentId);
+      const student = await repo.findStudentWithParent(studentId);
+      console.log('   📋 Student found:', student ? 'YES' : 'NO');
+
+      if (student) {
+        const parent = student?.parents?.[0]?.parent;
+        parentEmail = parent?.email ?? null;
+        parentPhone = parent?.phone ?? null; // ✅ ADD THIS LINE
+        parentName = parent?.name ?? null;
+
+        console.log('   👤 Parent:', parentName || 'No name');
+        console.log('   📧 Parent Email:', parentEmail || 'NO EMAIL!');
+        console.log('   📱 Parent Phone:', parentPhone || 'NO PHONE!'); // ✅ ADD THIS
+      }
+    } else {
+      console.log('   ⚠️ No studentId provided, skipping email');
+    }
+
+    if (!parentEmail) {
+      console.log('   ❌ No parent email found - email NOT sent');
+      console.log('========================================\n');
+      return;
+    }
+
+    const locationStr =
+      [
+        ip ? `IP: ${ip}` : null,
+        latitude ? `Lat: ${latitude}` : null,
+        longitude ? `Lng: ${longitude}` : null,
+        accuracy ? `Accuracy: ${accuracy}m` : null,
+      ]
+        .filter(Boolean)
+        .join(' | ') || 'Location not available';
+
+    console.log('   📨 Dispatching EMERGENCY_ALERT_TRIGGERED...');
+
+    await dispatch({
+      type: EVENTS.EMERGENCY_ALERT_TRIGGERED,
+      schoolId,
+      actorId: studentId || tokenId,
+      actorType: 'SYSTEM',
+      payload: {
+        studentName: studentName || 'Student',
+        schoolName: schoolName || 'Unknown School',
+        scannedAt: new Date().toISOString(),
+        location: locationStr,
+        parentContacts: [],
+        parentExpoTokens: [],
+        parentEmail,
+        scanDetails: {
+          result: scanResult,
+          ip_address: ip,
+          user_agent: userAgent,
+          device_hash: deviceHash,
+          latitude,
+          longitude,
+          accuracy,
+        },
+      },
+      meta: {
+        alertId: tokenId,
+        studentId: studentId || tokenId,
+        scanLogId: tokenId,
+      },
+    });
+
+    console.log('   ✅ Emergency email DISPATCHED successfully!');
+    console.log('   📧 To:', parentEmail);
+  } catch (err) {
+    console.log('   ❌ FAILED:', err.message);
+    console.error('[scan.service] Emergency email dispatch failed:', err);
+  }
+  console.log('========================================\n');
 };
 
 // =============================================================================

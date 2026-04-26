@@ -5,7 +5,8 @@
 
 import crypto from 'crypto';
 import { prisma } from '#config/prisma.js';
-import { getStorage, StoragePath } from '#infrastructure/storage/storage.index.js';
+import { StoragePath, resolveAssetUrl } from '#infrastructure/storage/storage.paths.js';
+import { getStorage } from '#infrastructure/storage/storage.index.js';
 import { redis } from '#config/redis.js';
 import { logger } from '#config/logger.js';
 import { ApiError } from '#shared/response/ApiError.js';
@@ -74,36 +75,33 @@ export async function generateStudentPhotoUploadUrl(parentId, studentId, content
   validateFileUpload(contentType, fileSize);
   await checkRateLimit(`parent:${parentId}`);
 
-  // Verify parent owns this student
   const link = await prisma.parentStudent.findFirst({
     where: { parent_id: parentId, student_id: studentId },
+    include: { student: { select: { school_id: true } } },
   });
+  if (!link) throw ApiError.forbidden('Student not linked to this parent');
 
-  if (!link) {
-    throw ApiError.forbidden('Student not linked to this parent');
-  }
+  const schoolId = link.student?.school_id;
+  if (!schoolId) throw ApiError.badRequest('Student has no school assigned');
 
   const storage = getStorage();
+  const key = StoragePath.studentPhoto(schoolId, studentId, contentType); // ✅ school-scoped + year
 
-  // Generate unique file path
-  const key = StoragePath.studentPhoto(studentId);
-
-  // Generate presigned URL
   const { uploadUrl, publicUrl } = await storage.getPresignedUploadUrl(key, {
     contentType,
     expiresIn: UPLOAD_URL_EXPIRY,
   });
 
-  // Generate nonce for confirmation step
-  const nonce = await generateNonce(`student:${studentId}`);
+  const nonce = crypto.randomBytes(16).toString('hex');
+  await redis.setex(`upload:nonce:student:${studentId}:${nonce}`, UPLOAD_URL_EXPIRY, 'pending');
 
-  // Store upload intent in Redis for validation
   await redis.setex(
     `upload:intent:${key}`,
-    UPLOAD_URL_EXPIRY + 60, // Slightly longer than URL expiry
+    UPLOAD_URL_EXPIRY + 60,
     JSON.stringify({
       parentId,
       studentId,
+      schoolId,
       publicUrl,
       contentType,
       fileSize,
@@ -111,7 +109,7 @@ export async function generateStudentPhotoUploadUrl(parentId, studentId, content
     })
   );
 
-  logger.info({ parentId, studentId, key }, 'Generated student photo upload URL');
+  logger.info({ parentId, studentId, schoolId, key }, 'Generated student photo upload URL');
 
   return {
     uploadUrl,
@@ -125,68 +123,62 @@ export async function generateStudentPhotoUploadUrl(parentId, studentId, content
 }
 
 export async function confirmStudentPhotoUpload(parentId, studentId, key, nonce) {
-  // Validate nonce (prevents replay attacks)
   await validateNonce(`student:${studentId}`, nonce);
 
-  // Retrieve upload intent
   const intentData = await redis.get(`upload:intent:${key}`);
-  if (!intentData) {
-    throw ApiError.badRequest('Upload session expired or invalid');
-  }
+  if (!intentData) throw ApiError.badRequest('Upload session expired or invalid');
 
   const intent = JSON.parse(intentData);
-
-  // Verify ownership matches
-  if (intent.parentId !== parentId || intent.studentId !== studentId) {
+  if (intent.parentId !== parentId || intent.studentId !== studentId)
     throw ApiError.forbidden('Unauthorized upload confirmation');
-  }
 
-  // Verify file actually exists in R2
   const storage = getStorage();
   const exists = await storage.exists(key);
+  if (!exists) throw ApiError.badRequest('File not found. Upload may have failed.');
 
-  if (!exists) {
-    throw ApiError.badRequest('File not found. Upload may have failed.');
-  }
-
-  // Clean up Redis
   await redis.del(`upload:intent:${key}`);
 
-  logger.info({ parentId, studentId, key }, 'Confirmed student photo upload');
+  const photoUrl = `${process.env.CDN_BASE_URL}/${key}`; // ✅ full URL stored in DB
 
-  // Return the R2 object KEY, not the public URL
-  return {
-    photoUrl: key,
-    verified: true,
-  };
+  // ✅ Save to DB directly here
+  await prisma.student.update({
+    where: { id: studentId },
+    data: { photo_url: photoUrl },
+  });
+
+  logger.info({ parentId, studentId, key }, 'Confirmed student photo upload');
+  return { photoUrl, verified: true };
 }
 
 // ─── Parent Avatar Upload ──────────────────────────────────────────────────
 export async function generateParentAvatarUploadUrl(parentId, contentType, fileSize) {
-  // Validate inputs
   validateFileUpload(contentType, fileSize);
   await checkRateLimit(`parent:${parentId}`);
 
+  // Get any linked student to find schoolId
+  const link = await prisma.parentStudent.findFirst({
+    where: { parent_id: parentId },
+    include: { student: { select: { school_id: true } } },
+  });
+  const schoolId = link?.student?.school_id ?? 'unassigned';
+
   const storage = getStorage();
+  const key = StoragePath.parentAvatar(schoolId, parentId, contentType); // ✅ school-scoped + year
 
-  // Generate unique file path
-  const key = StoragePath.parentAvatar(parentId);
-
-  // Generate presigned URL
   const { uploadUrl, publicUrl } = await storage.getPresignedUploadUrl(key, {
     contentType,
     expiresIn: UPLOAD_URL_EXPIRY,
   });
 
-  // Generate nonce for confirmation step
-  const nonce = await generateNonce(`avatar:${parentId}`);
+  const nonce = crypto.randomBytes(16).toString('hex');
+  await redis.setex(`upload:nonce:avatar:${parentId}:${nonce}`, UPLOAD_URL_EXPIRY, 'pending');
 
-  // Store upload intent in Redis
   await redis.setex(
     `upload:intent:${key}`,
     UPLOAD_URL_EXPIRY + 60,
     JSON.stringify({
       parentId,
+      schoolId,
       publicUrl,
       contentType,
       fileSize,
@@ -194,8 +186,7 @@ export async function generateParentAvatarUploadUrl(parentId, contentType, fileS
     })
   );
 
-  logger.info({ parentId, key }, 'Generated parent avatar upload URL');
-
+  logger.info({ parentId, schoolId, key }, 'Generated parent avatar upload URL');
   return {
     uploadUrl,
     publicUrl,
@@ -208,38 +199,28 @@ export async function generateParentAvatarUploadUrl(parentId, contentType, fileS
 }
 
 export async function confirmParentAvatarUpload(parentId, key, nonce) {
-  // Validate nonce
   await validateNonce(`avatar:${parentId}`, nonce);
 
-  // Retrieve upload intent
   const intentData = await redis.get(`upload:intent:${key}`);
-  if (!intentData) {
-    throw ApiError.badRequest('Upload session expired or invalid');
-  }
+  if (!intentData) throw ApiError.badRequest('Upload session expired or invalid');
 
   const intent = JSON.parse(intentData);
+  if (intent.parentId !== parentId) throw ApiError.forbidden('Unauthorized upload confirmation');
 
-  // Verify ownership
-  if (intent.parentId !== parentId) {
-    throw ApiError.forbidden('Unauthorized upload confirmation');
-  }
-
-  // Verify file exists in R2
   const storage = getStorage();
   const exists = await storage.exists(key);
+  if (!exists) throw ApiError.badRequest('File not found. Upload may have failed.');
 
-  if (!exists) {
-    throw ApiError.badRequest('File not found. Upload may have failed.');
-  }
-
-  // Clean up Redis
   await redis.del(`upload:intent:${key}`);
 
-  logger.info({ parentId, key }, 'Confirmed parent avatar upload');
+  const avatarUrl = `${process.env.CDN_BASE_URL}/${key}`; // ✅ full URL stored in DB
 
-  // Return the R2 object KEY, not the public URL
-  return {
-    avatarUrl: key,
-    verified: true,
-  };
+  // ✅ Save to DB directly here
+  await prisma.parentUser.update({
+    where: { id: parentId },
+    data: { avatar_url: avatarUrl },
+  });
+
+  logger.info({ parentId, key }, 'Confirmed parent avatar upload');
+  return { avatarUrl, verified: true };
 }

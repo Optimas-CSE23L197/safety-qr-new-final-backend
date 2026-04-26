@@ -5,7 +5,6 @@
  * Run: node src/server.js
  */
 
-import '../instrument.js'; // must be first
 import { createApp, printMiddlewareTable } from './app.js';
 import { ENV } from './config/env.js';
 import { logger } from './config/logger.js';

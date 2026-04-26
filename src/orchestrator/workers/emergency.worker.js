@@ -63,7 +63,7 @@ const loadParentExpoTokens = async studentId => {
   const student = await prisma.student.findUnique({
     where: { id: studentId },
     select: {
-      parents: {
+      parentLinks: {
         select: {
           parent: {
             select: {
@@ -78,8 +78,8 @@ const loadParentExpoTokens = async studentId => {
     },
   });
 
-  return (student?.parents ?? [])
-    .flatMap(ps => ps.parent?.devices?.map(d => d.expo_push_token) ?? [])
+  return (student?.parentLinks ?? [])
+    .flatMap(pl => pl.parent?.devices?.map(d => d.expo_push_token) ?? [])
     .filter(Boolean);
 };
 
@@ -386,7 +386,10 @@ export const startEmergencyWorker = () => {
 
   _worker = new Worker(QUEUE, processEmergencyAlert, {
     connection: getQueueConnection(),
-    concurrency: 10,
+    concurrency: 5,
+    stalledInterval: 30_000,
+    maxStalledCount: 2,
+    lockDuration: 15_000,
   });
 
   _worker.on('completed', job => {
@@ -407,7 +410,7 @@ export const startEmergencyWorker = () => {
     logger.error({ err: err.message }, '[emergency.worker] Worker error');
   });
 
-  logger.info({ queue: QUEUE, concurrency: 10 }, '[emergency.worker] Started');
+  logger.info({ queue: QUEUE, concurrency: 5 }, '[emergency.worker] Started');
   return _worker;
 };
 

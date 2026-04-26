@@ -3,7 +3,16 @@
 // STRICT MODE — Production-ready Express application
 // Middleware order is CRITICAL — do not reorder without understanding dependencies
 // =============================================================================
+import * as Sentry from '@sentry/node';
 
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  environment: process.env.SENTRY_ENVIRONMENT ?? 'development',
+  tracesSampleRate: parseFloat(process.env.SENTRY_TRACES_SAMPLE_RATE ?? '0.1'),
+  sendDefaultPii: false,
+});
+
+// main import start
 import express from 'express';
 import { ENV } from '#config/env.js';
 import { logger } from '#config/logger.js';
@@ -44,8 +53,6 @@ import routes from './routes/index.js';
 import bullBoardRouter from './routes/bullMQ.routes.js';
 import { healthRouter } from '#monitoring/health.js';
 import scanRoutes from '#modules/scan/scan.routes.js';
-
-import * as Sentry from '@sentry/node';
 
 // ── Error Handling (MUST BE LAST) ────────────────────────────────────────────
 import { globalErrorHandler, notFoundHandler } from '#middleware/error.middleware.js';
@@ -170,6 +177,10 @@ export function createApp() {
   app.use(cookieParser()); // Parse cookies from Cookie header
   app.use(httpLogger); // 17. HTTP access log
 
+  // for favicon
+  app.get('/favicon.ico', (req, res) => res.status(204).end());
+  app.use('/api/admin/queues', bullBoardRouter); // BullMQ dashboard
+
   // ════════════════════════════════════════════════════════════════════════════
   // LAYER 9: AUTHENTICATION & AUTHORIZATION
   // ════════════════════════════════════════════════════════════════════════════
@@ -182,7 +193,6 @@ export function createApp() {
   // LAYER 10: MONITORING & ADMIN
   // ════════════════════════════════════════════════════════════════════════════
   app.use('/health', healthRouter); // Health checks (no auth)
-  app.use('/api/admin/queues', bullBoardRouter); // BullMQ dashboard
 
   // ════════════════════════════════════════════════════════════════════════════
   // LAYER 11: APPLICATION ROUTES
@@ -193,7 +203,6 @@ export function createApp() {
   // ════════════════════════════════════════════════════════════════════════════
   // LAYER 12: 404 & ERROR HANDLING (MUST BE LAST)
   // ════════════════════════════════════════════════════════════════════════════
-  Sentry.setupExpressErrorHandler(app); // ← add this
   app.use(notFoundHandler); // 404 handler
   app.use(globalErrorHandler); // Global error handler (last)
 

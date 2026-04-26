@@ -3,14 +3,24 @@
 //
 // Manages the 2 Railway queues (emergency + notification).
 // pipelineJobsQueue is local-only — only available when ENABLE_PIPELINE_QUEUE=true
+//
+// FIXED:
+//   - queue.on('failed') / queue.on('completed') / queue.on('stalled') never
+//     fired on Queue instances (Worker-only events). Replaced with QueueEvents
+//     which is BullMQ's dedicated cross-process event listener.
+//   - QueueEvents refs stored in _queueEvents[] so they close cleanly on shutdown.
+//   - cleanOldJobs() now uses queue.clean() (server-side) instead of fetching
+//     all jobs into memory.
 // =============================================================================
 
+import { QueueEvents } from 'bullmq';
 import { prisma } from '#config/prisma.js';
 import { logger } from '#config/logger.js';
+import { getQueueConnection } from './queue.connection.js';
 import {
   allQueues,
   getQueueByName,
-  closeAllQueues,
+  closeAllQueues as _closeAllQueues,
   getAllQueueMetrics,
   emergencyAlertsQueue,
   notificationsQueue,
@@ -20,12 +30,16 @@ import {
 export {
   allQueues,
   getQueueByName,
-  closeAllQueues,
   getAllQueueMetrics,
   emergencyAlertsQueue,
   notificationsQueue,
   pipelineJobsQueue,
 };
+
+// ── QueueEvents registry (for graceful shutdown) ──────────────────────────────
+const _queueEvents = [];
+
+// ── Public API ────────────────────────────────────────────────────────────────
 
 export function getQueue(name) {
   return getQueueByName(name);
@@ -33,97 +47,98 @@ export function getQueue(name) {
 
 export function initQueues() {
   const queueCount = Object.keys(allQueues).length;
-  logger.info({
-    msg: 'Orchestrator queues initialized',
-    count: queueCount,
-    queues: Object.keys(allQueues),
-  });
+  logger.info(
+    { count: queueCount, queues: Object.keys(allQueues) },
+    '[queue.manager] Orchestrator queues initialized'
+  );
 
   for (const [name, queue] of Object.entries(allQueues)) {
-    setupQueueEventHandlers(queue, name);
+    const qe = setupQueueEventHandlers(queue, name);
+    _queueEvents.push(qe);
   }
 }
 
+// Closes both Queue instances and QueueEvents listeners
+export async function closeAllQueues() {
+  for (const qe of _queueEvents) {
+    await qe.close();
+  }
+  await _closeAllQueues();
+}
+
+// ── Event handlers ────────────────────────────────────────────────────────────
+
 function setupQueueEventHandlers(queue, queueName) {
+  // ── Queue-level events (these actually fire on Queue instances) ─────────────
   queue.on('error', err => {
     logger.error({ queue: queueName, err: err.message }, '[queue.manager] Queue error');
   });
+  queue.on('paused', () => logger.warn({ queue: queueName }, '[queue.manager] Queue paused'));
+  queue.on('resumed', () => logger.info({ queue: queueName }, '[queue.manager] Queue resumed'));
+  queue.on('drained', () => logger.debug({ queue: queueName }, '[queue.manager] Queue drained'));
 
-  queue.on('failed', async (job, err) => {
-    if (!job) return;
+  // ── Job lifecycle events via QueueEvents (cross-process safe) ───────────────
+  // queue.on('failed') / queue.on('completed') / queue.on('stalled') are
+  // Worker-only events — they never fire on a Queue instance. QueueEvents
+  // subscribes via Redis Pub/Sub and works from any process.
+  const qe = new QueueEvents(queueName, { connection: getQueueConnection() });
 
-    const attemptsMade = job.attemptsMade;
-    const maxAttempts = job.opts?.attempts ?? 3;
-    const isFinalFailure = attemptsMade >= maxAttempts;
+  qe.on('failed', async ({ jobId, failedReason }) => {
+    logger.error({ queue: queueName, jobId, failedReason }, '[queue.manager] Job failed');
 
-    logger.error(
-      {
-        queue: queueName,
-        jobId: job.id,
-        jobName: job.name,
-        attemptsMade,
-        maxAttempts,
-        isFinalFailure,
-        error: err.message,
-      },
-      '[queue.manager] Job failed'
-    );
+    const job = await queue.getJob(jobId);
+    if (!job?.data?.jobExecutionId) return;
 
-    if (job.data?.jobExecutionId) {
-      try {
-        await prisma.jobExecution.update({
-          where: { id: job.data.jobExecutionId },
-          data: {
-            status: isFinalFailure ? 'DEAD' : 'FAILED',
-            error_message: err.message,
-            completed_at: isFinalFailure ? new Date() : null,
-          },
-        });
-      } catch (dbError) {
-        logger.error(
-          { jobExecutionId: job.data.jobExecutionId, error: dbError.message },
-          '[queue.manager] Failed to update job execution record'
-        );
-      }
+    const isFinalFailure = job.attemptsMade >= (job.opts?.attempts ?? 3);
+
+    try {
+      await prisma.jobExecution.update({
+        where: { id: job.data.jobExecutionId },
+        data: {
+          status: isFinalFailure ? 'DEAD' : 'FAILED',
+          error_message: failedReason,
+          completed_at: isFinalFailure ? new Date() : null,
+        },
+      });
+    } catch (dbErr) {
+      logger.error(
+        { jobExecutionId: job.data.jobExecutionId, err: dbErr.message },
+        '[queue.manager] Failed to update job execution record'
+      );
     }
   });
 
-  queue.on('completed', async job => {
-    logger.info(
-      {
-        queue: queueName,
-        jobId: job.id,
-        jobName: job.name,
-        duration: job.finishedOn - job.processedOn,
-      },
-      '[queue.manager] Job completed'
-    );
+  qe.on('completed', async ({ jobId, returnvalue }) => {
+    logger.info({ queue: queueName, jobId }, '[queue.manager] Job completed');
 
-    if (job.data?.jobExecutionId) {
-      try {
-        await prisma.jobExecution.update({
-          where: { id: job.data.jobExecutionId },
-          data: { status: 'COMPLETED', completed_at: new Date(), result: job.returnvalue },
-        });
-      } catch (dbError) {
-        logger.error(
-          { jobExecutionId: job.data.jobExecutionId, error: dbError.message },
-          '[queue.manager] Failed to update job completion record'
-        );
-      }
+    const job = await queue.getJob(jobId);
+    if (!job?.data?.jobExecutionId) return;
+
+    try {
+      await prisma.jobExecution.update({
+        where: { id: job.data.jobExecutionId },
+        data: {
+          status: 'COMPLETED',
+          completed_at: new Date(),
+          result: returnvalue ?? null,
+        },
+      });
+    } catch (dbErr) {
+      logger.error(
+        { jobExecutionId: job.data.jobExecutionId, err: dbErr.message },
+        '[queue.manager] Failed to update job completion record'
+      );
     }
   });
 
-  queue.on('stalled', jobId => {
+  qe.on('stalled', ({ jobId }) => {
     logger.warn(
       { queue: queueName, jobId },
       '[queue.manager] Job stalled — BullMQ will re-queue automatically'
     );
   });
 
-  queue.on('paused', () => logger.warn({ queue: queueName }, '[queue.manager] Queue paused'));
-  queue.on('resumed', () => logger.info({ queue: queueName }, '[queue.manager] Queue resumed'));
-  queue.on('drained', () => logger.debug({ queue: queueName }, '[queue.manager] Queue drained'));
+  return qe;
 }
 
 // =============================================================================
@@ -176,31 +191,21 @@ export async function retryJob(jobId, queueName) {
 }
 
 export async function cleanOldJobs(olderThanDays = 7) {
-  const cutoffTimestamp = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
+  const graceMs = olderThanDays * 24 * 60 * 60 * 1000;
   const results = {};
 
   for (const [name, queue] of Object.entries(allQueues)) {
-    const removed = { completed: 0, failed: 0, delayed: 0 };
-
-    const completedJobs = await queue.getJobs(['completed']);
-    for (const job of completedJobs.filter(j => j.finishedOn < cutoffTimestamp)) {
-      await job.remove();
-      removed.completed++;
-    }
-
-    const failedJobs = await queue.getJobs(['failed']);
-    for (const job of failedJobs.filter(j => j.finishedOn < cutoffTimestamp)) {
-      await job.remove();
-      removed.failed++;
-    }
-
-    const delayedJobs = await queue.getJobs(['delayed']);
-    for (const job of delayedJobs.filter(j => j.timestamp < cutoffTimestamp)) {
-      await job.remove();
-      removed.delayed++;
-    }
-
-    results[name] = removed;
+    // queue.clean() is server-side — no full fetch into memory
+    const [completed, failed, delayed] = await Promise.all([
+      queue.clean(graceMs, 1000, 'completed'),
+      queue.clean(graceMs, 1000, 'failed'),
+      queue.clean(graceMs, 1000, 'delayed'),
+    ]);
+    results[name] = {
+      completed: completed.length,
+      failed: failed.length,
+      delayed: delayed.length,
+    };
   }
 
   logger.info({ olderThanDays, results }, '[queue.manager] Cleaned old jobs');

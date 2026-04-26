@@ -1,8 +1,4 @@
-// =============================================================================
-// infrastructure/infrastructure.index.js — RESQID
-// FIXED: Removed template exports (templates now live in orchestrator)
-// =============================================================================
-
+import { logger } from '#config/logger.js';
 import { initializeCache, getCache, TTL, CacheKey } from './cache/cache.index.js';
 import { initializeEmail, getEmail } from './email/email.index.js';
 import { initializePush, getPush } from './push/push.index.js';
@@ -18,25 +14,23 @@ export class Infrastructure {
 
   async initialize() {
     if (this.initialized) {
-      console.warn('[Infrastructure] Already initialized — skipping.');
+      logger.warn('[Infrastructure] Already initialized — skipping.');
       return this.modules;
     }
 
     try {
-      const [cache, email, push, sms, storage] = await Promise.all([
-        initializeCache(this.config.cache),
-        Promise.resolve(initializeEmail(this.config.email)),
-        Promise.resolve(initializePush(this.config.push)),
-        Promise.resolve(initializeSms(this.config.sms)),
-        Promise.resolve(initializeStorage(this.config.storage)),
-      ]);
+      const cache = await initializeCache(this.config.cache);
+      const email = initializeEmail(this.config.email);
+      const push = initializePush(this.config.push);
+      const sms = initializeSms(this.config.sms);
+      const storage = initializeStorage(this.config.storage);
 
       this.modules = { cache, email, push, sms, storage };
       this.initialized = true;
-      console.info('[Infrastructure] All modules initialized successfully.');
+      logger.info('[Infrastructure] All modules initialized successfully.');
       return this.modules;
     } catch (err) {
-      console.error('[Infrastructure] Initialization failed:', err.message);
+      logger.error({ err: err.message }, '[Infrastructure] Initialization failed');
       throw err;
     }
   }
@@ -71,10 +65,9 @@ export class Infrastructure {
       await this.modules.cache.disconnect();
     }
     this.initialized = false;
-    console.info('[Infrastructure] Shutdown complete.');
+    logger.info('[Infrastructure] Shutdown complete.');
   }
 
-  /** @private */
   _assertReady() {
     if (!this.initialized) {
       throw new Error('[Infrastructure] Not initialized. Call initialize() first.');
@@ -82,9 +75,6 @@ export class Infrastructure {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Singleton
-// ---------------------------------------------------------------------------
 let infrastructureInstance = null;
 
 export async function initializeInfrastructure(config = {}) {
@@ -102,5 +92,4 @@ export function getInfrastructure() {
   return infrastructureInstance;
 }
 
-// Re-export sub-module constants for convenience
 export { TTL, CacheKey, StoragePath };

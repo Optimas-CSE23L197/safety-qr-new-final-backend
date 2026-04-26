@@ -13,6 +13,7 @@ import { generateOtp, hashOtp } from '#services/otp.service.js';
 import { redis } from '#config/redis.js';
 import { prisma } from '#config/prisma.js';
 import * as uploadService from '#services/upload.service.js';
+import { asyncHandler } from '#shared/response/asyncHandler.js';
 // import { sendSms } from '#integrations/sms/sms.service.js';
 
 // ─── Error helper ─────────────────────────────────────────────────────────────
@@ -495,3 +496,32 @@ export async function updateParentProfile(req, res) {
     return handleError(res, err, { fn: 'updateParentProfile', parentId });
   }
 }
+// email verification
+export const sendEmailVerificationOtp = asyncHandler(async (req, res) => {
+  const parentId = req.user.id;
+  const { email } = req.validatedBody;
+  const result = await service.sendEmailVerificationOtp(parentId, email);
+  return res.status(200).json({ success: true, data: result });
+});
+
+export const verifyEmail = asyncHandler(async (req, res) => {
+  const parentId = req.user.id;
+  const { email, otp } = req.validatedBody;
+  const result = await service.verifyEmail(parentId, email, otp);
+  return res.status(200).json({ success: true, data: result });
+});
+
+// email change - THIS IS WHAT YOU NEED TO ADD
+export const sendEmailChangeOtp = asyncHandler(async (req, res) => {
+  const parentId = req.user.id;
+  const { email } = req.validatedBody;
+  const result = await service.sendEmailChangeOtp(parentId, email);
+  return res.status(200).json({ success: true, data: result });
+});
+
+export const verifyEmailChange = asyncHandler(async (req, res) => {
+  const parentId = req.user.id;
+  const { email, otp } = req.validatedBody;
+  const result = await service.verifyEmailChange(parentId, email, otp);
+  return res.status(200).json({ success: true, data: result });
+});

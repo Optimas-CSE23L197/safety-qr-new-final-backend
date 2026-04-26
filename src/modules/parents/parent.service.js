@@ -8,11 +8,13 @@ import { encryptField, decryptField, hashForLookup } from '#shared/security/encr
 import { prisma } from '#config/prisma.js';
 import { redis } from '#config/redis.js';
 import { logger } from '#config/logger.js';
-
 import { cacheGet, cacheSet, cacheDel } from '#shared/cache/cache.js';
 import { generateOtp, hashOtp } from '#services/otp.service.js';
-import { getSms } from '#infrastructure/sms/sms.index.js';
 import { getEmail } from '#infrastructure/email/email.index.js';
+import { publishNotification } from '#orchestrator/notifications/notification.publisher.js';
+import OtpParentEmail from '#templates/email/otp-parent.jsx';
+import { sendParentWelcome } from '#modules/notification/notification.module.service.js';
+import { getSms } from '#infrastructure/sms/sms.index.js';
 
 // ─── ApiError ─────────────────────────────────────────────────────────────────
 
@@ -47,26 +49,6 @@ async function invalidateParentHome(parentId) {
   await cacheDel(HOME_KEY(parentId));
 }
 
-// ─── Notification helpers ─────────────────────────────────────────────────────
-
-async function sendSms(phone, message) {
-  try {
-    const sms = getSms();
-    return await sms.send(phone, message);
-  } catch (err) {
-    logger.error({ err: err.message, phone }, '[parent.service] SMS failed');
-  }
-}
-
-async function sendEmail({ to, subject, html }) {
-  try {
-    const email = getEmail();
-    return await email.send({ to, subject, html });
-  } catch (err) {
-    logger.error({ err: err.message, to }, '[parent.service] Email failed');
-  }
-}
-
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
 async function getParentContactInfo(parentId) {
@@ -90,7 +72,14 @@ async function getCardDetails(cardId) {
     where: { id: cardId },
     select: {
       card_number: true,
-      student: { select: { first_name: true, last_name: true } },
+      student: {
+        select: {
+          id: true,
+          first_name: true,
+          last_name: true,
+          school: { select: { id: true, name: true } },
+        },
+      },
     },
   });
 }
@@ -139,8 +128,6 @@ async function fetchAndShape(parentId) {
       .sort((a, b) => (TOKEN_PRIORITY[a.status] ?? 9) - (TOKEN_PRIORITY[b.status] ?? 9))[0];
   };
 
-  // FIX: embed per-student last_scan, anomaly, and scan_count
-  // so the mobile client can scope these to the active student
   const students = studentLinks.map(({ student, relationship, is_primary }) => {
     const token = pickBestToken(student.tokens);
     const card = token?.cards[0] ?? null;
@@ -154,6 +141,8 @@ async function fetchAndShape(parentId) {
       section: student.section,
       photo_url: student.photo_url,
       setup_stage: student.setup_stage,
+      gender: student.gender ?? null,
+      dob: student.dob_encrypted ? safeDecrypt(student.dob_encrypted) : null,
       relationship,
       is_primary,
       school: student.school ?? null,
@@ -170,7 +159,6 @@ async function fetchAndShape(parentId) {
       emergency: student.emergency ? shapeEmergency(student.emergency) : null,
       card_visibility: student.cardVisibility ?? null,
       location_consent: student.locationConsent ?? null,
-      // FIX: per-student scan summary (populated from student-scoped repo fields)
       last_scan: student.lastScan ?? null,
       scan_count: student.scanCount ?? 0,
       anomaly: student.anomaly ?? null,
@@ -183,22 +171,22 @@ async function fetchAndShape(parentId) {
     return (a.first_name ?? '').localeCompare(b.first_name ?? '');
   });
 
-  // Determine active student id
   const activeStudentId =
     parent.active_student_id ?? students.find(s => s.is_primary)?.id ?? students[0]?.id ?? null;
 
-  // Global last_scan / anomaly / scan_count kept for backwards compatibility
-  // but now also scoped to the active student inside the students array
   return {
     parent: {
       id: parent.id,
       name: parent.name,
+      email: parent.email ?? null,
+      avatar_url: parent.avatar_url ?? null,
+      phone: parent.phone ? maskPhone(safeDecrypt(parent.phone)) : null,
       is_phone_verified: parent.is_phone_verified,
+      is_email_verified: parent.is_email_verified ?? false,
       active_student_id: activeStudentId,
       notification_prefs: parent.notificationPrefs || {},
     },
     students,
-    // Global fields still returned (scoped to active student server-side)
     last_scan: lastScan ?? null,
     scan_count: scanCount,
     anomaly: anomaly ?? null,
@@ -231,7 +219,6 @@ function shapeEmergency(ep) {
 }
 
 // ─── GET /me/scans ────────────────────────────────────────────────────────────
-// FIX: now receives studentId and passes it to the repo for student-scoped results
 
 export async function getScanHistory(parentId, query) {
   const { student_id, cursor, limit, filter } = query;
@@ -243,10 +230,13 @@ export async function getScanHistory(parentId, query) {
 export async function updateProfile(parentId, body) {
   const { student_id, student, emergency, contacts } = body;
 
-  console.log('[updateProfile] Received student payload:', student);
-
-  const studentName = await getStudentName(student_id);
-  const parentInfo = await getParentContactInfo(parentId);
+  const encryptedContacts = contacts?.map(c => {
+    if (!c.phone) throw new ApiError('Contact phone is required', 400, 'INVALID_CONTACT');
+    return {
+      ...c,
+      phone: encryptField(c.phone),
+    };
+  });
 
   const sensitiveFields = [
     'blood_group',
@@ -266,11 +256,6 @@ export async function updateProfile(parentId, body) {
       }
     : undefined;
 
-  const encryptedContacts = contacts?.map(c => ({
-    ...c,
-    phone: encryptField(c.phone),
-  }));
-
   await repo.updateStudentProfile({
     parentId,
     studentId: student_id,
@@ -286,14 +271,6 @@ export async function updateProfile(parentId, body) {
     entity: 'Student',
     entityId: student_id,
   });
-
-  if (hasSensitiveChange && parentInfo?.email) {
-    sendEmail({
-      to: parentInfo.email,
-      subject: '📝 Emergency Profile Updated - RESQID',
-      html: `<div>Emergency profile for ${studentName} updated at ${new Date().toLocaleString()}</div>`,
-    }).catch(err => logger.warn({ err: err.message }, 'Profile update email failed'));
-  }
 
   await invalidateParentHome(parentId);
   return { cache_invalidated: true };
@@ -356,13 +333,20 @@ export async function lockCard(parentId, body) {
     entityId: student_id,
   });
 
-  if (parentInfo?.email) {
-    sendEmail({
-      to: parentInfo.email,
-      subject: '🔒 Card Locked - RESQID Security Alert',
-      html: `<div>Card for ${studentName} locked at ${new Date().toLocaleString()}</div>`,
-    }).catch(err => logger.warn({ err: err.message }, 'Card lock email failed'));
-  }
+  publishNotification
+    .parentCardLocked({
+      actorId: parentId,
+      schoolId: null,
+      payload: {
+        parentName: parentInfo?.name ?? 'Parent',
+        studentName,
+        parentEmail: parentInfo?.email ?? null,
+        parentPhone: parentInfo?.phone ? safeDecrypt(parentInfo.phone) : null,
+        parentExpoTokens: [],
+      },
+      meta: { studentId: student_id },
+    })
+    .catch(err => logger.warn({ err: err.message }, '[parent] Card lock notification failed'));
 
   await invalidateParentHome(parentId);
   return { ...result, cache_invalidated: true };
@@ -386,20 +370,20 @@ export async function requestCardReplacement(parentId, body) {
     entityId: result.id,
   });
 
-  if (parentInfo?.phone) {
-    sendSms(
-      parentInfo.phone,
-      `RESQID: Card replacement for ${studentName} requested. ID: ${result.id.slice(0, 8)}`
-    ).catch(err => logger.warn({ err: err.message }, 'Card replacement SMS failed'));
-  }
-
-  if (parentInfo?.email) {
-    sendEmail({
-      to: parentInfo.email,
-      subject: '🆔 Card Replacement Request Received - RESQID',
-      html: `<div>Request ID: ${result.id}<br>Student: ${studentName}<br>Reason: ${reason}</div>`,
-    }).catch(err => logger.warn({ err: err.message }, 'Card replacement email failed'));
-  }
+  publishNotification
+    .parentCardReplaceRequested({
+      actorId: parentId,
+      schoolId: null,
+      payload: {
+        parentName: parentInfo?.name ?? 'Parent',
+        studentName,
+        reason,
+        parentEmail: parentInfo?.email ?? null,
+        parentPhone: parentInfo?.phone ? safeDecrypt(parentInfo.phone) : null,
+      },
+      meta: { studentId: student_id },
+    })
+    .catch(err => logger.warn({ err: err.message }, '[parent] Card replace notification failed'));
 
   return result;
 }
@@ -408,14 +392,6 @@ export async function requestCardReplacement(parentId, body) {
 
 export async function deleteAccount(parentId) {
   const parentInfo = await getParentContactInfo(parentId);
-
-  if (parentInfo?.email) {
-    sendEmail({
-      to: parentInfo.email,
-      subject: '👋 RESQID Account Deleted',
-      html: `<div>Your RESQID account has been deleted at ${new Date().toLocaleString()}</div>`,
-    }).catch(err => logger.warn({ err: err.message }, 'Account deletion email failed'));
-  }
 
   await repo.softDeleteParent(parentId);
   await invalidateParentHome(parentId);
@@ -427,6 +403,17 @@ export async function deleteAccount(parentId) {
     entity: 'ParentUser',
     entityId: parentId,
   });
+
+  publishNotification
+    .parentAccountDeleted({
+      actorId: parentId,
+      payload: {
+        parentName: parentInfo?.name ?? 'Parent',
+        parentEmail: parentInfo?.email ?? null,
+        parentPhone: parentInfo?.phone ? safeDecrypt(parentInfo.phone) : null,
+      },
+    })
+    .catch(err => logger.warn({ err: err.message }, '[parent] Account delete notification failed'));
 }
 
 // ─── GET /me/location-history ────────────────────────────────────────────────
@@ -500,13 +487,20 @@ export async function requestRenewal(parentId, body) {
     entityId: card_id,
   });
 
-  if (parentInfo?.email) {
-    sendEmail({
-      to: parentInfo.email,
-      subject: '🔄 Card Renewal Request Received - RESQID',
-      html: `<div>Card: ${cardDetails?.card_number || 'N/A'}<br>Student: ${studentName}<br>Payment: ${payment_method}</div>`,
-    }).catch(err => logger.warn({ err: err.message }, 'Card renewal email failed'));
-  }
+  publishNotification
+    .parentCardRenewalRequested({
+      actorId: parentId,
+      schoolId: cardDetails?.student?.school?.id ?? null,
+      payload: {
+        studentName,
+        schoolName: cardDetails?.student?.school?.name ?? 'School',
+        parentPhone: parentInfo?.phone ? safeDecrypt(parentInfo.phone) : null,
+        parentEmail: parentInfo?.email ?? null,
+        adminEmail: null,
+      },
+      meta: { studentId: cardDetails?.student?.id },
+    })
+    .catch(err => logger.warn({ err: err.message }, '[parent] Renewal notification failed'));
 
   return result;
 }
@@ -557,25 +551,17 @@ export async function changePhone(parentId, newPhone, otp, ipAddress) {
     ip: ipAddress,
   });
 
-  sendSms(
-    newPhone,
-    `RESQID: Your account phone number has been changed. If not you, contact support.`
-  ).catch(err => logger.warn({ err: err.message }, 'Phone change SMS to new number failed'));
-
-  if (decryptedOldPhone && decryptedOldPhone !== newPhone) {
-    sendSms(
-      decryptedOldPhone,
-      `RESQID ALERT: Your account phone was changed to ${newPhone} at ${new Date().toLocaleString()}.`
-    ).catch(err => logger.warn({ err: err.message }, 'Phone change SMS to old number failed'));
-  }
-
-  if (parentEmail) {
-    sendEmail({
-      to: parentEmail,
-      subject: '📱 Phone Number Changed - RESQID Security Alert',
-      html: `<div>Hello ${parentName || 'Parent'},<br>Phone changed from ${maskPhone(decryptedOldPhone || 'Unknown')} to ${maskPhone(newPhone)}<br>IP: ${ipAddress || 'Unknown'}<br>Time: ${new Date().toLocaleString()}</div>`,
-    }).catch(err => logger.warn({ err: err.message }, 'Phone change email failed'));
-  }
+  publishNotification
+    .parentPhoneChanged({
+      actorId: parentId,
+      payload: {
+        parentName,
+        oldPhone: decryptedOldPhone,
+        newPhone,
+        parentEmail: parentEmail ?? null,
+      },
+    })
+    .catch(err => logger.warn({ err: err.message }, '[parent] Phone change notification failed'));
 
   await invalidateParentHome(parentId);
   return { message: 'Phone number updated. Please login again.' };
@@ -676,13 +662,20 @@ export async function linkCard({ parentId, cardNumber, ipAddress }) {
   await invalidateParentHome(parentId);
 
   const parent = await repo.findParentEmail(parentId);
-  if (parent?.email) {
-    sendEmail({
-      to: parent.email,
-      subject: '👶 New Child Added - RESQID',
-      html: `<div>Your child has been added to your RESQID account.</div>`,
-    }).catch(err => logger.warn({ err: err.message }, 'Link card email failed'));
-  }
+
+  publishNotification
+    .parentCardLinked({
+      actorId: parentId,
+      schoolId: card.school_id,
+      payload: {
+        parentName: parent?.name ?? 'Parent',
+        studentName: card.student?.first_name || 'Child',
+        cardNumber,
+        parentExpoTokens: [],
+      },
+      meta: { studentId },
+    })
+    .catch(err => logger.warn({ err: err.message }, '[parent] Link card notification failed'));
 
   return {
     success: true,
@@ -725,8 +718,6 @@ export { invalidateParentHome };
 // ─── POST /me/unlink-child/init ──────────────────────────────────────────────
 
 export async function unlinkChildInit({ parentId, studentId, ipAddress }) {
-  console.log('[unlinkChildInit Service] Start');
-
   const link = await repo.findParentStudentLink(parentId, studentId);
   if (!link) throw new ApiError('Student not linked to this account', 404);
 
@@ -756,7 +747,8 @@ export async function unlinkChildInit({ parentId, studentId, ipAddress }) {
     redis.setex(`otp:attempts:unlink:${parentId}`, 300, '0'),
   ]);
 
-  await sendSms(
+  const sms = getSms();
+  await sms.send(
     decryptedPhone,
     `RESQID: Use OTP ${otp} to remove child from your account. Valid for 5 minutes.`
   );
@@ -831,13 +823,20 @@ export async function unlinkChildVerify({ parentId, studentId, otp, nonce, ipAdd
   await redis.del(`otp:attempts:unlink:${parentId}`);
 
   const parent = await repo.findParentPhone(parentId);
-  if (parent?.email) {
-    await sendEmail({
-      to: parent.email,
-      subject: '👋 Child Removed from RESQID',
-      html: `<div>${studentName} has been removed from your RESQID account.<br>Time: ${new Date().toLocaleString()}<br>IP: ${ipAddress || 'Unknown'}</div>`,
-    }).catch(() => {});
-  }
+
+  publishNotification
+    .parentChildUnlinked({
+      actorId: parentId,
+      schoolId: null,
+      payload: {
+        parentName: parent?.name ?? 'Parent',
+        studentName,
+        parentExpoTokens: [],
+        parentPhone: parent?.phone ? safeDecrypt(parent.phone) : null,
+      },
+      meta: { studentId },
+    })
+    .catch(err => logger.warn({ err: err.message }, '[parent] Unlink notification failed'));
 
   writeAuditLog({
     actorId: parentId,
@@ -881,7 +880,7 @@ export async function updateParentAvatar(parentId, avatarUrl) {
 }
 
 // =============================================================================
-// STUDENT PHOTO UPLOAD — FIXED (stores URL in DB)
+// STUDENT PHOTO UPLOAD
 // =============================================================================
 
 export async function confirmStudentPhotoUpload(parentId, studentId, key, nonce) {
@@ -901,7 +900,6 @@ export async function confirmStudentPhotoUpload(parentId, studentId, key, nonce)
   const cdnDomain = process.env.AWS_CDN_DOMAIN || 'assets.getresqid.in';
   const photoUrl = `https://${cdnDomain}/${key}`;
 
-  // ✅ FIX: Actually store the URL in database
   await prisma.student.update({
     where: { id: studentId },
     data: { photo_url: photoUrl },
@@ -914,7 +912,7 @@ export async function confirmStudentPhotoUpload(parentId, studentId, key, nonce)
 }
 
 // =============================================================================
-// STUDENT BASIC INFO (name, class, dob, gender)
+// STUDENT BASIC INFO
 // =============================================================================
 
 export async function updateStudentBasicInfo(parentId, studentId, data) {
@@ -929,7 +927,6 @@ export async function updateStudentBasicInfo(parentId, studentId, data) {
   if (data.section !== undefined) updateData.section = data.section?.trim();
   if (data.gender !== undefined) updateData.gender = data.gender;
 
-  // Encrypt DOB if provided
   if (data.dob !== undefined) {
     updateData.dob_encrypted = encryptField(data.dob);
   }
@@ -965,7 +962,6 @@ export async function confirmParentAvatarUpload(parentId, key, nonce) {
   const cdnDomain = process.env.AWS_CDN_DOMAIN || 'assets.getresqid.in';
   const avatarUrl = `https://${cdnDomain}/${key}`;
 
-  // ✅ Store avatar URL
   await prisma.parentUser.update({
     where: { id: parentId },
     data: { avatar_url: avatarUrl },
@@ -978,7 +974,7 @@ export async function confirmParentAvatarUpload(parentId, key, nonce) {
 }
 
 // =============================================================================
-// PARENT PROFILE (name only — email/phone handled separately)
+// PARENT PROFILE
 // =============================================================================
 
 export async function updateParentName(parentId, name) {
@@ -990,4 +986,182 @@ export async function updateParentName(parentId, name) {
   await invalidateParentHome(parentId);
 
   return { success: true, name };
+}
+
+// =============================================================================
+// EMAIL VERIFICATION
+// =============================================================================
+
+export async function sendEmailVerificationOtp(parentId, email) {
+  const rateKey = `otp:email_verify:rate:${parentId}`;
+  const count = await redis.incr(rateKey);
+  if (count === 1) await redis.expire(rateKey, 3600);
+  if (count > 3)
+    throw new ApiError('Too many OTP requests. Try after 1 hour.', 429, 'RATE_LIMITED');
+
+  const existing = await prisma.parentUser.findFirst({
+    where: { email, NOT: { id: parentId } },
+  });
+  if (existing) throw new ApiError('Email already in use by another account', 409, 'EMAIL_TAKEN');
+
+  const otp = generateOtp();
+  console.log('[DEV EMAIL OTP VERIFICATION CODE]:', otp);
+  const hashed = hashOtp(otp);
+
+  await redis.setex(
+    `otp:email_verify:${parentId}`,
+    300,
+    JSON.stringify({ hash: hashed, email, attempts: 0 })
+  );
+
+  const emailService = getEmail();
+  await emailService.sendReactTemplate(
+    OtpParentEmail,
+    { userName: 'Parent', otpCode: otp, expiryMinutes: 5 },
+    { to: email, subject: 'Your RESQID Email Verification Code' }
+  );
+
+  logger.info({ parentId }, '[parent] Email verification OTP sent');
+  return { success: true, message: 'OTP sent to your email', expiresIn: 300 };
+}
+
+export async function verifyEmail(parentId, email, otp) {
+  const stored = await redis.get(`otp:email_verify:${parentId}`);
+  if (!stored) throw new ApiError('OTP expired or not requested', 400, 'OTP_EXPIRED');
+
+  const data = JSON.parse(stored);
+
+  if (data.email !== email)
+    throw new ApiError('Email does not match OTP request', 400, 'EMAIL_MISMATCH');
+
+  if (data.attempts >= 3) {
+    await redis.del(`otp:email_verify:${parentId}`);
+    throw new ApiError('Too many failed attempts. Request a new OTP.', 429, 'MAX_ATTEMPTS');
+  }
+
+  const inputHash = hashOtp(otp);
+  const valid = crypto.timingSafeEqual(
+    Buffer.from(inputHash, 'hex'),
+    Buffer.from(data.hash, 'hex')
+  );
+
+  if (!valid) {
+    data.attempts += 1;
+    await redis.setex(`otp:email_verify:${parentId}`, 300, JSON.stringify(data));
+    throw new ApiError(`Invalid OTP. ${3 - data.attempts} attempt(s) left.`, 400, 'INVALID_OTP');
+  }
+
+  await prisma.parentUser.update({
+    where: { id: parentId },
+    data: { email, is_email_verified: true },
+  });
+
+  await redis.del(`otp:email_verify:${parentId}`);
+  await invalidateParentHome(parentId);
+
+  sendParentWelcome(parentId).catch(err =>
+    logger.warn({ err: err.message }, '[parent] Welcome email trigger failed')
+  );
+
+  logger.info({ parentId }, '[parent] Email verified');
+  return { success: true, message: 'Email verified successfully' };
+}
+
+// =============================================================================
+// EMAIL CHANGE
+// =============================================================================
+
+export async function sendEmailChangeOtp(parentId, newEmail) {
+  const rateKey = `otp:email_change:rate:${parentId}`;
+  const count = await redis.incr(rateKey);
+  if (count === 1) await redis.expire(rateKey, 3600);
+  if (count > 3)
+    throw new ApiError('Too many OTP requests. Try after 1 hour.', 429, 'RATE_LIMITED');
+
+  const existing = await prisma.parentUser.findFirst({
+    where: { email: newEmail, NOT: { id: parentId } },
+  });
+  if (existing) throw new ApiError('Email already in use by another account', 409, 'EMAIL_TAKEN');
+
+  const parent = await prisma.parentUser.findUnique({
+    where: { id: parentId },
+    select: { name: true, email: true },
+  });
+
+  const otp = generateOtp();
+  console.log('[DEV EMAIL CHANGE OTP]:', otp);
+  const hashed = hashOtp(otp);
+
+  await redis.setex(
+    `otp:email_change:${parentId}`,
+    300,
+    JSON.stringify({ hash: hashed, email: newEmail, attempts: 0 })
+  );
+
+  const emailService = getEmail();
+  await emailService.sendReactTemplate(
+    OtpParentEmail,
+    { userName: parent?.name || 'Parent', otpCode: otp, expiryMinutes: 5 },
+    { to: newEmail, subject: 'Verify Your New Email - RESQID' }
+  );
+
+  logger.info({ parentId, newEmail }, '[parent] Email change OTP sent');
+  return { success: true, message: 'OTP sent to your new email', expiresIn: 300 };
+}
+
+export async function verifyEmailChange(parentId, newEmail, otp) {
+  const stored = await redis.get(`otp:email_change:${parentId}`);
+  if (!stored) throw new ApiError('OTP expired or not requested', 400, 'OTP_EXPIRED');
+
+  const data = JSON.parse(stored);
+
+  if (data.email !== newEmail)
+    throw new ApiError('Email does not match OTP request', 400, 'EMAIL_MISMATCH');
+
+  if (data.attempts >= 3) {
+    await redis.del(`otp:email_change:${parentId}`);
+    throw new ApiError('Too many failed attempts. Request a new OTP.', 429, 'MAX_ATTEMPTS');
+  }
+
+  const inputHash = hashOtp(otp);
+  const valid = crypto.timingSafeEqual(
+    Buffer.from(inputHash, 'hex'),
+    Buffer.from(data.hash, 'hex')
+  );
+
+  if (!valid) {
+    data.attempts += 1;
+    await redis.setex(`otp:email_change:${parentId}`, 300, JSON.stringify(data));
+    throw new ApiError(`Invalid OTP. ${3 - data.attempts} attempt(s) left.`, 400, 'INVALID_OTP');
+  }
+
+  const parent = await prisma.parentUser.findUnique({
+    where: { id: parentId },
+    select: { email: true, name: true },
+  });
+
+  const oldEmail = parent?.email;
+
+  await prisma.parentUser.update({
+    where: { id: parentId },
+    data: { email: newEmail, is_email_verified: true },
+  });
+
+  await redis.del(`otp:email_change:${parentId}`);
+  await invalidateParentHome(parentId);
+
+  if (oldEmail && oldEmail !== newEmail) {
+    try {
+      const result = await publishNotification.parentEmailChanged({
+        actorId: parentId,
+        payload: { parentName: parent.name ?? 'Parent', oldEmail, newEmail },
+      });
+      logger.info({ result, oldEmail, newEmail }, '[parent] Email changed notification enqueued');
+    } catch (err) {
+      logger.error({ err: err.message }, '[parent] Email changed notification FAILED to enqueue');
+    }
+  }
+
+  logger.info({ parentId, oldEmail, newEmail }, '[parent] Email changed');
+  return { success: true, message: 'Email updated successfully' };
 }

@@ -17,7 +17,7 @@ import { Router } from 'express';
 import os from 'os';
 import { prisma } from '#config/prisma.js';
 import { redis } from '#config/redis.js';
-import { ENV } from '#config/env.js';
+import { ENV } from '#config/ENV.js';
 import { logger } from '#config/logger.js';
 
 export const healthRouter = Router();
@@ -201,9 +201,9 @@ healthRouter.get('/metrics', (_req, res) => {
       memory: memoryStats(),
     },
     system: systemStats(),
-    env: {
-      nodeEnv: env.NODE_ENV,
-      port: env.PORT ?? 3000,
+    ENV: {
+      nodeENV: ENV.NODE_ENV,
+      port: ENV.PORT ?? 3000,
     },
     ts: new Date().toISOString(),
   });
@@ -234,9 +234,9 @@ healthRouter.get('/', async (_req, res) => {
 
   const response = {
     status,
-    version: env.APP_VERSION ?? '1.0.0',
+    version: ENV.APP_VERSION ?? '1.0.0',
     service: 'schoolcard-api',
-    env: env.NODE_ENV,
+    ENV: ENV.NODE_ENV,
 
     checks,
 

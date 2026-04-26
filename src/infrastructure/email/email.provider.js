@@ -7,12 +7,12 @@ export class EmailProvider {
     throw new Error('EmailProvider.send() is not implemented.');
   }
 
-  async sendTemplate(template, data, to, subject) {
-    throw new Error('EmailProvider.sendTemplate() is not implemented.');
-  }
-
   async sendBulk(emails) {
     throw new Error('EmailProvider.sendBulk() is not implemented.');
+  }
+
+  async sendReactTemplate(Component, props, options) {
+    throw new Error('EmailProvider.sendReactTemplate() is not implemented.');
   }
 }
 

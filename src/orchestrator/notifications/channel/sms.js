@@ -47,12 +47,12 @@ export const sendSmsNotification = async ({
       {
         to: to.slice(0, 6) + '…',
         latencyMs: Date.now() - start,
-        providerRef: result?.messageId,
+        providerRef: result?.id ?? result?.messageId,
         ...meta,
       },
       '[sms] SMS sent'
     );
-    return { success: true, providerRef: result?.messageId };
+    return { success: true, providerRef: result?.id ?? result?.messageId };
   } catch (err) {
     logger.error(
       { err: err.message, to: to.slice(0, 6) + '…', latencyMs: Date.now() - start, ...meta },

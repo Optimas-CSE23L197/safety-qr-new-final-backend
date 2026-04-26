@@ -45,6 +45,9 @@ export const startNotificationWorker = () => {
   _worker = new Worker(QUEUE, processNotificationJob, {
     connection: getQueueConnection(),
     concurrency: 5,
+    stalledInterval: 120_000,
+    maxStalledCount: 1,
+    lockDuration: 30_000,
   });
 
   _worker.on('completed', job => {

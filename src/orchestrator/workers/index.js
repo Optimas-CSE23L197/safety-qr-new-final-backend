@@ -238,12 +238,7 @@ const gracefulShutdown = async signal => {
   stopDlqFlush();
 
   try {
-    await Promise.allSettled([
-      stopEmergencyWorker(),
-      stopNotificationWorker(),
-      stopScanWorker(),
-      stopMaintenanceWorker(),
-    ]);
+    await Promise.allSettled(ACTIVE.map(w => w.stop()));
 
     await closeAllQueues();
     await closeQueueConnection();
@@ -288,7 +283,7 @@ export const startWorkers = async () => {
 
   await initializeInfrastructure({
     cache: { REDIS_URL: process.env.REDIS_URL },
-    email: { API_KEY: process.env.BREVO_API_KEY }, // ← pass real config
+    email: { BREVO_API_KEY: process.env.BREVO_API_KEY },
     push: {},
     sms: { API_KEY: process.env.TWOFACTOR_API_KEY },
     storage: { BUCKET: process.env.AWS_S3_BUCKET },

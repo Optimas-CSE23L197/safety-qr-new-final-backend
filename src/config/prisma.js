@@ -8,9 +8,7 @@
 // - Connection health check export for /health endpoint
 // =============================================================================
 
-import { PrismaClient } from '../generated/index.js';
-// import { PrismaClient } from '@prisma/client';
-import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '@prisma/client';
 import { ENV } from './env.js';
 import { logger } from './logger.js';
 
@@ -36,14 +34,8 @@ const LOG_CONFIG = ENV.IS_DEV
 // ─── Prisma Client Singleton ──────────────────────────────────────────────────
 
 function createPrismaClient() {
-  // Prisma v7 client engine requires a driver adapter — no Rust engine
-  const adapter = new PrismaPg({ connectionString: ENV.DATABASE_URL });
-
   const client = new PrismaClient({
-    adapter,
     log: LOG_CONFIG,
-
-    // Error formatting — minimal in production (no stack traces in logs)
     errorFormat: ENV.IS_PROD ? 'minimal' : 'pretty',
   });
 

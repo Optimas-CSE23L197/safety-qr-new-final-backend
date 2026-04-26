@@ -194,3 +194,34 @@ export const bulkWriteScanLogs = async entries => {
     throw err; // Re-throw — worker handles retry logic
   }
 };
+
+// NEW: Find student with parent email for emergency notifications
+export const findStudentWithParent = async studentId => {
+  return prisma.student.findUnique({
+    where: { id: studentId },
+    select: {
+      first_name: true,
+      last_name: true,
+      parents: {
+        // ✅ This is the ParentStudent relation
+        take: 1,
+        select: {
+          parent: {
+            // This accesses the actual ParentUser
+            select: {
+              email: true,
+              name: true,
+              phone: true, // ✅ Add phone for future SMS
+              devices: {
+                where: { is_active: true },
+                take: 3,
+                orderBy: { last_seen_at: 'desc' },
+                select: { expo_push_token: true },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+};

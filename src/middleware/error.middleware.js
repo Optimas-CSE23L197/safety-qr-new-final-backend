@@ -13,7 +13,7 @@
 //   - Programming errors (unexpected) → 500 + generic message
 // =============================================================================
 
-import { Prisma } from '../generated/index.js';
+import { Prisma } from '@prisma/client';
 import { ZodError } from 'zod';
 import { logger } from '#config/logger.js';
 import { ENV } from '#config/env.js';
@@ -179,7 +179,7 @@ export function globalErrorHandler(err, req, res, next) {
 
   return errorResponse(res, {
     statusCode: 500,
-    message: IS_PROD ? 'An unexpected error occurred. Our team has been notified.' : err.message, // Show real message in dev only
+    message: err.message, // Show real message in dev only
     requestId,
   });
 }

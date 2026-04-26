@@ -34,9 +34,7 @@ function buildCors(allowedOrigins, { credentials = true } = {}) {
     origin(origin, callback) {
       // Allow requests with no origin (server-to-server, curl in dev)
       if (!origin) {
-        if (ENV.NODE_ENV === 'production') {
-          return callback(new Error('Origin required in production'));
-        }
+        // Server-to-server, mobile apps, and API clients may not send Origin
         return callback(null, true);
       }
 

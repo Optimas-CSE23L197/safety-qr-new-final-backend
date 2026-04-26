@@ -22,4 +22,8 @@ export function getPush() {
   return pushInstance;
 }
 
+export function resetPush() {
+  pushInstance = null;
+}
+
 export { PushProvider, ExpoAdapter };

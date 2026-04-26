@@ -1,9 +1,3 @@
-// =============================================================================
-// infrastructure/push/expo.adapter.js — RESQID
-// Expo Push Notification adapter.
-// FIXED: Added Expo access token for enhanced security.
-// =============================================================================
-
 import { Expo } from 'expo-server-sdk';
 import { PushProvider } from './push.provider.js';
 import { logger } from '#config/logger.js';
@@ -11,42 +5,49 @@ import { logger } from '#config/logger.js';
 export class ExpoAdapter extends PushProvider {
   constructor() {
     super();
-    // FIXED: Pass access token for enhanced security
     this.expo = new Expo({
       accessToken: process.env.EXPO_ACCESS_TOKEN,
     });
   }
 
-  /**
-   * Send to a single Expo push token
-   */
   async sendToDevice(deviceToken, notification) {
     if (!Expo.isExpoPushToken(deviceToken)) {
       logger.warn({ deviceToken: deviceToken.slice(0, 10) + '…' }, '[Expo] Invalid token');
       return { success: false, error: 'Invalid Expo push token', successCount: 0, failureCount: 1 };
     }
 
-    const messages = [
-      {
-        to: deviceToken,
-        title: notification.title,
-        body: notification.body,
-        data: notification.data ?? {},
-        sound: 'default',
-        priority: 'high',
-      },
-    ];
+    const message = {
+      to: deviceToken,
+      title: notification.title,
+      body: notification.body,
+      data: notification.data ?? {},
+      sound: 'default',
+      priority: 'high',
+    };
 
     try {
-      const chunks = this.expo.chunkPushNotifications(messages);
+      const tickets = await this.expo.sendPushNotificationsAsync([message]);
+
       let successCount = 0;
       let failureCount = 0;
+      const deadTokens = [];
 
-      for (const chunk of chunks) {
-        const tickets = await this.expo.sendPushNotificationsAsync(chunk);
-        for (const ticket of tickets) {
-          if (ticket.status === 'ok') successCount++;
-          else failureCount++;
+      for (const ticket of tickets) {
+        if (ticket.status === 'ok') {
+          successCount++;
+        } else {
+          failureCount++;
+          logger.warn(
+            {
+              ticketStatus: ticket.status,
+              error: ticket.message,
+              token: deviceToken.slice(0, 10) + '…',
+            },
+            '[Expo] Ticket error'
+          );
+          if (ticket.details?.error === 'DeviceNotRegistered') {
+            deadTokens.push(deviceToken);
+          }
         }
       }
 
@@ -54,6 +55,7 @@ export class ExpoAdapter extends PushProvider {
         success: successCount > 0,
         successCount,
         failureCount,
+        deadTokens: deadTokens.length > 0 ? deadTokens : undefined,
       };
     } catch (err) {
       logger.error({ err: err.message }, '[Expo] sendToDevice failed');
@@ -61,9 +63,6 @@ export class ExpoAdapter extends PushProvider {
     }
   }
 
-  /**
-   * Send to multiple Expo push tokens
-   */
   async sendToDevices(deviceTokens, notification) {
     const validTokens = deviceTokens.filter(t => {
       const valid = Expo.isExpoPushToken(t);
@@ -93,20 +92,44 @@ export class ExpoAdapter extends PushProvider {
       const chunks = this.expo.chunkPushNotifications(messages);
       let successCount = 0;
       let failureCount = 0;
+      const deadTokens = [];
 
       for (const chunk of chunks) {
         const tickets = await this.expo.sendPushNotificationsAsync(chunk);
-        for (const ticket of tickets) {
-          if (ticket.status === 'ok') successCount++;
-          else failureCount++;
+        for (let i = 0; i < tickets.length; i++) {
+          const ticket = tickets[i];
+          const token = chunk[i].to;
+
+          if (ticket.status === 'ok') {
+            successCount++;
+          } else {
+            failureCount++;
+            logger.warn(
+              {
+                ticketStatus: ticket.status,
+                error: ticket.message,
+                token: token.slice(0, 10) + '…',
+              },
+              '[Expo] Ticket error'
+            );
+            if (ticket.details?.error === 'DeviceNotRegistered') {
+              deadTokens.push(token);
+            }
+          }
         }
       }
 
       logger.info(
-        { successCount, failureCount, total: validTokens.length },
+        { successCount, failureCount, deadCount: deadTokens.length, total: validTokens.length },
         '[Expo] Multicast complete'
       );
-      return { success: successCount > 0, successCount, failureCount };
+
+      return {
+        success: successCount > 0,
+        successCount,
+        failureCount,
+        deadTokens: deadTokens.length > 0 ? deadTokens : undefined,
+      };
     } catch (err) {
       logger.error({ err: err.message }, '[Expo] sendToDevices failed');
       return {
@@ -116,22 +139,6 @@ export class ExpoAdapter extends PushProvider {
         failureCount: validTokens.length,
       };
     }
-  }
-
-  // Topics not supported by Expo — no-op with warning
-  async sendToTopic(topic) {
-    logger.warn({ topic }, '[Expo] sendToTopic not supported');
-    return { success: false, error: 'Topics not supported by Expo' };
-  }
-
-  async subscribeToTopic(deviceTokens, topic) {
-    logger.warn({ topic }, '[Expo] subscribeToTopic not supported');
-    return null;
-  }
-
-  async unsubscribeFromTopic(deviceTokens, topic) {
-    logger.warn({ topic }, '[Expo] unsubscribeFromTopic not supported');
-    return null;
   }
 }
 

@@ -192,19 +192,28 @@ export const pushSSEToAll = (userIds, event) => {
  */
 export const broadcastToAll = event => {
   let sent = 0;
+  const deadConnections = [];
 
   for (const [userId, userConnections] of clients.entries()) {
     for (const conn of userConnections) {
+      if (conn.res.writableEnded) {
+        deadConnections.push({ userId, conn });
+        continue;
+      }
+
       try {
-        if (!conn.res.writableEnded) {
-          const eventString = `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`;
-          conn.res.write(eventString);
-          sent++;
-        }
+        const eventString = `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`;
+        conn.res.write(eventString);
+        sent++;
       } catch (error) {
         logger.error({ userId, error: error.message }, '[SSE] Broadcast failed');
+        deadConnections.push({ userId, conn });
       }
     }
+  }
+
+  for (const { userId, conn } of deadConnections) {
+    cleanupConnection(userId, conn.heartbeatInterval, conn.res);
   }
 
   return sent;

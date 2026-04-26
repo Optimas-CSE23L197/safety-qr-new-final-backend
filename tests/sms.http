@@ -1,0 +1,6 @@
+@apiKey = OM79RhJ3GPcbeVmoW0UBnlFp1HT2fYs5vZ8AuiqLk4QCjzKaSI4E6N2fsuitqX9yIbpZ7CPvo8Md0Thn
+@phone = 6294690079
+@otp = 123456
+
+### Send OTP via Fast2SMS
+GET https://www.fast2sms.com/dev/bulkV2?authorization={{apiKey}}&route=dlt&sender_id=FSTSMS&message=Your+RESQID+verification+code+is+123456.+Valid+for+10+minutes.&numbers={{phone}}&flash=0

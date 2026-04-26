@@ -5,7 +5,7 @@
 // =============================================================================
 
 import { randomUUID } from 'crypto';
-import { EVENTS } from './event.types.js';
+import { EVENTS, ACTOR_TYPES } from './event.types.js';
 import {
   emergencyAlertsQueue,
   notificationsQueue,
@@ -40,8 +40,9 @@ const routeEvent = type => {
 
 // ── Per-queue BullMQ job options ──────────────────────────────────────────────
 
-const getJobOptions = (type, id) => {
+const getJobOptions = (type, id, meta = {}) => {
   const jobId = `${type}-${id}`;
+  const delay = meta?.delay ?? 0;
 
   if (EMERGENCY_EVENTS.has(type)) {
     return {
@@ -63,6 +64,7 @@ const getJobOptions = (type, id) => {
 
   return {
     jobId,
+    delay,
     priority: 5,
     attempts: 3,
     backoff: { type: 'exponential', delay: 3000 },
@@ -73,11 +75,16 @@ const getJobOptions = (type, id) => {
 
 const validateEvent = event => {
   if (!event || typeof event !== 'object') throw new TypeError('publish: event must be an object');
+
   if (!event.type) throw new TypeError('publish: event.type is required');
+
   if (!EVENTS[event.type]) throw new TypeError(`publish: unknown event type "${event.type}"`);
+
   if (!event.actorId) throw new TypeError('publish: event.actorId is required');
-  if (!['USER', 'SYSTEM', 'WORKER'].includes(event.actorType)) {
-    throw new TypeError('publish: actorType must be USER | SYSTEM | WORKER');
+
+  // ✅ Fixed — includes PARENT_USER and SCHOOL_USER
+  if (!ACTOR_TYPES.includes(event.actorType)) {
+    throw new TypeError(`publish: actorType must be one of: ${ACTOR_TYPES.join(' | ')}`);
   }
 };
 
@@ -99,11 +106,12 @@ export const publish = async event => {
       studentId: event.meta?.studentId ?? null,
       alertId: event.meta?.alertId ?? null,
       requestId: event.meta?.requestId ?? null,
+      delay: event.meta?.delay ?? 0,
     },
   };
 
   const queue = routeEvent(stamped.type);
-  const jobOptions = getJobOptions(stamped.type, stamped.id);
+  const jobOptions = getJobOptions(stamped.type, stamped.id, stamped.meta);
 
   try {
     const job = await queue.add(stamped.type, stamped, jobOptions);
@@ -135,7 +143,7 @@ export const publishEvent = async (eventType, orderId, payload = {}) => {
 
 export const publishFailure = async (orderId, step, error, extraMeta = {}) => {
   return publish({
-    type: 'WORKER_JOB_FAILED',
+    type: EVENTS.WORKER_JOB_FAILED,
     actorId: 'system',
     actorType: 'SYSTEM',
     payload: {

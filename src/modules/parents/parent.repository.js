@@ -16,8 +16,12 @@ export async function getParentHomeData(parentId) {
       select: {
         id: true,
         name: true,
+        email: true,
+        phone: true,
+        avatar_url: true,
         status: true,
         is_phone_verified: true,
+        is_email_verified: true,
         active_student_id: true,
         notificationPrefs: {
           select: {
@@ -50,6 +54,8 @@ export async function getParentHomeData(parentId) {
             section: true,
             photo_url: true,
             setup_stage: true,
+            gender: true,
+            dob_encrypted: true,
             school: {
               select: { id: true, name: true, code: true, city: true },
             },

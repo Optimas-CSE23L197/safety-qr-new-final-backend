@@ -6,9 +6,10 @@
 // =============================================================================
 
 import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
-import { render } from '@react-email/components';
+import React from 'react';
 import { EmailProvider } from './email.provider.js';
 import { logger } from '#config/logger.js';
+import { render } from '@react-email/components';
 
 export class SesAdapter extends EmailProvider {
   constructor(config = {}) {
@@ -20,6 +21,11 @@ export class SesAdapter extends EmailProvider {
         secretAccessKey: config.AWS_SES_SECRET_KEY ?? process.env.AWS_SES_SECRET_KEY,
       },
     });
+
+    if (!config.AWS_SES_ACCESS_KEY && !process.env.AWS_SES_ACCESS_KEY) {
+      logger.warn('[SES] No access key configured — falling back to IAM credential chain');
+    }
+
     this.defaultFrom =
       config.FROM_EMAIL ?? process.env.SES_FROM_EMAIL ?? 'RESQID <noreply@getresqid.in>';
   }
@@ -72,7 +78,7 @@ export class SesAdapter extends EmailProvider {
    */
   async sendReactTemplate(Component, props = {}, { to, subject, from, replyTo } = {}) {
     try {
-      const element = Component(props); // Call as function, not JSX
+      const element = React.createElement(Component, props);
       const html = await render(element);
       const text = await render(element, { plainText: true });
       return this.send({ to, subject, html, text, from, replyTo });

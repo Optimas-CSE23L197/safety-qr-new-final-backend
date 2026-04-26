@@ -3,7 +3,7 @@
 // =============================================================================
 
 import { Worker } from 'bullmq';
-import { redis as workerRedis } from '#config/redis.js';
+import { getQueueConnection } from '../queues/queue.connection.js';
 import { logger } from '#config/logger.js';
 import { prisma } from '#config/prisma.js';
 import { QUEUE_NAMES } from '../queues/queue.names.js';
@@ -481,19 +481,13 @@ export async function processPipelineJob(job) {
 }
 
 export function createPipelineWorker() {
-  const worker = new Worker(
-    QUEUE_NAMES.PIPELINE_JOBS,
-    async job => {
-      return processPipelineJob(job);
-    },
-    {
-      connection: workerRedis,
-      concurrency: 3,
-      stalledInterval: 60000,
-      maxStalledCount: 3,
-      lockDuration: 300000,
-    }
-  );
+  const worker = new Worker(QUEUE_NAMES.PIPELINE_JOBS, async job => processPipelineJob(job), {
+    connection: getQueueConnection(), // ← was: workerRedis (shared singleton)
+    concurrency: 3,
+    stalledInterval: 60_000,
+    maxStalledCount: 3,
+    lockDuration: 300_000,
+  });
 
   worker.on('completed', (job, result) => {
     logger.info({ msg: 'Pipeline worker job completed', jobId: job.id, jobName: job.name, result });
@@ -513,12 +507,7 @@ export function createPipelineWorker() {
     logger.error({ msg: 'Pipeline worker error', error: err.message });
   });
 
-  logger.info({
-    msg: 'Pipeline worker created',
-    queue: QUEUE_NAMES.PIPELINE_JOBS,
-    concurrency: 3,
-  });
-
+  logger.info({ msg: 'Pipeline worker created', queue: QUEUE_NAMES.PIPELINE_JOBS, concurrency: 3 });
   return worker;
 }
 

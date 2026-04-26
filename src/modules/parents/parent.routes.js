@@ -31,9 +31,12 @@ import {
   updateNotifications,
   updateParentProfile,
   updateProfile,
-  // ✅ ADD THESE IMPORTS
   updateStudentBasic,
   updateVisibility,
+  sendEmailVerificationOtp,
+  verifyEmail,
+  sendEmailChangeOtp,
+  verifyEmailChange,
 } from './parent.controller.js';
 
 import {
@@ -51,7 +54,6 @@ import {
   validateScanHistoryQuery,
   validateSendPhoneOtp,
   validateSetActiveStudent,
-  // ✅ ADD THESE IMPORTS
   validateStudentBasic,
   validateUnlinkChildInit,
   validateUnlinkChildVerify,
@@ -59,6 +61,8 @@ import {
   validateUpdateNotifications,
   validateUpdateProfile,
   validateUpdateVisibility,
+  validateSendEmailOtp,
+  validateVerifyEmail,
 } from './parent.validation.js';
 
 const router = Router();
@@ -140,5 +144,13 @@ router.post(
 // ── Photo Upload (Parent Avatar) ──────────────────────────────────────────────
 router.post('/me/avatar/upload-url', validateGenerateUploadUrl, generateAvatarUploadUrl);
 router.post('/me/avatar/confirm', validateConfirmUpload, confirmAvatarUpload);
+
+// ── Email Verification (first time) ───────────────────────────────────────────
+router.post('/me/send-email-otp', validateSendEmailOtp, sendEmailVerificationOtp);
+router.post('/me/verify-email', validateVerifyEmail, verifyEmail);
+
+// ── Email Change (existing user) ──────────────────────────────────────────────
+router.post('/me/send-email-change-otp', validateSendEmailOtp, sendEmailChangeOtp);
+router.post('/me/verify-email-change', validateVerifyEmail, verifyEmailChange);
 
 export default router;

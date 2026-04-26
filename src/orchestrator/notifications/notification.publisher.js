@@ -242,8 +242,7 @@ export const publishNotification = {
         studentName: payload.studentName,
         expiryDate: payload.expiryDate,
         daysLeft: payload.daysLeft,
-        parentPhone: payload.parentPhone ?? null,
-        parentExpoTokens: payload.parentExpoTokens ?? [], // Expo tokens
+        parentExpoTokens: payload.parentExpoTokens ?? [],
       },
       meta: { studentId: meta.studentId, ...meta },
     }),
@@ -273,6 +272,194 @@ export const publishNotification = {
         device: payload.device,
         location: payload.location,
         time: payload.time,
+      },
+      meta,
+    }),
+
+  parentEmailVerified: ({ actorId, payload, meta = {} }) =>
+    _publish(EVENTS.PARENT_EMAIL_VERIFIED, {
+      actorId,
+      actorType: 'PARENT_USER',
+      payload: {
+        parentName: payload.parentName,
+        parentEmail: payload.parentEmail,
+        studentName: payload.studentName,
+        studentClass: payload.studentClass,
+        schoolName: payload.schoolName,
+        cardId: payload.cardId,
+        appStoreUrl: payload.appStoreUrl ?? null,
+        playStoreUrl: payload.playStoreUrl ?? null,
+      },
+      meta,
+    }),
+
+  schoolUserOnboarded: ({ schoolId, actorId, payload, meta = {} }) =>
+    _publish(EVENTS.SCHOOL_USER_ONBOARDED, {
+      schoolId,
+      actorId,
+      actorType: 'SYSTEM',
+      payload: {
+        schoolName: payload.schoolName,
+        adminName: payload.adminName,
+        adminEmail: payload.adminEmail,
+        tempPassword: payload.tempPassword,
+        dashboardUrl: payload.dashboardUrl ?? null,
+        planName: payload.planName ?? null,
+        planExpiry: payload.planExpiry ?? null,
+        cardCount: payload.cardCount ?? null,
+      },
+      meta,
+    }),
+
+  // ✅ ADD these to publishNotification object
+
+  // ── Parent actions
+  parentRegistered: ({ actorId, payload, meta = {} }) =>
+    _publish(EVENTS.PARENT_REGISTERED, {
+      actorId,
+      actorType: 'PARENT_USER',
+      payload: {
+        parentName: payload.parentName,
+        phone: payload.phone,
+      },
+      meta,
+    }),
+
+  parentCardLinked: ({ actorId, schoolId, payload, meta = {} }) =>
+    _publish(EVENTS.PARENT_CARD_LINKED, {
+      actorId,
+      actorType: 'PARENT_USER',
+      schoolId,
+      payload: {
+        parentName: payload.parentName,
+        studentName: payload.studentName,
+        cardNumber: payload.cardNumber,
+        parentExpoTokens: payload.parentExpoTokens ?? [],
+      },
+      meta: { studentId: meta.studentId, ...meta },
+    }),
+
+  parentCardLocked: ({ actorId, schoolId, payload, meta = {} }) =>
+    _publish(EVENTS.PARENT_CARD_LOCKED, {
+      actorId,
+      actorType: 'PARENT_USER',
+      schoolId,
+      payload: {
+        parentName: payload.parentName,
+        studentName: payload.studentName,
+        parentEmail: payload.parentEmail ?? null,
+        parentPhone: payload.parentPhone ?? null,
+        parentExpoTokens: payload.parentExpoTokens ?? [],
+      },
+      meta: { studentId: meta.studentId, ...meta },
+    }),
+
+  parentCardReplaceRequested: ({ actorId, schoolId, payload, meta = {} }) =>
+    _publish(EVENTS.PARENT_CARD_REPLACE_REQUESTED, {
+      actorId,
+      actorType: 'PARENT_USER',
+      schoolId,
+      payload: {
+        parentName: payload.parentName,
+        studentName: payload.studentName,
+        reason: payload.reason ?? null,
+        parentEmail: payload.parentEmail ?? null,
+        parentPhone: payload.parentPhone ?? null,
+      },
+      meta: { studentId: meta.studentId, ...meta },
+    }),
+
+  parentAccountDeleted: ({ actorId, payload, meta = {} }) =>
+    _publish(EVENTS.PARENT_ACCOUNT_DELETED, {
+      actorId,
+      actorType: 'PARENT_USER',
+      payload: {
+        parentName: payload.parentName,
+        parentEmail: payload.parentEmail ?? null,
+        parentPhone: payload.parentPhone,
+      },
+      meta,
+    }),
+
+  parentPhoneChanged: ({ actorId, payload, meta = {} }) =>
+    _publish(EVENTS.PARENT_PHONE_CHANGED, {
+      actorId,
+      actorType: 'PARENT_USER',
+      payload: {
+        parentName: payload.parentName,
+        oldPhone: payload.oldPhone,
+        newPhone: payload.newPhone,
+        parentEmail: payload.parentEmail ?? null,
+      },
+      meta,
+    }),
+
+  parentEmailChanged: ({ actorId, payload, meta = {} }) =>
+    _publish(EVENTS.PARENT_EMAIL_CHANGED, {
+      actorId,
+      actorType: 'PARENT_USER',
+      payload: {
+        parentName: payload.parentName,
+        oldEmail: payload.oldEmail,
+        newEmail: payload.newEmail,
+      },
+      meta,
+    }),
+
+  parentChildUnlinked: ({ actorId, schoolId, payload, meta = {} }) =>
+    _publish(EVENTS.PARENT_CHILD_UNLINKED, {
+      actorId,
+      actorType: 'PARENT_USER',
+      schoolId,
+      payload: {
+        parentName: payload.parentName,
+        studentName: payload.studentName,
+        parentExpoTokens: payload.parentExpoTokens ?? [],
+        parentPhone: payload.parentPhone ?? null,
+      },
+      meta: { studentId: meta.studentId, ...meta },
+    }),
+
+  parentCardRenewalRequested: ({ actorId, schoolId, payload, meta = {} }) =>
+    _publish(EVENTS.PARENT_CARD_RENEWAL_REQUESTED, {
+      actorId,
+      actorType: 'PARENT_USER',
+      schoolId,
+      payload: {
+        studentName: payload.studentName,
+        schoolName: payload.schoolName,
+        parentPhone: payload.parentPhone ?? null,
+        parentEmail: payload.parentEmail ?? null,
+        adminEmail: payload.adminEmail ?? null,
+      },
+      meta: { studentId: meta.studentId, ...meta },
+    }),
+
+  // ── Student / system
+  anomalyDetected: ({ schoolId, actorId, payload, meta = {} }) =>
+    _publish(EVENTS.ANOMALY_DETECTED, {
+      schoolId,
+      actorId,
+      actorType: 'SYSTEM',
+      payload: {
+        studentName: payload.studentName,
+        anomalyType: payload.anomalyType,
+        location: payload.location ?? null,
+        detectedAt: payload.detectedAt,
+        parentExpoTokens: payload.parentExpoTokens ?? [],
+        parentEmail: payload.parentEmail ?? null,
+      },
+      meta: { studentId: meta.studentId, ...meta },
+    }),
+
+  internalAlert: ({ payload, meta = {} }) =>
+    _publish(EVENTS.INTERNAL_ALERT, {
+      actorId: 'system',
+      actorType: 'SYSTEM',
+      payload: {
+        alertType: payload.alertType,
+        message: payload.message,
+        data: payload.data ?? null,
       },
       meta,
     }),

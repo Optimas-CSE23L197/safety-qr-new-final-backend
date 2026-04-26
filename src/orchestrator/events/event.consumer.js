@@ -43,6 +43,7 @@ export const consume = (eventType, handler) => {
   if (!EVENTS[eventType]) {
     throw new TypeError(`consume: unknown event type "${eventType}"`);
   }
+
   if (typeof handler !== 'function') {
     throw new TypeError('consume: handler must be a function');
   }
@@ -94,3 +95,15 @@ export const hasHandlers = eventType => {
  * Used in health checks and worker startup logging.
  */
 export const registeredTypes = () => [..._registry.keys()];
+
+/**
+ * Returns count of registered handlers per event type.
+ * Used in worker startup logging for visibility.
+ */
+export const registeredSummary = () => {
+  const summary = {};
+  for (const [type, handlers] of _registry.entries()) {
+    summary[type] = handlers.size;
+  }
+  return summary;
+};

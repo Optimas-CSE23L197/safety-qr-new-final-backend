@@ -1,13 +1,3 @@
-// =============================================================================
-// orchestrator/notifications/channel/emergency.js — RESQID
-//
-// Emergency alert channel. UNTOUCHABLE — never queued, never rate-limited.
-// Direct channel calls only. Push first (2s timeout), SMS second (4s timeout).
-// Email log scheduled via BullMQ (5 min delay) — survives process restarts.
-//
-// FIXED: SMS now uses DLT template with named variables.
-// =============================================================================
-
 import { logger } from '#config/logger.js';
 import { prisma } from '#config/prisma.js';
 import { getSms } from '#infrastructure/sms/sms.index.js';
@@ -15,17 +5,41 @@ import { getPush } from '#infrastructure/push/push.index.js';
 import { getEmail } from '#infrastructure/email/email.index.js';
 import { backgroundJobsQueue } from '../../queues/queue.config.js';
 
-// Import React Email component — uncomment when file is created
-// import EmergencyLogEmail from '#templates/email/emergency-log.jsx';
+const EMERGENCY_SMS_ENABLED = process.env.EMERGENCY_SMS_ENABLED === 'true';
 
 // ── SMS ───────────────────────────────────────────────────────────────────────
 
 const sendEmergencySms = async (contact, studentInfo, location) => {
   const start = Date.now();
-  // TODO: Emergency SMS requires DLT registration — post-pilot
-  // Will use transactional SMS template once business is registered
-  logger.warn({ contactName: contact.name }, '[emergency] SMS skipped — DLT registration pending');
-  return { success: false, error: 'DLT registration pending', duration: Date.now() - start };
+
+  if (!EMERGENCY_SMS_ENABLED) {
+    logger.warn(
+      { contactName: contact.name },
+      '[emergency] SMS skipped — EMERGENCY_SMS_ENABLED=false'
+    );
+    return { success: false, error: 'SMS disabled via env', duration: Date.now() - start };
+  }
+
+  try {
+    const sms = getSms();
+    const locationText =
+      location?.lat && location?.lng ? `${location.lat}, ${location.lng}` : 'Unknown';
+
+    const body = `EMERGENCY: ${studentInfo.studentName} needs help at ${locationText}. Check ResQID app immediately. -RESQID`;
+
+    const result = await sms.send(contact.phone, body);
+
+    const duration = Date.now() - start;
+    if (result?.success || result?.id) {
+      logger.info({ contactName: contact.name, duration }, '[emergency] SMS sent');
+      return { success: true, duration };
+    }
+
+    return { success: false, error: result?.error ?? 'SMS failed', duration };
+  } catch (error) {
+    logger.error({ contactName: contact.name, error: error.message }, '[emergency] SMS failed');
+    return { success: false, error: error.message, duration: Date.now() - start };
+  }
 };
 
 // ── Push ──────────────────────────────────────────────────────────────────────
@@ -34,17 +48,14 @@ const sendEmergencyPush = async (contact, studentInfo, location) => {
   const start = Date.now();
   try {
     const parentDevices = await prisma.parentDevice.findMany({
-      where: { parent: { phone: contact.phone }, is_active: true },
+      where: { parent_id: contact.parentId, is_active: true },
       select: { expo_push_token: true },
     });
 
     const tokens = parentDevices.map(d => d.expo_push_token).filter(Boolean);
 
     if (tokens.length === 0) {
-      logger.debug(
-        { phone: contact.phone?.slice(0, 6) + '…' },
-        '[emergency] No active Expo tokens for push'
-      );
+      logger.debug({ parentId: contact.parentId }, '[emergency] No active Expo tokens for push');
       return { success: false, error: 'No active Expo tokens', duration: Date.now() - start };
     }
 
@@ -64,14 +75,11 @@ const sendEmergencyPush = async (contact, studentInfo, location) => {
     };
 
     const push = getPush();
-    const result =
-      tokens.length === 1
-        ? await push.sendToDevice(tokens[0], notification)
-        : await push.sendToDevices(tokens, notification);
+    const result = await push.sendToDevices(tokens, notification);
 
     const duration = Date.now() - start;
 
-    if (result?.success) {
+    if (result?.success || (result?.successCount ?? 0) > 0) {
       logger.info(
         { contactName: contact.name, tokenCount: tokens.length, duration },
         '[emergency] Push sent'
@@ -109,9 +117,6 @@ const scheduleEmergencyEmailLog = async data => {
   }
 };
 
-/**
- * Called by background.worker.js when it processes EMERGENCY_EMAIL_LOG jobs.
- */
 export const sendEmergencyEmailLog = async data => {
   try {
     const {
@@ -145,24 +150,6 @@ export const sendEmergencyEmailLog = async data => {
       return;
     }
 
-    const email = getEmail();
-    const subject = `[RESQID] Emergency Alert — ${studentName}`;
-    const props = {
-      studentName,
-      schoolName,
-      location,
-      scannedAt: scannedAt instanceof Date ? scannedAt.toISOString() : scannedAt,
-      dispatchResults,
-    };
-
-    // When EmergencyLogEmail component is ready, use sendReactTemplate:
-    //   await Promise.allSettled(
-    //     recipients.map(to =>
-    //       email.sendReactTemplate(EmergencyLogEmail, props, { to, subject })
-    //     )
-    //   );
-    //
-    // STUB: until then, log and skip to avoid crashing the worker
     logger.warn(
       { scanId, recipientCount: recipients.length },
       '[emergency] EmergencyLogEmail component not yet wired — email log skipped'
@@ -171,7 +158,7 @@ export const sendEmergencyEmailLog = async data => {
     logger.info({ scanId, recipientCount: recipients.length }, '[emergency] Email log processed');
   } catch (err) {
     logger.error({ scanId: data?.scanId, err: err.message }, '[emergency] Email log send failed');
-    throw err; // rethrow so BullMQ can retry
+    throw err;
   }
 };
 
@@ -228,7 +215,8 @@ export const sendEmergencyAlerts = async params => {
       const { channel, result } = s.value;
       if (result.success) {
         if (!dispatchedChannels.includes(channel)) dispatchedChannels.push(channel);
-        results[channel].success = true;
+        if (channel === 'sms') results.sms.success = true;
+        if (channel === 'push') results.push.success = true;
         results[channel].duration += result.duration;
       } else {
         if (!failedChannels.includes(channel)) failedChannels.push(channel);
@@ -239,7 +227,6 @@ export const sendEmergencyAlerts = async params => {
     }
   }
 
-  // Fire-and-forget email log scheduling (wrapped in try-catch for sync errors)
   try {
     scheduleEmergencyEmailLog({
       scanId,

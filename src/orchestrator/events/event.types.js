@@ -1,5 +1,5 @@
 // =============================================================================
-// orchestrator/events/event.types.js — RESQID (FIXED)
+// orchestrator/events/event.types.js — RESQID
 // =============================================================================
 
 export const EVENTS = Object.freeze({
@@ -41,11 +41,14 @@ export const EVENTS = Object.freeze({
   USER_LOGIN_SUCCESS: 'USER_LOGIN_SUCCESS',
   USER_DEVICE_LOGIN_NEW: 'USER_DEVICE_LOGIN_NEW',
   USER_PASSWORD_RESET_REQUESTED: 'USER_PASSWORD_RESET_REQUESTED',
+  SCHOOL_USER_PASSWORD_RESET: 'SCHOOL_USER_PASSWORD_RESET',
 
   // ── School ────────────────────────────────────────────────────────────────
   SCHOOL_ONBOARDED: 'SCHOOL_ONBOARDED',
+  SCHOOL_USER_ONBOARDED: 'SCHOOL_USER_ONBOARDED',
   SCHOOL_RENEWAL_DUE: 'SCHOOL_RENEWAL_DUE',
   SCHOOL_RENEWAL_COMPLETED: 'SCHOOL_RENEWAL_COMPLETED',
+  SUBSCRIPTION_ACTIVATED: 'SUBSCRIPTION_ACTIVATED',
 
   // ── Student ───────────────────────────────────────────────────────────────
   STUDENT_REGISTERED: 'STUDENT_REGISTERED',
@@ -53,14 +56,41 @@ export const EVENTS = Object.freeze({
   STUDENT_CARD_ACTIVATED: 'STUDENT_CARD_ACTIVATED',
   STUDENT_CARD_DEACTIVATED: 'STUDENT_CARD_DEACTIVATED',
   STUDENT_CARD_EXPIRING: 'STUDENT_CARD_EXPIRING',
+  ANOMALY_DETECTED: 'ANOMALY_DETECTED',
+  PROFILE_SETUP_REMINDER: 'PROFILE_SETUP_REMINDER',
 
-  // app announcement
+  // ── Parent ────────────────────────────────────────────────────────────────
+  PARENT_EMAIL_VERIFIED: 'PARENT_EMAIL_VERIFIED',
+  PARENT_REGISTERED: 'PARENT_REGISTERED',
+  PARENT_CARD_LINKED: 'PARENT_CARD_LINKED',
+  PARENT_CARD_LOCKED: 'PARENT_CARD_LOCKED',
+  PARENT_CARD_REPLACE_REQUESTED: 'PARENT_CARD_REPLACE_REQUESTED',
+  PARENT_ACCOUNT_DELETED: 'PARENT_ACCOUNT_DELETED',
+  PARENT_PHONE_CHANGED: 'PARENT_PHONE_CHANGED',
+  PARENT_EMAIL_CHANGED: 'PARENT_EMAIL_CHANGED',
+  PARENT_CHILD_UNLINKED: 'PARENT_CHILD_UNLINKED',
+  PARENT_CARD_RENEWAL_REQUESTED: 'PARENT_CARD_RENEWAL_REQUESTED',
+
+  // ── Broadcast ─────────────────────────────────────────────────────────────
   FESTIVAL_WISH_BROADCAST: 'FESTIVAL_WISH_BROADCAST',
   GOVT_ALERT_BROADCAST: 'GOVT_ALERT_BROADCAST',
   SERVER_MAINTENANCE: 'SERVER_MAINTENANCE',
+
+  // ── Internal (coreZ team alerts) ─────────────────────────────────────────
+  INTERNAL_ALERT: 'INTERNAL_ALERT',
 
   // ── System ────────────────────────────────────────────────────────────────
   WORKER_JOB_FAILED: 'WORKER_JOB_FAILED',
   WORKER_JOB_DEAD: 'WORKER_JOB_DEAD',
   SYSTEM_HEALTH_DEGRADED: 'SYSTEM_HEALTH_DEGRADED',
 });
+
+// ── Actor types ───────────────────────────────────────────────────────────────
+// Centralized here so event.publisher.js and any validator can import from one place
+export const ACTOR_TYPES = Object.freeze([
+  'USER',
+  'SYSTEM',
+  'WORKER',
+  'PARENT_USER',
+  'SCHOOL_USER',
+]);

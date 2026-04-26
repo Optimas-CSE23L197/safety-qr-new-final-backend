@@ -1,7 +1,10 @@
 // infrastructure/email/brevo.adapter.js
+// infrastructure/email/brevo.adapter.js
 import axios from 'axios';
+import React from 'react';
 import { EmailProvider } from './email.provider.js';
 import { logger } from '#config/logger.js';
+import { render } from '@react-email/components';
 
 function parseSender(from) {
   const match = from.match(/^(.+?)\s*<(.+)>$/);
@@ -19,11 +22,11 @@ export class BrevoAdapter extends EmailProvider {
   }
 
   async send({ to, subject, html, text, from, replyTo }) {
-    const sender = parseSender(from ?? this.defaultFrom); // fixed: was hardcoding name
+    const sender = parseSender(from ?? this.defaultFrom);
     const recipients = Array.isArray(to) ? to : [to];
 
     try {
-      await axios.post(
+      const response = await axios.post(
         `${this.baseUrl}/smtp/email`,
         {
           sender,
@@ -41,8 +44,11 @@ export class BrevoAdapter extends EmailProvider {
         }
       );
 
-      logger.info({ to: recipients }, '[Email] Sent via Brevo');
-      return { success: true };
+      logger.info(
+        { to: recipients, messageId: response.data?.messageId },
+        '[Email] Sent via Brevo'
+      );
+      return { success: true, id: response.data?.messageId };
     } catch (err) {
       logger.error(
         { to: recipients, error: err.response?.data || err.message },
@@ -54,9 +60,7 @@ export class BrevoAdapter extends EmailProvider {
 
   async sendReactTemplate(Component, props = {}, { to, subject, from, replyTo } = {}) {
     try {
-      // Import render dynamically — only if react-email installed
-      const { render } = await import('@react-email/components');
-      const element = Component(props);
+      const element = React.createElement(Component, props);
       const html = await render(element);
       const text = await render(element, { plainText: true });
       return this.send({ to, subject, html, text, from, replyTo });

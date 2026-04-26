@@ -4,12 +4,13 @@
 // RAILWAY (24/7):  emergencyAlertsQueue + notificationsQueue
 // LOCAL ONLY:      pipelineJobsQueue (npm run worker:pipeline)
 //
-// Changes from previous version:
+// Notes:
 //   - backgroundJobsQueue removed (invoice + maintenance are direct calls now)
-//   - getQueueConnection() now returns a config object, not a shared instance
-//   - stalledInterval: 60_000 on all queues (was BullMQ default 30s)
-//   - maxStalledCount: 1 on all queues
-//   - keepAlive handled in connection config (300s not 30s)
+//   - getQueueConnection() returns a config object, not a shared instance —
+//     BullMQ calls .duplicate() internally; shared instances cause leaks
+//   - stalledInterval + maxStalledCount belong on Worker, NOT Queue — set them
+//     in each new Worker(...) constructor in your worker files
+//   - keepAlive: 300_000 set in queue.connection.js (5 min, not 30s)
 // =============================================================================
 
 import { Queue } from 'bullmq';
@@ -27,10 +28,6 @@ const makeQueue = (name, customOptions = {}) => {
       removeOnComplete: { age: 86400, count: 1000 },
       removeOnFail: { age: 604800, count: 5000 },
     },
-    settings: {
-      stalledInterval: 60_000,
-      maxStalledCount: 1,
-    },
     connection,
   };
 
@@ -40,10 +37,6 @@ const makeQueue = (name, customOptions = {}) => {
     defaultJobOptions: {
       ...defaultOptions.defaultJobOptions,
       ...(customOptions.defaultJobOptions ?? {}),
-    },
-    settings: {
-      ...defaultOptions.settings,
-      ...(customOptions.settings ?? {}),
     },
   });
 
@@ -68,6 +61,8 @@ export const notificationsQueue = makeQueue(QUEUE_NAMES.NOTIFICATIONS, {
   defaultJobOptions: {
     attempts: 3,
     backoff: { type: 'exponential', delay: 1000 },
+    removeOnComplete: { age: 86400, count: 1000 },
+    removeOnFail: { age: 604800, count: 5000 },
   },
 });
 
