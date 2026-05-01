@@ -1,13 +1,51 @@
 // =============================================================================
 // modules/parents/parent.repository.js — RESQID
+// Security: all writes are ownership-gated before touching the DB.
+// Scalability: queries use indexed fields only; no N+1; groupBy for counts.
 // =============================================================================
 
 import { prisma } from '#config/prisma.js';
 
-// ─── /me — Home data ──────────────────────────────────────────────────────────
-// FIX: lastScan, anomaly, scanCount are now fetched per-student (active student
-// scoped on the client), so getParentHomeData also returns per-student versions
-// embedded on each student object.
+// ─── Shared error factory ─────────────────────────────────────────────────────
+
+function forbiddenError(message = 'Access denied') {
+  return Object.assign(new Error(message), { code: 'FORBIDDEN', statusCode: 403 });
+}
+
+function notFoundError(message = 'Not found') {
+  return Object.assign(new Error(message), { code: 'NOT_FOUND', statusCode: 404 });
+}
+
+function conflictError(message = 'Conflict') {
+  return Object.assign(new Error(message), { code: 'CONFLICT', statusCode: 409 });
+}
+
+// ─── Ownership guards ─────────────────────────────────────────────────────────
+// Always call these before any write. They use the composite unique index
+// (parent_id, student_id) so the DB lookup is O(1).
+
+async function verifyStudentOwnership(parentId, studentId) {
+  if (!parentId || !studentId) throw forbiddenError();
+  const link = await prisma.parentStudent.findUnique({
+    where: { parent_id_student_id: { parent_id: parentId, student_id: studentId } },
+  });
+  if (!link) throw forbiddenError('Student not linked to this parent');
+  return link;
+}
+
+async function verifyCardOwnership(parentId, cardId) {
+  if (!parentId || !cardId) throw forbiddenError();
+  const card = await prisma.card.findFirst({
+    where: {
+      id: cardId,
+      student: { parents: { some: { parent_id: parentId } } },
+    },
+  });
+  if (!card) throw forbiddenError('Card not found or not linked to this parent');
+  return card;
+}
+
+// ─── GET /me — Home data ──────────────────────────────────────────────────────
 
 export async function getParentHomeData(parentId) {
   const [parent, studentLinks] = await Promise.all([
@@ -39,7 +77,6 @@ export async function getParentHomeData(parentId) {
       },
     }),
 
-    // Full student tree
     prisma.parentStudent.findMany({
       where: { parent_id: parentId },
       select: {
@@ -120,23 +157,17 @@ export async function getParentHomeData(parentId) {
     return { parent, studentLinks: [], lastScan: null, anomaly: null, scanCount: 0 };
   }
 
-  // FIX: Determine the active student id to scope global fields
   const activeStudentId =
     parent.active_student_id ??
     studentLinks.find(l => l.is_primary)?.student?.id ??
     studentLinks[0]?.student?.id ??
     null;
 
-  // Fetch per-student scan summary for all linked students in parallel.
-  // This gives the mobile client accurate data per child.
   const studentIds = studentLinks.map(l => l.student.id);
 
   const [perStudentScans, perStudentAnomalies, perStudentCounts] = await Promise.all([
-    // Last scan per student - fetch all and group manually
     prisma.scanLog.findMany({
-      where: {
-        token: { student_id: { in: studentIds } },
-      },
+      where: { token: { student_id: { in: studentIds } } },
       orderBy: { created_at: 'desc' },
       take: studentIds.length * 5,
       select: {
@@ -153,7 +184,6 @@ export async function getParentHomeData(parentId) {
       },
     }),
 
-    // Latest unresolved anomaly per student
     prisma.scanAnomaly.findMany({
       where: {
         resolved: false,
@@ -171,43 +201,33 @@ export async function getParentHomeData(parentId) {
       },
     }),
 
-    // Scan count per student - use groupBy instead of Promise.all loop
     prisma.scanLog
       .groupBy({
         by: ['token_id'],
-        where: {
-          token: { student_id: { in: studentIds } },
-        },
+        where: { token: { student_id: { in: studentIds } } },
         _count: { id: true },
       })
       .then(async groups => {
-        // Map token_id to student_id
         const tokenIds = groups.map(g => g.token_id);
         const tokens = await prisma.token.findMany({
           where: { id: { in: tokenIds } },
           select: { id: true, student_id: true },
         });
         const tokenToStudent = Object.fromEntries(tokens.map(t => [t.id, t.student_id]));
-
-        // Aggregate counts per student
         const counts = {};
         for (const group of groups) {
           const sid = tokenToStudent[group.token_id];
-          if (sid) {
-            counts[sid] = (counts[sid] || 0) + group._count.id;
-          }
+          if (sid) counts[sid] = (counts[sid] || 0) + group._count.id;
         }
         return Object.entries(counts).map(([studentId, count]) => ({ studentId, count }));
       }),
   ]);
 
-  // Build lookup maps: studentId → first matching record
   const lastScanByStudent = {};
   for (const scan of perStudentScans) {
     const sid = scan.token?.student_id;
     if (sid && !lastScanByStudent[sid]) {
-      // eslint-disable-next-line no-unused-vars
-      const { token, ...scanData } = scan;
+      const { token: _t, ...scanData } = scan;
       lastScanByStudent[sid] = scanData;
     }
   }
@@ -216,8 +236,7 @@ export async function getParentHomeData(parentId) {
   for (const anomaly of perStudentAnomalies) {
     const sid = anomaly.token?.student_id;
     if (sid && !anomalyByStudent[sid]) {
-      // eslint-disable-next-line no-unused-vars
-      const { token, ...anomalyData } = anomaly;
+      const { token: _t, ...anomalyData } = anomaly;
       anomalyByStudent[sid] = anomalyData;
     }
   }
@@ -227,7 +246,6 @@ export async function getParentHomeData(parentId) {
     countByStudent[studentId] = count;
   }
 
-  // Attach per-student scan data onto each studentLink
   const enrichedStudentLinks = studentLinks.map(link => ({
     ...link,
     student: {
@@ -238,7 +256,6 @@ export async function getParentHomeData(parentId) {
     },
   }));
 
-  // Global fields scoped to the active student (for backwards-compat)
   const lastScan = activeStudentId ? (lastScanByStudent[activeStudentId] ?? null) : null;
   const anomaly = activeStudentId ? (anomalyByStudent[activeStudentId] ?? null) : null;
   const scanCount = activeStudentId ? (countByStudent[activeStudentId] ?? 0) : 0;
@@ -246,20 +263,11 @@ export async function getParentHomeData(parentId) {
   return { parent, studentLinks: enrichedStudentLinks, lastScan, anomaly, scanCount };
 }
 
-// ─── /me/scans — Cursor-paginated scan history ────────────────────────────────
-// FIX: added studentId parameter — queries are now scoped to a single student
+// ─── GET /me/scans — Cursor-paginated scan history ────────────────────────────
 
 export async function getScanHistory({ parentId, studentId, cursor, limit, filter }) {
-  // Ownership check: make sure this student belongs to the parent
-  const link = await prisma.parentStudent.findFirst({
-    where: { parent_id: parentId, student_id: studentId },
-  });
-  if (!link) {
-    throw Object.assign(new Error('Student not linked to this parent'), {
-      code: 'FORBIDDEN',
-      statusCode: 403,
-    });
-  }
+  // Ownership check scopes the query to this parent's student only (IDOR guard)
+  await verifyStudentOwnership(parentId, studentId);
 
   const where = buildScanWhere(studentId, filter);
 
@@ -287,11 +295,8 @@ export async function getScanHistory({ parentId, studentId, cursor, limit, filte
   if (hasMore) rows.pop();
   const nextCursor = hasMore ? (rows[rows.length - 1]?.id ?? null) : null;
 
-  // Anomalies scoped to this student only
   const anomalies = await prisma.scanAnomaly.findMany({
-    where: {
-      token: { student_id: studentId },
-    },
+    where: { token: { student_id: studentId } },
     orderBy: { created_at: 'desc' },
     take: 20,
     select: {
@@ -307,93 +312,104 @@ export async function getScanHistory({ parentId, studentId, cursor, limit, filte
   return { scans: rows, anomalies, hasMore, nextCursor };
 }
 
-// FIX: buildScanWhere now scopes by student_id, not parent_id
 function buildScanWhere(studentId, filter) {
-  const base = {
-    token: { student_id: studentId },
-  };
+  const base = { token: { student_id: studentId } };
   if (filter === 'emergency') return { ...base, scan_purpose: 'EMERGENCY' };
   if (filter === 'success') return { ...base, result: 'SUCCESS' };
   if (filter === 'flagged') return { ...base, result: { not: 'SUCCESS' } };
   return base;
 }
 
-// ─── /me/profile — Batched profile update ─────────────────────────────────────
+// ─── PATCH /me/profile/emergency — Batched profile update ────────────────────
+//
+// FIX: replaced the deferred ops[] array pattern with sequential awaits inside
+// the interactive transaction. The old pattern caused a race condition where
+// emergencyContact ops were pushed before the emergencyProfile upsert resolved,
+// so findUnique for contacts could see a stale state on first-time creates.
+//
+// Security: ownership is verified before the transaction opens. studentId is
+// never taken from client input beyond what was validated by the middleware.
 
 export async function updateStudentProfile({ parentId, studentId, student, emergency, contacts }) {
-  const link = await prisma.parentStudent.findFirst({
-    where: { parent_id: parentId, student_id: studentId },
-  });
-  if (!link)
-    throw Object.assign(new Error('Student not found or not linked to this parent'), {
-      code: 'FORBIDDEN',
-      statusCode: 403,
-    });
+  // Ownership gate — throws 403 if not linked
+  await verifyStudentOwnership(parentId, studentId);
 
   return prisma.$transaction(async tx => {
-    const ops = [];
-
+    // ── 1. Student basic fields ──────────────────────────────────────────────
     if (student && Object.keys(student).length > 0) {
-      ops.push(
-        tx.student.update({
-          where: { id: studentId },
-          data: {
-            ...student,
-            ...(student.first_name && { setup_stage: 'COMPLETE' }),
-          },
-        })
-      );
+      await tx.student.update({
+        where: { id: studentId },
+        data: {
+          ...student,
+          // Auto-advance setup stage when first_name is provided
+          ...(student.first_name && { setup_stage: 'COMPLETE' }),
+        },
+      });
     }
 
+    // ── 2. Emergency profile ─────────────────────────────────────────────────
+    // Must be awaited before the contacts block so findUnique below sees the
+    // newly created row in the same transaction.
     if (emergency) {
-      ops.push(
-        tx.emergencyProfile.upsert({
-          where: { student_id: studentId },
-          update: buildEmergencyData(emergency),
-          create: { student_id: studentId, ...buildEmergencyData(emergency) },
-        })
-      );
+      await tx.emergencyProfile.upsert({
+        where: { student_id: studentId },
+        update: buildEmergencyData(emergency),
+        create: { student_id: studentId, ...buildEmergencyData(emergency) },
+      });
     }
 
+    // ── 3. Emergency contacts ────────────────────────────────────────────────
+    // Soft-deactivate all existing contacts then re-create/update the new set.
+    // This preserves referential integrity and the audit trail.
     if (contacts !== undefined) {
       const existingProfile = await tx.emergencyProfile.findUnique({
         where: { student_id: studentId },
         select: { id: true },
       });
 
-      if (existingProfile) {
-        ops.push(
-          tx.emergencyContact.updateMany({
-            where: { profile_id: existingProfile.id },
-            data: { is_active: false },
-          })
+      // If contacts are sent but there is still no profile, that means neither
+      // `emergency` was sent in this request NOR was one created previously.
+      // Fail loudly so the client knows to send the emergency block first.
+      if (!existingProfile) {
+        throw Object.assign(
+          new Error('Cannot save contacts: emergency profile does not exist yet'),
+          { code: 'PROFILE_MISSING', statusCode: 422 }
         );
+      }
 
-        for (const c of contacts) {
-          ops.push(
-            c.id
-              ? tx.emergencyContact.update({
-                  where: { id: c.id },
-                  data: { ...buildContactData(c), is_active: true },
-                })
-              : tx.emergencyContact.create({
-                  data: {
-                    profile_id: existingProfile.id,
-                    ...buildContactData(c),
-                    is_active: true,
-                  },
-                })
-          );
+      // Deactivate all current contacts in one batched write
+      await tx.emergencyContact.updateMany({
+        where: { profile_id: existingProfile.id },
+        data: { is_active: false },
+      });
+
+      // Upsert contacts sequentially — keeps order deterministic and avoids
+      // parallel write conflicts on the same profile_id
+      for (const c of contacts) {
+        if (c.id) {
+          // Security: verify the contact belongs to this profile before updating
+          await tx.emergencyContact.update({
+            where: { id: c.id, profile_id: existingProfile.id },
+            data: { ...buildContactData(c), is_active: true },
+          });
+        } else {
+          await tx.emergencyContact.create({
+            data: {
+              profile_id: existingProfile.id,
+              ...buildContactData(c),
+              is_active: true,
+            },
+          });
         }
       }
     }
 
-    for (const op of ops) {
-      await op;
-    }
     return { success: true };
   });
 }
+
+// ── Field builders ────────────────────────────────────────────────────────────
+// Only include fields that are explicitly provided (undefined = no-op in Prisma).
 
 function buildEmergencyData(e) {
   const data = {};
@@ -402,6 +418,7 @@ function buildEmergencyData(e) {
   if (e.conditions !== undefined) data.conditions = e.conditions;
   if (e.medications !== undefined) data.medications = e.medications;
   if (e.doctor_name !== undefined) data.doctor_name = e.doctor_name;
+  // Service layer passes pre-encrypted value under the key `doctor_phone`
   if (e.doctor_phone !== undefined) data.doctor_phone_encrypted = e.doctor_phone;
   if (e.notes !== undefined) data.notes = e.notes;
   return data;
@@ -410,28 +427,28 @@ function buildEmergencyData(e) {
 function buildContactData(c) {
   return {
     name: c.name,
-    phone_encrypted: c.phone,
+    phone_encrypted: c.phone, // pre-encrypted by service layer
     relationship: c.relationship,
     priority: c.priority,
-    display_order: c.priority,
-    call_enabled: true,
-    whatsapp_enabled: true,
+    display_order: c.priority, // mirrors priority; can be decoupled later
+    call_enabled: c.call_enabled ?? true,
+    whatsapp_enabled: c.whatsapp_enabled ?? true,
   };
 }
 
-// ─── /me/visibility ───────────────────────────────────────────────────────────
+// ─── PATCH /me/visibility ─────────────────────────────────────────────────────
 
 export async function updateCardVisibility({ parentId, student_id, visibility, hidden_fields }) {
   await verifyStudentOwnership(parentId, student_id);
 
   return prisma.cardVisibility.upsert({
-    where: { student_id: student_id },
+    where: { student_id },
     update: { visibility, hidden_fields, updated_by_parent: true },
-    create: { student_id: student_id, visibility, hidden_fields, updated_by_parent: true },
+    create: { student_id, visibility, hidden_fields, updated_by_parent: true },
   });
 }
 
-// ─── /me/notifications ────────────────────────────────────────────────────────
+// ─── PATCH /me/notifications ──────────────────────────────────────────────────
 
 export async function updateNotificationPrefs(parentId, prefs) {
   return prisma.parentNotificationPref.upsert({
@@ -441,7 +458,7 @@ export async function updateNotificationPrefs(parentId, prefs) {
   });
 }
 
-// ─── /me/location-consent ────────────────────────────────────────────────────
+// ─── PATCH /me/location-consent ──────────────────────────────────────────────
 
 export async function updateLocationConsent({ parentId, studentId, enabled }) {
   await verifyStudentOwnership(parentId, studentId);
@@ -453,7 +470,7 @@ export async function updateLocationConsent({ parentId, studentId, enabled }) {
   });
 }
 
-// ─── /me/lock-card ───────────────────────────────────────────────────────────
+// ─── POST /me/lock-card ───────────────────────────────────────────────────────
 
 export async function lockStudentCard({ parentId, studentId }) {
   await verifyStudentOwnership(parentId, studentId);
@@ -473,7 +490,7 @@ export async function lockStudentCard({ parentId, studentId }) {
   return { locked: true, count: updated.count };
 }
 
-// ─── /me/request-replace ─────────────────────────────────────────────────────
+// ─── POST /me/request-replace ─────────────────────────────────────────────────
 
 export async function createReplaceRequest({ parentId, student_id, reason }) {
   await verifyStudentOwnership(parentId, student_id);
@@ -489,7 +506,7 @@ export async function createReplaceRequest({ parentId, student_id, reason }) {
   });
 }
 
-// ─── /me (DELETE) ─────────────────────────────────────────────────────────────
+// ─── DELETE /me ───────────────────────────────────────────────────────────────
 
 export async function softDeleteParent(parentId) {
   return prisma.parentUser.update({
@@ -498,21 +515,7 @@ export async function softDeleteParent(parentId) {
   });
 }
 
-// ─── Shared helpers ───────────────────────────────────────────────────────────
-
-async function verifyStudentOwnership(parentId, studentId) {
-  const link = await prisma.parentStudent.findFirst({
-    where: { parent_id: parentId, student_id: studentId },
-  });
-  if (!link) {
-    throw Object.assign(new Error('Student not linked to this parent'), {
-      code: 'FORBIDDEN',
-      statusCode: 403,
-    });
-  }
-}
-
-// ─── /me/location-history ─────────────────────────────────────────────────────
+// ─── GET /me/location-history ─────────────────────────────────────────────────
 
 export async function getLocationHistory({ parentId, studentId, cursor, limit, fromDate, toDate }) {
   await verifyStudentOwnership(parentId, studentId);
@@ -545,14 +548,12 @@ export async function getLocationHistory({ parentId, studentId, cursor, limit, f
   return { locations: rows, hasMore, nextCursor };
 }
 
-// ─── /me/anomalies ───────────────────────────────────────────────────────────
+// ─── GET /me/anomalies ────────────────────────────────────────────────────────
 
 export async function getAnomalies(parentId, { cursor, limit, severity, resolved }) {
   const where = {
     token: {
-      student: {
-        parents: { some: { parent_id: parentId } },
-      },
+      student: { parents: { some: { parent_id: parentId } } },
     },
     ...(severity && { severity }),
     ...(resolved !== undefined && { resolved }),
@@ -581,7 +582,7 @@ export async function getAnomalies(parentId, { cursor, limit, severity, resolved
   return { anomalies: rows, hasMore, nextCursor };
 }
 
-// ─── /me/cards ───────────────────────────────────────────────────────────────
+// ─── GET /me/cards ────────────────────────────────────────────────────────────
 
 export async function getCards(parentId) {
   return prisma.card.findMany({
@@ -596,7 +597,7 @@ export async function getCards(parentId) {
   });
 }
 
-// ─── /me/request-renewal ─────────────────────────────────────────────────────
+// ─── POST /me/request-renewal ─────────────────────────────────────────────────
 
 export async function requestRenewal(parentId, { cardId, paymentMethod }) {
   await verifyCardOwnership(parentId, cardId);
@@ -606,7 +607,7 @@ export async function requestRenewal(parentId, { cardId, paymentMethod }) {
     include: { token: true, student: true },
   });
 
-  if (!card) throw new Error('Card not found');
+  if (!card) throw notFoundError('Card not found');
 
   const log = await prisma.parentEditLog.create({
     data: {
@@ -625,30 +626,14 @@ export async function requestRenewal(parentId, { cardId, paymentMethod }) {
   return { requestId: log.id, cardNumber: card.card_number };
 }
 
-async function verifyCardOwnership(parentId, cardId) {
-  const card = await prisma.card.findFirst({
-    where: {
-      id: cardId,
-      student: { parents: { some: { parent_id: parentId } } },
-    },
-  });
-
-  if (!card) {
-    throw Object.assign(new Error('Card not found or not linked to this parent'), {
-      code: 'FORBIDDEN',
-      statusCode: 403,
-    });
-  }
-
-  return card;
-}
-
-// ─── Device token ─────────────────────────────────────────────────────────────
+// ─── POST /device-token ───────────────────────────────────────────────────────
 
 export async function upsertDeviceToken(
   parentId,
   { token, platform, device_name, deviceModel, os_version }
 ) {
+  // Invalidate the same push token if it was registered to another parent
+  // (handles device hand-offs, e.g. shared family phones)
   await prisma.parentDevice.updateMany({
     where: { expo_push_token: token, parent_id: { not: parentId } },
     data: { is_active: false, logged_out_at: new Date(), logout_reason: 'NEW_DEVICE_LOGIN' },
