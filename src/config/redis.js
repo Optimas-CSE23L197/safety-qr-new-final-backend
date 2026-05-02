@@ -87,8 +87,7 @@ function buildHttpOptions() {
     enableOfflineQueue: true,
     autoResendUnfulfilledCommands: false,
     maxRetriesPerRequest: ENV.REDIS_MAX_RETRIES_PER_REQUEST ?? 1,
-    // ADD THIS — don't attempt commands before TLS handshake completes
-    lazyConnect: true,
+    lazyConnect: false, // ← change true to false
   };
 }
 

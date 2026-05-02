@@ -33,20 +33,22 @@ async function validateOtp(phone, otp, ipAddress, namespace = 'LOGIN') {
   const key = `otp:${namespace}:${phone}`;
   const attemptsKey = `otp:attempts:${namespace}:${phone}`;
 
-  const [attemptsRaw, storedData] = await redis.pipeline().get(attemptsKey).get(key).exec();
-  const attempts = parseInt(attemptsRaw?.[1] ?? '0', 10);
+  // FIX: pipeline() does NOT apply keyPrefix in ioredis — use separate awaits
+  const [attemptsRaw, storedData] = await Promise.all([redis.get(attemptsKey), redis.get(key)]);
+
+  const attempts = parseInt(attemptsRaw ?? '0', 10);
 
   if (attempts >= OTP_MAX_ATTEMPTS) {
     await recordFailedAuth(ipAddress, phone, `${namespace}_OTP_MAX_ATTEMPTS`);
     throw ApiError.tooManyRequests('Too many OTP attempts. Try again later.');
   }
 
-  if (!storedData?.[1]) {
+  if (!storedData) {
     await recordFailedAuth(ipAddress, phone, `${namespace}_OTP_EXPIRED`);
     throw ApiError.badRequest('OTP expired or not requested');
   }
 
-  const otpData = JSON.parse(storedData[1]);
+  const otpData = JSON.parse(storedData);
   const inputHash = hashOtp(otp);
   const storedBuf = Buffer.from(otpData.hash, 'hex');
   const inputBuf = Buffer.from(inputHash, 'hex');
@@ -58,7 +60,10 @@ async function validateOtp(phone, otp, ipAddress, namespace = 'LOGIN') {
     throw ApiError.unauthorized('Invalid OTP');
   }
 
-  await Promise.all([redis.del(key), redis.del(attemptsKey)]);
+  // Clear OTP, attempts, and phone rate limit on success
+  const phoneRateKey = `otp:phone:${hashForLookup(phone)}`;
+  await Promise.all([redis.del(key), redis.del(attemptsKey), redis.del(phoneRateKey)]);
+
   return true;
 }
 

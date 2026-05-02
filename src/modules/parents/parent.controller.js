@@ -19,11 +19,18 @@ import { asyncHandler } from '#shared/response/asyncHandler.js';
 // ─── Error helper ─────────────────────────────────────────────────────────────
 function handleError(res, err, context) {
   if (err.statusCode) {
-    return res
-      .status(err.statusCode)
-      .json({ success: false, code: err.code, message: err.message });
+    return res.status(err.statusCode).json({
+      success: false,
+      code: err.code,
+      message: err.message,
+    });
   }
-  logger.error({ ...context, err: err.message }, `${context.fn} failed`);
+  // REPLACE logger with this temporarily
+  console.error('=== 500 ERROR ===');
+  console.error('context:', context);
+  console.error('message:', err.message);
+  console.error('stack:', err.stack);
+  console.error('full err:', err);
   return res.status(500).json({
     success: false,
     code: 'INTERNAL_ERROR',

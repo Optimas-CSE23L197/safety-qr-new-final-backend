@@ -299,6 +299,7 @@ model Student {
   editLogs              ParentEditLog[]
   parents               ParentStudent[]
   scanLogs              ScanLog[]
+  scanAnomalies         ScanAnomaly[]
   school                School?           @relation(fields: [school_id], references: [id])
   tokens                Token[]
   activeForParents   ParentUser[]  @relation("ActiveStudent")
@@ -1055,6 +1056,7 @@ model ScanLog {
 model ScanAnomaly {
   id           String          @id @default(uuid())
   token_id     String
+  student_id   String?
   anomaly_type AnomalyType
   severity     AnomalySeverity @default(MEDIUM)
   reason       String?
@@ -1064,9 +1066,11 @@ model ScanAnomaly {
   resolved_by  String?
   created_at   DateTime        @default(now())
   token        Token           @relation(fields: [token_id], references: [id], onDelete: Cascade)
+  student      Student?        @relation(fields: [student_id], references: [id])  // ← ADD
 
   @@index([token_id])
   @@index([anomaly_type])
+  @@index([student_id, resolved, created_at])
 }
 
 // ─────────────────────────────────────────────────────────────
