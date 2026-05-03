@@ -710,7 +710,7 @@ export async function createStubStudent(schoolId, firstName) {
     data: {
       school_id: schoolId,
       first_name: firstName || null,
-      setup_stage: 'PENDING',
+      setup_stage: 'COMPLETE',
       is_active: true,
     },
     select: { id: true },

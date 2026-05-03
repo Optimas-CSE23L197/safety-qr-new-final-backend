@@ -135,18 +135,6 @@ export const resolveScan = async ({
         accuracy,
         tokenId,
       });
-
-      if (cached._photoKey && responsePayload.profile) {
-        try {
-          responsePayload.profile.photo_url = await getStorage().getUrl(cached._photoKey, 300);
-        } catch (err) {
-          logger.warn(
-            { err: err.message, key: cached._photoKey },
-            '[scan.service] Failed to generate photo URL'
-          );
-          responsePayload.profile.photo_url = null;
-        }
-      }
     }
 
     return respond(startTime, responsePayload);
@@ -403,7 +391,7 @@ export const resolveScan = async ({
 
   // ── 9. Build full ACTIVE profile ──────────────────────────────────────────
   const emergency = student.emergency;
-  const visibility = emergency?.visibility ?? 'PUBLIC';
+  const visibility = student.cardVisibility?.visibility ?? emergency?.visibility ?? 'PUBLIC';
   const hiddenFields = student.cardVisibility?.hidden_fields ?? [];
 
   const { profile, photoKey } = await buildProfile({
@@ -438,13 +426,13 @@ export const resolveScan = async ({
     })
   );
 
+  // Remove _photoKey entirely
   const cachePayload = {
     ...payload,
     _schoolId: schoolId,
     _studentId: student.id,
     _parentTokens: parentExpoTokens,
     _settings: scanNotificationsEnabled,
-    _photoKey: photoKey ?? null,
     visibility: visibility,
     hidden_fields: hiddenFields,
   };
@@ -653,17 +641,11 @@ const buildProfile = async ({ student, emergency, visibility, hiddenFields }) =>
   let photoKey = null;
   let photoUrl = null;
 
+  //photo_url is already a public URL, use it directly
   if (student.photo_url && !hiddenFields.includes('photo')) {
-    photoKey = student.photo_url;
-    try {
-      photoUrl = await getStorage().getUrl(photoKey, 300);
-    } catch (err) {
-      logger.warn(
-        { err: err.message, key: photoKey },
-        '[scan.service] Failed to generate photo URL'
-      );
-      photoUrl = null;
-    }
+    // photo_url is already a full public URL from R2 don't pass through getUrl()
+    photoUrl = student.photo_url.startsWith('http') ? student.photo_url : null;
+    photoKey = null; // no presigned URL needed — it's a public asset
   }
 
   const base = {

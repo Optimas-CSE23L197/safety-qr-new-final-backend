@@ -15,6 +15,7 @@ import { publishNotification } from '#orchestrator/notifications/notification.pu
 import OtpParentEmail from '#templates/email/otp-parent.jsx';
 import { sendParentWelcome } from '#modules/notification/notification.module.service.js';
 import { getSms } from '#infrastructure/sms/sms.index.js';
+import { invalidateScanCache } from '#shared/cache/scan.cache.js';
 
 // ─── ApiError ─────────────────────────────────────────────────────────────────
 
@@ -264,6 +265,12 @@ export async function updateProfile(parentId, body) {
     contacts: encryptedContacts,
   });
 
+  const token = await prisma.token.findFirst({
+    where: { student_id: student_id, status: 'ACTIVE' },
+    select: { id: true },
+  });
+  if (token) await invalidateScanCache(token.id);
+
   writeAuditLog({
     actorId: parentId,
     actorType: 'PARENT_USER',
@@ -290,6 +297,13 @@ export async function updateVisibility(parentId, body) {
     entity: 'CardVisibility',
     entityId: student_id,
   });
+
+  // Bust scan cache so change reflects immediately on next QR scan
+  const token = await prisma.token.findFirst({
+    where: { student_id, status: 'ACTIVE' },
+    select: { id: true },
+  });
+  if (token) await invalidateScanCache(token.id);
 
   await invalidateParentHome(parentId);
   return { cache_invalidated: true };
@@ -654,6 +668,11 @@ export async function linkCard({ parentId, cardNumber, ipAddress }) {
   if (cardWithToken?.token_id) {
     await repo.activateTokenForStudent(cardWithToken.token_id, studentId);
   }
+
+  await prisma.student.update({
+    where: { id: studentId },
+    data: { setup_stage: 'COMPLETE' },
+  });
 
   if (existingChildrenCount === 0) {
     await repo.setParentActiveStudent(parentId, studentId);

@@ -1166,14 +1166,17 @@
       function fixR2Url(url) {
         if (!url) return null;
         if (url.startsWith('undefined/')) {
-          url =
-            'https://pub-f5901f9064744b768decb18bbe2b9f87.r2.dev/' + url.slice('undefined/'.length);
+          url = 'https://assets.getresqid.in/' + url.slice('undefined/'.length);
         }
         try {
           const u = new URL(url);
-          // Custom domain → convert to working public URL
+          // Raw R2 bucket URL → replace with custom domain
+          if (u.hostname === 'pub-f5901f9064744b768decb18bbe2b9f87.r2.dev') {
+            return 'https://assets.getresqid.in' + u.pathname;
+          }
+          // Already on custom domain → return as-is
           if (R2_CUSTOM_DOMAINS.includes(u.hostname)) {
-            return R2_PUB + u.pathname;
+            return url;
           }
         } catch {}
         return url;
@@ -1700,7 +1703,6 @@
           app.classList.add('visible');
           return;
         }
-
         hide();
 
         switch (data.state) {

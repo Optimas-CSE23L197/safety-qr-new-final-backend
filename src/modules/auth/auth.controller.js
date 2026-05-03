@@ -99,7 +99,9 @@ export const registerVerifyController = asyncHandler(async (req, res) => {
 
 // ─── Refresh Token ────────────────────────────────────────────────────────────
 export const refreshTokenController = asyncHandler(async (req, res) => {
-  const refreshToken = req.cookies?.refreshToken;
+  // ✅ FIXED: Accept token from body (mobile app) OR cookie (web browser)
+  // Mobile clients cannot use httpOnly cookies, so they send it in the body.
+  const refreshToken = req.body?.refreshToken ?? req.cookies?.refreshToken;
 
   if (!refreshToken) {
     throw ApiError.unauthorized('Missing refresh token');
@@ -111,14 +113,26 @@ export const refreshTokenController = asyncHandler(async (req, res) => {
     deviceInfo: parseUserAgentSummary(req),
   });
 
+  // ✅ Set cookie for web clients (mobile ignores this)
   setAuthCookies(res, result.access_token, result.refresh_token);
 
-  return ApiResponse.ok(res, null, 'Token refreshed');
+  // ✅ Also return tokens in response body so mobile clients can store them
+  return ApiResponse.ok(
+    res,
+    {
+      access_token: result.access_token,
+      refresh_token: result.refresh_token,
+      expires_at: result.expires_at,
+      token_type: result.token_type ?? 'Bearer',
+    },
+    'Token refreshed'
+  );
 });
 
 // ─── Logout ───────────────────────────────────────────────────────────────────
 export const logoutController = asyncHandler(async (req, res) => {
-  const refreshToken = req.cookies?.refreshToken;
+  // ✅ FIXED: Accept token from body (mobile) OR cookie (web)
+  const refreshToken = req.body?.refreshToken ?? req.cookies?.refreshToken;
 
   await authService.logoutUser({
     token: req.token,
