@@ -138,7 +138,7 @@ export async function confirmStudentPhotoUpload(parentId, studentId, key, nonce)
 
   await redis.del(`upload:intent:${key}`);
 
-  const photoUrl = `${process.env.CDN_BASE_URL}/${key}`; // ✅ full URL stored in DB
+  const photoUrl = intent.publicUrl;
 
   // ✅ Save to DB directly here
   await prisma.student.update({
@@ -213,7 +213,7 @@ export async function confirmParentAvatarUpload(parentId, key, nonce) {
 
   await redis.del(`upload:intent:${key}`);
 
-  const avatarUrl = `${process.env.CDN_BASE_URL}/${key}`; // ✅ full URL stored in DB
+  const avatarUrl = intent.publicUrl;
 
   // ✅ Save to DB directly here
   await prisma.parentUser.update({

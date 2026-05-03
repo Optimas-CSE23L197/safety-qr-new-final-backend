@@ -1164,23 +1164,16 @@
       const R2_CUSTOM_DOMAINS = ['assets.getresqid.in', 'cdn.getresqid.in'];
 
       function fixR2Url(url) {
-        console.log('URL', url);
         if (!url) return null;
-
-        // Fix double domain issue
-        if (url.includes('assets.getresqid.in/https://')) {
-          url = url.replace('https://assets.getresqid.in/', '');
+        if (url.startsWith('undefined/')) {
+          url =
+            'https://pub-f5901f9064744b768decb18bbe2b9f87.r2.dev/' + url.slice('undefined/'.length);
         }
-
         try {
           const u = new URL(url);
-          // Raw R2 URL → convert to custom domain
-          if (u.hostname === 'pub-f5901f9064744b768decb18bbe2b9f87.r2.dev') {
-            return 'https://assets.getresqid.in' + u.pathname;
-          }
-          // Custom domain → return as is ✅
+          // Custom domain → convert to working public URL
           if (R2_CUSTOM_DOMAINS.includes(u.hostname)) {
-            return url;
+            return R2_PUB + u.pathname;
           }
         } catch {}
         return url;
